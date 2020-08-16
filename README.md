@@ -1,3 +1,3 @@
 # jianzhaobi.github.io
 
-Currently this website is to store and show my personal documents.
+Currently this site is only used to store and show my personal documents.
