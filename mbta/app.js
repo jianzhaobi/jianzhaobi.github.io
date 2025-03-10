@@ -53,7 +53,7 @@ let directionsMap = new Map();
 
 async function loadDirectionData() {
     try {
-        const response = await fetch('https://jianzhaobi.github.io/mbtajs/directions.txt');
+        const response = await fetch('https://jianzhaobi.github.io/mbta/directions.txt');
         const text = await response.text();
 
         // Skip header line and process each row

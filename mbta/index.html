@@ -1,28 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shiny App</title>
-    <script
-      src="./shinylive/load-shinylive-sw.js"
-      type="module"
-    ></script>
-    <script type="module">
-      import { runApp } from "./shinylive/shinylive.js";
-      const response = await fetch("./app.json");
-      if (!response.ok) {
-        throw new Error("HTTP error loading app.json: " + response.status);
-      }
-      const appFiles = await response.json();
+<html>
+<head>
+    <title>Real-Time MBTA Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="map"></div>
+    <div class="route-selector">
+        <select id="routeFilter">
+            <option value="Blue">Blue</option>
+            <option value="Green-B">Green-B</option>
+            <option value="Green-C">Green-C</option>
+            <option value="Green-D">Green-D</option>
+            <option value="Green-E" selected>Green-E</option>
+            <option value="Orange">Orange</option>
+            <option value="Red">Red</option>
+            <!-- Additional routes will be added dynamically -->
+        </select>
+        <div id="fetchTime" class="fetch-time">Last Updated: --</div>
+    </div>
 
-      const appRoot = document.getElementById("root");
-      runApp(appRoot, "viewer", {startFiles: appFiles}, "python");
-    </script>
-    <link rel="stylesheet" href="./shinylive/style-resets.css" />
-    <link rel="stylesheet" href="./shinylive/shinylive.css" />
-  </head>
-  <body>
-    <div style="height: 100vh; width: 100vw" id="root"></div>
-  </body>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+</body>
 </html>
