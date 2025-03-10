@@ -117,8 +117,8 @@ function getDirectionIcon(directionId) {
     };
 
     // Define the new icon size and anchor for the icon
-    const iconSize = [30, 30];
-    const iconAnchor = [15, 15];
+    const iconSize = [28, 28];
+    const iconAnchor = [14, 14];
 
     // If no valid directionId is provided, return a yellow circle icon
     if (directionId !== 0 && directionId !== 1) {
