@@ -40,5 +40,5 @@ select {
 .leaflet-control-zoom {
   position: absolute;
   right: 10px;
-  transform: translateY(50vh);
+  transform: translateY(40vh);
 }
