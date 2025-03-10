@@ -4,7 +4,8 @@ const DEFAULT_LON = -71.0889;
 const DEFAULT_ZOOM = 12;
 
 // Initialize map with fallback
-const map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LON], DEFAULT_ZOOM);
+const map = L.map('map', { zoomControl: false, doubleClickZoom: false }).setView([DEFAULT_LAT, DEFAULT_LON], DEFAULT_ZOOM);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 // Tile layer setup
 L.tileLayer('https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
@@ -103,20 +104,46 @@ function updateRouteFilterOptions(newRoutes) {
 }
 
 function getDirectionIcon(directionId) {
-    const colors = {
-        0: 'rgba(0, 200, 0, 0.5)',
-        1: 'rgba(0, 0, 200, 0.5)'
+    // Semi-transparent fill colors
+    const fillColors = {
+        0: 'rgba(0, 138, 0, 0.2)',
+        1: 'rgba(0, 0, 228, 0.2)'
     };
 
+    // Fully opaque stroke colors matching the fill colors
+    const strokeColors = {
+        0: 'rgba(0, 138, 0, 0.6)',
+        1: 'rgba(0, 0, 228, 0.6)'
+    };
+
+    // Define the new icon size and anchor for a 26x26 icon
+    const iconSize = [26, 26];
+    const iconAnchor = [13, 13];
+
+    // If no valid directionId is provided, return a yellow circle icon
+    if (directionId !== 0 && directionId !== 1) {
+        return L.icon({
+            iconUrl: `data:image/svg+xml;base64,${btoa(`
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+                    <circle cx="16" cy="16" r="14" fill="rgba(204, 204, 0, 0.2)"
+                            stroke="rgba(204, 204, 0, 0.6)" stroke-width="6"/>
+                </svg>
+            `)}`,
+            iconSize: iconSize,
+            iconAnchor: iconAnchor
+        });
+    }
+
+    // Otherwise, return the icon based on the provided directionId (0 or 1)
     return L.icon({
         iconUrl: `data:image/svg+xml;base64,${btoa(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="14" fill="${colors[directionId]}"
-                        stroke="black" stroke-width="2"/>
+                <circle cx="16" cy="16" r="14" fill="${fillColors[directionId]}"
+                        stroke="${strokeColors[directionId]}" stroke-width="6"/>
             </svg>
         `)}`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: iconSize,
+        iconAnchor: iconAnchor
     });
 }
 
@@ -126,6 +153,10 @@ async function updateBusPositions() {
         const response = await fetch('https://mbta-flask-513a6449725e.herokuapp.com/proxy');
         const data = await response.json();
 
+        // Update the fetch timestamp
+        document.getElementById('fetchTime').textContent = `Last Updated: ${new Date().toLocaleString("sv-SE", { timeZone: "America/New_York" })}`;
+
+        // Process the data
         const currentRoutes = [...new Set(data.entity.map(e => e.vehicle.trip.route_id))];
         updateRouteFilterOptions(currentRoutes);
 
@@ -145,12 +176,11 @@ async function updateBusPositions() {
                 icon: getDirectionIcon(trip.direction_id)
             }).addTo(map);
 
-            // Get direction info
             const directionInfo = directionsMap.get(trip.route_id)?.get(trip.direction_id);
 
             const popupContent = `
                 <b>${trip.route_id} - ${vehicle.vehicle.label}</b><br>
-                Direction: ${directionInfo.destination}<br>
+                Direction: ${directionInfo ? directionInfo.destination : "Unknown"}<br>
                 Status: ${vehicle.current_status.replace(/_/g, ' ')}<br>
                 Updated: ${new Date(vehicle.timestamp * 1000).toLocaleTimeString()}
             `;
@@ -161,8 +191,10 @@ async function updateBusPositions() {
 
     } catch (error) {
         console.error('Error:', error);
+        document.getElementById('fetchTime').textContent = "Last Updated: Fetch Error";
     }
 }
+
 
 routeFilter.addEventListener('change', updateBusPositions);
 updateBusPositions();
