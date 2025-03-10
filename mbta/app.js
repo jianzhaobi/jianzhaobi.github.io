@@ -215,78 +215,185 @@ async function getRoutes() {
     }
 }
 
+async function fetchAndShowPredictions(routeId, stopId, stopMarker) {
+    try {
+        const response = await fetch(`https://api-v3.mbta.com/predictions?${mbtaKeyParams}&filter[route]=${routeId}&filter[stop]=${stopId}&include=trip`);
+        const jsonData = await response.json();
+
+        if (!jsonData.data || jsonData.data.length === 0) {
+            stopMarker.setPopupContent(`<b>${stopMarker.options.title}</b><br>No predictions available.`).openPopup();
+            return;
+        }
+
+        // Get current time in milliseconds
+        const currentTime = new Date().getTime();
+
+        // Group predictions by direction -> headsign
+        let directionPredictions = { 0: {}, 1: {} };
+
+        jsonData.data.forEach(prediction => {
+            let attributes = prediction.attributes;
+            let relationships = prediction.relationships;
+
+            let directionId = attributes.direction_id;
+            let arrivalTime = attributes.arrival_time ? new Date(attributes.arrival_time).getTime() : null;
+
+            // Get headsign using trip ID
+            let tripId = relationships.trip?.data?.id;
+            let headsign = "Unknown";
+            if (tripId && jsonData.included) {
+                let tripData = jsonData.included.find(trip => trip.id === tripId);
+                if (tripData && tripData.attributes.headsign) {
+                    headsign = tripData.attributes.headsign;
+                }
+            }
+
+            if (arrivalTime) {
+                let timeDiffMin = Math.round((arrivalTime - currentTime) / 60000);
+
+                // Exclude negative times (past arrivals)
+                if (timeDiffMin >= 0) {
+                    if (!directionPredictions[directionId][headsign]) {
+                        directionPredictions[directionId][headsign] = [];
+                    }
+                    directionPredictions[directionId][headsign].push(timeDiffMin);
+                }
+            }
+        });
+
+        // Sort and limit predictions per headsign
+        for (const directionId of [0, 1]) {
+            for (const headsign in directionPredictions[directionId]) {
+                directionPredictions[directionId][headsign].sort((a, b) => a - b);
+                directionPredictions[directionId][headsign] = directionPredictions[directionId][headsign].slice(0, 3);
+            }
+        }
+
+        // Create popup content dynamically
+        let popupContent = `<b>${stopMarker.options.title}</b><br>`;
+
+        let directionEntries = [];
+
+        // Format predictions by direction, ensuring direction 0 appears first
+        for (const directionId of [0, 1]) {
+            let headsignEntries = Object.entries(directionPredictions[directionId]).map(([headsign, times]) => {
+                return `<b>${headsign}:</b> ${times.join(" / ")} min`;
+            });
+
+            if (headsignEntries.length > 0) {
+                directionEntries.push(headsignEntries.join("<br>"));
+            }
+        }
+
+        if (directionEntries.length > 0) {
+            popupContent += directionEntries.join("<br>"); 
+        } else {
+            popupContent += "<br>No upcoming arrivals.";
+        }
+
+        // Update stop marker popup dynamically
+        stopMarker.setPopupContent(popupContent).openPopup();
+
+    } catch (error) {
+        console.error("Error fetching predictions:", error);
+        stopMarker.setPopupContent(`<b>${stopMarker.options.title}</b><br>Error fetching arrival times.`).openPopup();
+    }
+}
+
 async function plotRouteShape(selectedRouteId) {
     try {
-        // Fetch route shape data from MBTA API
-        const shapeResponse = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
-        const shapeData = await shapeResponse.json();
+        // Fetch route shape data
+        const response = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
+        const jsonData = await response.json();
 
-        // Fetch stop data from MBTA API
-        const stopResponse = await fetch(`https://api-v3.mbta.com/stops?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
-        const stopData = await stopResponse.json();
-
-        // Remove the previous route polyline and stop markers
+        // Remove previous route polyline if exists
         if (window.routeLayer) {
             map.removeLayer(window.routeLayer);
         }
-        if (window.stopLayer) {
-            map.removeLayer(window.stopLayer);
-        }
 
-        if (!shapeData.data || shapeData.data.length === 0) {
+        if (!jsonData.data || jsonData.data.length === 0) {
             console.warn(`No shape data found for route: ${selectedRouteId}`);
             return;
         }
 
-        // Sort the shape segments based on `id` to ensure correct order
-        shapeData.data.sort((a, b) => a.id.localeCompare(b.id));
+        // Sort and decode shape segments
+        jsonData.data.sort((a, b) => a.id.localeCompare(b.id));
+        let allSegments = jsonData.data.map(shape => decodePolyline(shape.attributes.polyline));
 
-        // Decode and store shape segments separately
-        let allSegments = shapeData.data.map(shape => decodePolyline(shape.attributes.polyline));
+        // Draw each shape segment separately to prevent incorrect connections
+        let layers = allSegments.map(segment => L.polyline(segment, {
+            color: 'orange',
+            weight: 5,
+            opacity: 0.6
+        }).addTo(map));
 
-        // Plot each shape segment separately (avoiding incorrect head-tail connections)
-        let routeLayers = [];
-        allSegments.forEach(segment => {
-            let layer = L.polyline(segment, {
-                color: 'orange',
-                weight: 5,
-                opacity: 0.6
-            }).addTo(map);
-            routeLayers.push(layer);
-        });
+        // Store the route polyline layers
+        window.routeLayer = L.layerGroup(layers).addTo(map);
 
-        // Store and manage route layer
-        window.routeLayer = L.layerGroup(routeLayers).addTo(map);
+        // Fetch and plot stops
+        await plotRouteStops(selectedRouteId);
 
-        // Plot stops as markers
-        let stopMarkers = [];
-        stopData.data.forEach(stop => {
-            let lat = stop.attributes.latitude;
-            let lon = stop.attributes.longitude;
-            let stopName = stop.attributes.name || "Unknown Stop";
-
-            let marker = L.circleMarker([lat, lon], {
-                radius: 4,
-                color: "#8B0000",
-                fillColor: "#8B0000",
-                opacity: 0.6,
-                fillOpacity: 0.6
-            }).addTo(map);
-
-            marker.bindPopup(`<b>Stop:</b> ${stopName}`);
-            stopMarkers.push(marker);
-        });
-
-        // Store and manage stop markers layer
-        window.stopLayer = L.layerGroup(stopMarkers).addTo(map);
-
-        // Preserve the current map view instead of resetting it
+        // Preserve the current map view
         const currentCenter = map.getCenter();
         const currentZoom = map.getZoom();
         map.setView(currentCenter, currentZoom);
 
     } catch (error) {
-        console.error("Error fetching or plotting route shape and stops:", error);
+        console.error("Error fetching or plotting route shape:", error);
+    }
+}
+
+async function plotRouteStops(selectedRouteId) {
+    try {
+        // Fetch stops for the selected route
+        const response = await fetch(`https://api-v3.mbta.com/stops?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
+        const jsonData = await response.json();
+
+        // Remove previous stop markers if exist
+        if (window.stopMarkers) {
+            window.stopMarkers.forEach(marker => map.removeLayer(marker));
+        }
+        window.stopMarkers = [];
+
+        if (!jsonData.data || jsonData.data.length === 0) {
+            console.warn(`No stops found for route: ${selectedRouteId}`);
+            return;
+        }
+
+        jsonData.data.forEach(stop => {
+            const stopLat = stop.attributes.latitude;
+            const stopLng = stop.attributes.longitude;
+            const stopName = stop.attributes.name || "Unknown Stop";
+            const stopId = stop.id;
+
+            // Define a dark red stop icon
+            const stopIcon = L.icon({
+                iconUrl: `data:image/svg+xml;base64,${btoa(`
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+                        <circle cx="16" cy="16" r="14" fill="rgba(139, 0, 0, 0.8)" stroke="rgba(139, 0, 0, 1)" stroke-width="6"/>
+                    </svg>
+                `)}`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+
+            // Create a marker for the stop
+            const stopMarker = L.marker([stopLat, stopLng], {
+                icon: stopIcon,
+                title: stopName // Use stop name as the default popup title
+            }).addTo(map);
+
+            // Bind popup and trigger fetch when clicked
+            stopMarker.bindPopup(`<b>${stopName}</b><br>Loading arrival times...`).on("click", () => {
+                fetchAndShowPredictions(selectedRouteId, stopId, stopMarker);
+            });
+
+            // Store marker reference
+            window.stopMarkers.push(stopMarker);
+        });
+
+    } catch (error) {
+        console.error("Error fetching stops:", error);
     }
 }
 
