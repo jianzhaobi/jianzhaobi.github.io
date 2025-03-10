@@ -16,7 +16,7 @@ L.control.zoom({ position: 'topright' }).addTo(map);
 
 // Tile layer setup
 L.tileLayer('https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
-    attribution: '© OpenStreetMap contributors'
+    attribution: 'Maps © Thunderforest, Data © OpenStreetMap contributors'
 }).addTo(map);
 
 /* ======================== */
@@ -61,23 +61,6 @@ if ('geolocation' in navigator) {
 /* ======================== */
 /* ==== BUS TRACKING ====== */
 /* ======================== */
-
-// New method to get routes from MBTA API
-async function getRoutes() {
-    const url = `https://api-v3.mbta.com/routes?${mbtaKeyParams}`;
-    try {
-        const response = await fetch(url);
-        const json = await response.json();
-        return json.data.map(route => ({
-            id: route.id,
-            shortName: route.attributes.short_name || route.id,
-            longName: route.attributes.long_name
-        }));
-    } catch (error) {
-        console.error("Error fetching route data:", error);
-        return [];
-    }
-}
 
 // Bus marker and route filtering
 let busMarkers = [];
@@ -207,24 +190,42 @@ function decodePolyline(encoded) {
     return points;
 }
 
+/* ======================== */
+/* ==== INITIALIZATION ==== */
+/* ======================== */
+
+// New method to get routes from MBTA API
+async function getRoutes() {
+    const url = `https://api-v3.mbta.com/routes?${mbtaKeyParams}`;
+    try {
+        const response = await fetch(url);
+        const json = await response.json();
+        return json.data.map(route => ({
+            id: route.id,
+            shortName: route.attributes.short_name || route.id,
+            longName: route.attributes.long_name
+        }));
+    } catch (error) {
+        console.error("Error fetching route data:", error);
+        return [];
+    }
+}
+
 async function plotRouteShape(selectedRouteId) {
     try {
+
         // Fetch route shape data from MBTA API
         const response = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
         const jsonData = await response.json();
 
-        if (!jsonData.data || jsonData.data.length === 0) {
-            console.warn(`No shape data found for route: ${selectedRouteId}`);
-            return;
-        }
-
-        // Preserve the current map view
-        const currentCenter = map.getCenter();
-        const currentZoom = map.getZoom();
-
         // Remove the previous route polyline
         if (window.routeLayer) {
             map.removeLayer(window.routeLayer);
+        }
+
+        if (!jsonData.data || jsonData.data.length === 0) {
+            console.warn(`No shape data found for route: ${selectedRouteId}`);
+            return;
         }
 
         // Sort the shape segments based on `id` to ensure correct order
@@ -247,17 +248,15 @@ async function plotRouteShape(selectedRouteId) {
         // Store and manage layers
         window.routeLayer = L.layerGroup(layers).addTo(map);
 
-        // Restore previous map view instead of resetting it
+        // Preserve the current map view and restore previous map view instead of resetting it
+        const currentCenter = map.getCenter();
+        const currentZoom = map.getZoom();
         map.setView(currentCenter, currentZoom);
 
     } catch (error) {
         console.error("Error fetching or plotting route shape:", error);
     }
 }
-
-/* ======================== */
-/* ==== INITIALIZATION ==== */
-/* ======================== */
 
 async function initializeRoutes() {
     try {

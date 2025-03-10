@@ -36,3 +36,9 @@ select {
   -ms-user-select: none;      /* For IE/Edge */
   user-select: none;          /* Standard syntax */
 }
+
+.leaflet-control-zoom {
+  position: absolute;
+  right: 10px;
+  transform: translateY(50vh);
+}
