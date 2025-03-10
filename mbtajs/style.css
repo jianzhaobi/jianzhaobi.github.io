@@ -29,3 +29,10 @@ select {
     font-size: 14px;
     margin-top: 5px;
 }
+
+.leaflet-control-zoom a {
+  -webkit-user-select: none;  /* For Chrome/Safari */
+  -moz-user-select: none;     /* For Firefox */
+  -ms-user-select: none;      /* For IE/Edge */
+  user-select: none;          /* Standard syntax */
+}
