@@ -46,20 +46,19 @@ function updateRouteFilterOptions(newRoutes) {
 // Add this function to generate direction-based icons
 function getDirectionIcon(directionId) {
     const colors = {
-        0: 'blue',
-        1: 'green'
+        0: 'rgba(0, 200, 0, 0.5)',    // Green with 70% opacity
+        1: 'rgba(0, 0, 200, 0.5)'  // Blue with 70% opacity
     };
 
     return L.icon({
         iconUrl: `data:image/svg+xml;base64,${btoa(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="14" fill="${colors[directionId] || 'gray'}" stroke="white" stroke-width="2"/>
-                <text x="16" y="22" fill="white" font-size="12" text-anchor="middle">${directionId}</text>
+                <circle cx="16" cy="16" r="14" fill="${colors[directionId]}"
+                        stroke="black" stroke-width="2"/>
             </svg>
         `)}`,
         iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16]
+        iconAnchor: [16, 16]
     });
 }
 
@@ -116,8 +115,25 @@ updateBusPositions();
 setInterval(updateBusPositions, 5000);
 
 // Geolocation
+// Add this above the geolocation block
+const getUserLocationIcon = () => L.icon({
+    iconUrl: `data:image/svg+xml;base64,${btoa(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+            <path fill="rgba(128, 0, 128, 0.7)"
+                  d="M16 0c-5.523 0-10 4.477-10 10 0 10 10 22 10 22s10-12 10-22c0-5.523-4.477-10-10-10zm0 16c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z"/>
+        </svg>
+    `)}`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32]
+});
+
+// Update the geolocation block to:
 if ('geolocation' in navigator) {
     navigator.geolocation.getCurrentPosition(position => {
+        L.marker([position.coords.latitude, position.coords.longitude], {
+            icon: getUserLocationIcon(),
+            zIndexOffset: 1000  // Ensure it stays on top
+        }).addTo(map).bindPopup("Your Location");
         map.setView([position.coords.latitude, position.coords.longitude], 13);
     });
 }
