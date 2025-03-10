@@ -1,3 +1,10 @@
+/* ====================== */
+/* ==== MAP SETTINGS ==== */
+/* ====================== */
+
+const MBTA_API_KEY = '5fb2a20d05094524a0b35961a20cf9e4'; // Your existing key
+const mbtaKeyParams = `api_key=${MBTA_API_KEY}`;
+
 // Default coordinates and zoom
 const DEFAULT_LAT = 42.3601;
 const DEFAULT_LON = -71.0889;
@@ -11,6 +18,10 @@ L.control.zoom({ position: 'topright' }).addTo(map);
 L.tileLayer('https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
     attribution: '© OpenStreetMap contributors'
 }).addTo(map);
+
+/* ======================== */
+/* ==== GEOLOCATION ====== */
+/* ======================== */
 
 // Geolocation handling
 const getUserLocationIcon = () => L.icon({
@@ -47,61 +58,79 @@ if ('geolocation' in navigator) {
     );
 }
 
-// Direction
+/* ======================== */
+/* ==== BUS TRACKING ====== */
+/* ======================== */
 
-let directionsMap = new Map();
-
-async function loadDirectionData() {
+// New method to get routes from MBTA API
+async function getRoutes() {
+    const url = `https://api-v3.mbta.com/routes?${mbtaKeyParams}`;
     try {
-        const response = await fetch('https://jianzhaobi.github.io/mbta/directions.txt');
-        const text = await response.text();
-
-        // Skip header line and process each row
-        text.split('\n').slice(1).forEach(line => {
-            const [route_id, direction_id, direction, destination] = line.split(',').map(item => item.trim());
-            if (route_id && direction_id) {
-                if (!directionsMap.has(route_id)) {
-                    directionsMap.set(route_id, new Map());
-                }
-                directionsMap.get(route_id).set(parseInt(direction_id), {
-                    direction: direction,
-                    destination: destination
-                });
-            }
-        });
+        const response = await fetch(url);
+        const json = await response.json();
+        return json.data.map(route => ({
+            id: route.id,
+            shortName: route.attributes.short_name || route.id,
+            longName: route.attributes.long_name
+        }));
     } catch (error) {
-        console.error('Error loading direction data:', error);
+        console.error("Error fetching route data:", error);
+        return [];
     }
 }
 
-// Rest of your original code remains unchanged below
+// Bus marker and route filtering
 let busMarkers = [];
-const predefinedRoutes = new Set(['Blue', 'Green-B', 'Green-C', 'Green-D', 'Green-E', 'Orange', 'Red']);
-let availableRoutes = new Set(predefinedRoutes);
 const routeFilter = document.getElementById('routeFilter');
 
+// Update the route filter options using the routes from the new API
 function updateRouteFilterOptions(newRoutes) {
-    newRoutes.forEach(route => availableRoutes.add(route));
+    // Save the current selection (route id)
     const currentSelection = routeFilter.value;
-    routeFilter.innerHTML = '';
 
-    predefinedRoutes.forEach(route => {
-        const option = new Option(route, route);
-        option.className = 'predefined-route';
-        routeFilter.add(option);
+    // Define the prioritized routes in the desired order.
+    const prioritizedRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red"];
+    const priorityMapping = {};
+    prioritizedRoutes.forEach((route, index) => {
+        priorityMapping[route] = index;
     });
 
-    Array.from(availableRoutes)
-        .filter(route => !predefinedRoutes.has(route))
-        .sort()
-        .forEach(route => {
-            routeFilter.add(new Option(route, route));
-        });
+    // Sort the routes:
+    newRoutes.sort((a, b) => {
+        const aIsPriority = priorityMapping.hasOwnProperty(a.id);
+        const bIsPriority = priorityMapping.hasOwnProperty(b.id);
 
+        // Both are prioritized: sort by the fixed order.
+        if (aIsPriority && bIsPriority) {
+            return priorityMapping[a.id] - priorityMapping[b.id];
+        }
+        // One is prioritized: prioritized route comes first.
+        if (aIsPriority && !bIsPriority) return -1;
+        if (!aIsPriority && bIsPriority) return 1;
+        // Neither is prioritized: sort alphabetically by display text.
+        const displayA = (a.shortName === a.id) ? a.shortName : `${a.shortName} - ${a.id}`;
+        const displayB = (b.shortName === b.id) ? b.shortName : `${b.shortName} - ${b.id}`;
+        return displayA.localeCompare(displayB);
+    });
+
+    // Clear the current options and repopulate the dropdown.
+    routeFilter.innerHTML = '';
+    newRoutes.forEach(route => {
+        const displayName = (route.shortName === route.id)
+            ? route.shortName
+            : `${route.shortName} - ${route.id}`;
+        routeFilter.add(new Option(displayName, route.id));
+    });
+
+    // Restore the previous selection if it exists;
+    // Otherwise, default to "Green-E" if available.
     if (Array.from(routeFilter.options).some(opt => opt.value === currentSelection)) {
         routeFilter.value = currentSelection;
+    } else if (Array.from(routeFilter.options).some(opt => opt.value === "Green-E")) {
+        routeFilter.value = "Green-E";
     }
 }
+
 
 function getDirectionIcon(directionId) {
     // Semi-transparent fill colors
@@ -116,7 +145,7 @@ function getDirectionIcon(directionId) {
         1: 'rgba(0, 0, 228, 0.6)'
     };
 
-    // Define the new icon size and anchor for the icon
+    // Define the new icon size and anchor for the icon (28x28 => center is 14,14)
     const iconSize = [28, 28];
     const iconAnchor = [14, 14];
 
@@ -147,42 +176,153 @@ function getDirectionIcon(directionId) {
     });
 }
 
+function decodePolyline(encoded) {
+    let points = [];
+    let index = 0, len = encoded.length;
+    let lat = 0, lng = 0;
+
+    while (index < len) {
+        let shift = 0, result = 0;
+        let byte;
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+        let deltaLat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lat += deltaLat;
+
+        shift = 0;
+        result = 0;
+        do {
+            byte = encoded.charCodeAt(index++) - 63;
+            result |= (byte & 0x1f) << shift;
+            shift += 5;
+        } while (byte >= 0x20);
+        let deltaLng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+        lng += deltaLng;
+
+        points.push([lat * 1e-5, lng * 1e-5]);
+    }
+    return points;
+}
+
+async function plotRouteShape(selectedRouteId) {
+    try {
+        // Fetch route shape data from MBTA API
+        const response = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
+        const jsonData = await response.json();
+
+        if (!jsonData.data || jsonData.data.length === 0) {
+            console.warn(`No shape data found for route: ${selectedRouteId}`);
+            return;
+        }
+
+        // Preserve the current map view
+        const currentCenter = map.getCenter();
+        const currentZoom = map.getZoom();
+
+        // Remove the previous route polyline
+        if (window.routeLayer) {
+            map.removeLayer(window.routeLayer);
+        }
+
+        // Sort the shape segments based on `id` to ensure correct order
+        jsonData.data.sort((a, b) => a.id.localeCompare(b.id));
+
+        // Decode and store shape segments separately
+        let allSegments = jsonData.data.map(shape => decodePolyline(shape.attributes.polyline));
+
+        // Plot each shape segment separately (avoiding incorrect head-tail connections)
+        let layers = [];
+        allSegments.forEach(segment => {
+            let layer = L.polyline(segment, {
+                color: 'orange',
+                weight: 5,
+                opacity: 0.6
+            }).addTo(map);
+            layers.push(layer);
+        });
+
+        // Store and manage layers
+        window.routeLayer = L.layerGroup(layers).addTo(map);
+
+        // Restore previous map view instead of resetting it
+        map.setView(currentCenter, currentZoom);
+
+    } catch (error) {
+        console.error("Error fetching or plotting route shape:", error);
+    }
+}
+
+
 async function updateBusPositions() {
     try {
-        await loadDirectionData();
-        const response = await fetch('https://mbta-flask-513a6449725e.herokuapp.com/proxy');
-        const data = await response.json();
-
-        // Update the fetch timestamp
-        document.getElementById('fetchTime').textContent = `Last Updated: ${new Date().toLocaleString("sv-SE", { timeZone: "America/New_York" })}`;
-
-        // Process the data
-        const currentRoutes = [...new Set(data.entity.map(e => e.vehicle.trip.route_id))];
+        // Ensure routes are loaded before fetching bus data
+        const currentRoutes = await getRoutes();
         updateRouteFilterOptions(currentRoutes);
 
+        if (!routeFilter.value && currentRoutes.length > 0) {
+            routeFilter.value = currentRoutes[0].id;
+        }
+
+        const selectedRoute = routeFilter.value;
+        if (!selectedRoute) {
+            console.warn("No selected route available.");
+            return;
+        }
+
+        // Fetch and plot the selected route shape
+        plotRouteShape(selectedRoute);
+
+        // Fetch vehicle positions from MBTA API (including trip details)
+        const response = await fetch(`https://api-v3.mbta.com/vehicles?${mbtaKeyParams}&filter[route]=${selectedRoute}&include=trip`);
+        const jsonData = await response.json();
+
+        // Update timestamp
+        document.getElementById('fetchTime').textContent = `Last Updated: ${new Date().toLocaleString("sv-SE", { timeZone: "America/New_York" })}`;
+
+        // Remove old markers
         busMarkers.forEach(marker => map.removeLayer(marker));
         busMarkers = [];
 
-        const selectedRoute = routeFilter.value;
+        // Process vehicle data
+        let tripLookup = new Map();
+        if (jsonData.included) {
+            jsonData.included.forEach(trip => {
+                if (trip.type === "trip" && trip.id && trip.attributes.headsign) {
+                    tripLookup.set(trip.id, trip.attributes.headsign);
+                }
+            });
+        }
 
-        data.entity.forEach(entity => {
-            const vehicle = entity.vehicle;
-            const trip = vehicle.trip;
+        jsonData.data.forEach(vehicleData => {
+            const attributes = vehicleData.attributes;
+            const relationships = vehicleData.relationships;
 
-            if (trip.route_id !== selectedRoute) return;
+            const latitude = attributes.latitude;
+            const longitude = attributes.longitude;
+            const directionId = attributes.direction_id;
+            const vehicleLabel = attributes.label || "Unknown";
+            const status = attributes.current_status ? attributes.current_status.replace(/_/g, ' ') : "Unknown";
+            const updatedTime = attributes.updated_at ? new Date(attributes.updated_at).toLocaleTimeString() : "Unknown";
 
-            const position = vehicle.position;
-            const marker = L.marker([position.latitude, position.longitude], {
-                icon: getDirectionIcon(trip.direction_id)
+            const routeId = relationships.route?.data?.id || "Unknown";
+            if (routeId !== selectedRoute) return;
+
+            // Get headsign from trip relationships
+            const tripId = relationships.trip?.data?.id;
+            const headsign = tripId && tripLookup.has(tripId) ? tripLookup.get(tripId) : "Unknown";
+
+            const marker = L.marker([latitude, longitude], {
+                icon: getDirectionIcon(directionId)
             }).addTo(map);
 
-            const directionInfo = directionsMap.get(trip.route_id)?.get(trip.direction_id);
-
             const popupContent = `
-                <b>${trip.route_id} - ${vehicle.vehicle.label}</b><br>
-                Direction: ${directionInfo ? directionInfo.destination : "Unknown"}<br>
-                Status: ${vehicle.current_status.replace(/_/g, ' ')}<br>
-                Updated: ${new Date(vehicle.timestamp * 1000).toLocaleTimeString()}
+                <b>${routeId} - ${vehicleLabel}</b><br>
+                Destination: ${headsign}<br>
+                Status: ${status}<br>
+                Updated: ${updatedTime}
             `;
 
             marker.bindPopup(popupContent);
@@ -195,7 +335,10 @@ async function updateBusPositions() {
     }
 }
 
+/* ======================== */
+/* ==== INITIALIZATION ==== */
+/* ======================== */
 
 routeFilter.addEventListener('change', updateBusPositions);
 updateBusPositions();
-setInterval(updateBusPositions, 5000);
+setInterval(updateBusPositions, 10000);
