@@ -116,9 +116,9 @@ function getDirectionIcon(directionId) {
         1: 'rgba(0, 0, 228, 0.6)'
     };
 
-    // Define the new icon size and anchor for a 26x26 icon
-    const iconSize = [26, 26];
-    const iconAnchor = [13, 13];
+    // Define the new icon size and anchor for the icon
+    const iconSize = [30, 30];
+    const iconAnchor = [15, 15];
 
     // If no valid directionId is provided, return a yellow circle icon
     if (directionId !== 0 && directionId !== 1) {

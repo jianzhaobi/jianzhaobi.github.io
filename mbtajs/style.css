@@ -21,12 +21,12 @@ body {
 
 select {
     padding: 5px;
-    font-size: 16px;
+    font-size: 18px;
 }
 
 .fetch-time {
     text-align: center;
-    font-size: 14px;
+    font-size: 16px;
     margin-top: 5px;
 }
 
