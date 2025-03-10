@@ -255,25 +255,38 @@ async function plotRouteShape(selectedRouteId) {
     }
 }
 
+/* ======================== */
+/* ==== INITIALIZATION ==== */
+/* ======================== */
 
-async function updateBusPositions() {
+async function initializeRoutes() {
     try {
-        // Ensure routes are loaded before fetching bus data
         const currentRoutes = await getRoutes();
         updateRouteFilterOptions(currentRoutes);
 
+        // Ensure a default route is selected
         if (!routeFilter.value && currentRoutes.length > 0) {
             routeFilter.value = currentRoutes[0].id;
         }
 
+        // Fetch and plot the selected route shape on startup
+        await plotRouteShape(routeFilter.value);
+
+    } catch (error) {
+        console.error("Error initializing routes:", error);
+    }
+}
+
+async function updateBusPositions() {
+    try {
         const selectedRoute = routeFilter.value;
         if (!selectedRoute) {
             console.warn("No selected route available.");
             return;
         }
 
-        // Fetch and plot the selected route shape
-        plotRouteShape(selectedRoute);
+        // Plot the new route shape when the route changes
+        await plotRouteShape(selectedRoute);
 
         // Fetch vehicle positions from MBTA API (including trip details)
         const response = await fetch(`https://api-v3.mbta.com/vehicles?${mbtaKeyParams}&filter[route]=${selectedRoute}&include=trip`);
@@ -335,10 +348,11 @@ async function updateBusPositions() {
     }
 }
 
-/* ======================== */
-/* ==== INITIALIZATION ==== */
-/* ======================== */
+/* ==== Load Routes Once on Page Load ==== */
+initializeRoutes().then(() => updateBusPositions());
 
+/* ==== Start Bus Position Updates Every 5 Seconds ==== */
+setInterval(updateBusPositions, 5000);
+
+/* ==== Update Bus Positions & Route Shape When Route is Manually Changed ==== */
 routeFilter.addEventListener('change', updateBusPositions);
-updateBusPositions();
-setInterval(updateBusPositions, 10000);
