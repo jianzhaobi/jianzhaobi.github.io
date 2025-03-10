@@ -5,7 +5,7 @@ const DEFAULT_ZOOM = 12;
 
 // Initialize map with fallback
 const map = L.map('map', { zoomControl: false, doubleClickZoom: false }).setView([DEFAULT_LAT, DEFAULT_LON], DEFAULT_ZOOM);
-L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
 
 // Tile layer setup
 L.tileLayer('https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
