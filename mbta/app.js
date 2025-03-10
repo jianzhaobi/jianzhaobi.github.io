@@ -15,9 +15,13 @@ const map = L.map('map', { zoomControl: false, doubleClickZoom: false }).setView
 L.control.zoom({ position: 'topright' }).addTo(map);
 
 // Tile layer setup
-L.tileLayer('https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
+L.tileLayer('https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0', {
     attribution: 'Maps © Thunderforest, Data © OpenStreetMap contributors'
 }).addTo(map);
+// https://tile.thunderforest.com/mobile-atlas/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0
+// https://tile.thunderforest.com/transport/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0
+// https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0
+// https://tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=74002972fcb44035b775167d6c01a6f0
 
 /* ======================== */
 /* ==== GEOLOCATION ====== */
@@ -213,48 +217,76 @@ async function getRoutes() {
 
 async function plotRouteShape(selectedRouteId) {
     try {
-
         // Fetch route shape data from MBTA API
-        const response = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
-        const jsonData = await response.json();
+        const shapeResponse = await fetch(`https://api-v3.mbta.com/shapes?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
+        const shapeData = await shapeResponse.json();
 
-        // Remove the previous route polyline
+        // Fetch stop data from MBTA API
+        const stopResponse = await fetch(`https://api-v3.mbta.com/stops?${mbtaKeyParams}&filter[route]=${selectedRouteId}`);
+        const stopData = await stopResponse.json();
+
+        // Remove the previous route polyline and stop markers
         if (window.routeLayer) {
             map.removeLayer(window.routeLayer);
         }
+        if (window.stopLayer) {
+            map.removeLayer(window.stopLayer);
+        }
 
-        if (!jsonData.data || jsonData.data.length === 0) {
+        if (!shapeData.data || shapeData.data.length === 0) {
             console.warn(`No shape data found for route: ${selectedRouteId}`);
             return;
         }
 
         // Sort the shape segments based on `id` to ensure correct order
-        jsonData.data.sort((a, b) => a.id.localeCompare(b.id));
+        shapeData.data.sort((a, b) => a.id.localeCompare(b.id));
 
         // Decode and store shape segments separately
-        let allSegments = jsonData.data.map(shape => decodePolyline(shape.attributes.polyline));
+        let allSegments = shapeData.data.map(shape => decodePolyline(shape.attributes.polyline));
 
         // Plot each shape segment separately (avoiding incorrect head-tail connections)
-        let layers = [];
+        let routeLayers = [];
         allSegments.forEach(segment => {
             let layer = L.polyline(segment, {
                 color: 'orange',
                 weight: 5,
                 opacity: 0.6
             }).addTo(map);
-            layers.push(layer);
+            routeLayers.push(layer);
         });
 
-        // Store and manage layers
-        window.routeLayer = L.layerGroup(layers).addTo(map);
+        // Store and manage route layer
+        window.routeLayer = L.layerGroup(routeLayers).addTo(map);
 
-        // Preserve the current map view and restore previous map view instead of resetting it
+        // Plot stops as markers
+        let stopMarkers = [];
+        stopData.data.forEach(stop => {
+            let lat = stop.attributes.latitude;
+            let lon = stop.attributes.longitude;
+            let stopName = stop.attributes.name || "Unknown Stop";
+
+            let marker = L.circleMarker([lat, lon], {
+                radius: 4,
+                color: "#8B0000",
+                fillColor: "#8B0000",
+                opacity: 0.6,
+                fillOpacity: 0.6
+            }).addTo(map);
+
+            marker.bindPopup(`<b>Stop:</b> ${stopName}`);
+            stopMarkers.push(marker);
+        });
+
+        // Store and manage stop markers layer
+        window.stopLayer = L.layerGroup(stopMarkers).addTo(map);
+
+        // Preserve the current map view instead of resetting it
         const currentCenter = map.getCenter();
         const currentZoom = map.getZoom();
         map.setView(currentCenter, currentZoom);
 
     } catch (error) {
-        console.error("Error fetching or plotting route shape:", error);
+        console.error("Error fetching or plotting route shape and stops:", error);
     }
 }
 
