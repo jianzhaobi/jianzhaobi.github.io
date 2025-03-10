@@ -46,6 +46,33 @@ if ('geolocation' in navigator) {
     );
 }
 
+// Direction
+
+let directionsMap = new Map();
+
+async function loadDirectionData() {
+    try {
+        const response = await fetch('https://jianzhaobi.github.io/mbtajs/directions.txt');
+        const text = await response.text();
+
+        // Skip header line and process each row
+        text.split('\n').slice(1).forEach(line => {
+            const [route_id, direction_id, direction, destination] = line.split(',').map(item => item.trim());
+            if (route_id && direction_id) {
+                if (!directionsMap.has(route_id)) {
+                    directionsMap.set(route_id, new Map());
+                }
+                directionsMap.get(route_id).set(parseInt(direction_id), {
+                    direction: direction,
+                    destination: destination
+                });
+            }
+        });
+    } catch (error) {
+        console.error('Error loading direction data:', error);
+    }
+}
+
 // Rest of your original code remains unchanged below
 let busMarkers = [];
 const predefinedRoutes = new Set(['Blue', 'Green-B', 'Green-C', 'Green-D', 'Green-E', 'Orange', 'Red']);
@@ -95,6 +122,7 @@ function getDirectionIcon(directionId) {
 
 async function updateBusPositions() {
     try {
+        await loadDirectionData();
         const response = await fetch('https://mbta-flask-513a6449725e.herokuapp.com/proxy');
         const data = await response.json();
 
@@ -117,9 +145,12 @@ async function updateBusPositions() {
                 icon: getDirectionIcon(trip.direction_id)
             }).addTo(map);
 
+            // Get direction info
+            const directionInfo = directionsMap.get(trip.route_id)?.get(trip.direction_id);
+
             const popupContent = `
                 <b>${trip.route_id} - ${vehicle.vehicle.label}</b><br>
-                Direction: ${trip.direction_id === 0 ? 'Inbound' : 'Outbound'}<br>
+                Direction: ${directionInfo.destination}<br>
                 Status: ${vehicle.current_status.replace(/_/g, ' ')}<br>
                 Updated: ${new Date(vehicle.timestamp * 1000).toLocaleTimeString()}
             `;
