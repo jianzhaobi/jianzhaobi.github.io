@@ -316,16 +316,33 @@ async function plotRouteShape(selectedRouteId) {
             return;
         }
 
-        // Sort and decode shape segments
-        jsonData.data.sort((a, b) => a.id.localeCompare(b.id));
-        let allSegments = jsonData.data.map(shape => decodePolyline(shape.attributes.polyline));
+        // Define subway and commuter rail routes
+        const subwayRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red"];
+        const isCommuterRail = selectedRouteId.startsWith("CR-");
 
-        // Draw each shape segment separately to prevent incorrect connections
-        let layers = allSegments.map(segment => L.polyline(segment, {
-            color: 'orange',
-            weight: 5,
-            opacity: 0.6
-        }).addTo(map));
+        let filteredShapes;
+        if (subwayRoutes.includes(selectedRouteId) || isCommuterRail) {
+            // Plot only "canonical" shapes for subways and commuter rails
+            filteredShapes = jsonData.data.filter(shape => shape.id.includes("canonical"));
+        } else {
+            // Plot all shapes for other routes
+            filteredShapes = jsonData.data;
+        }
+
+        if (filteredShapes.length === 0) {
+            console.warn(`No matching shapes found for route: ${selectedRouteId}`);
+            return;
+        }
+
+        // Decode and plot the selected shapes
+        let layers = filteredShapes.map(shape => {
+            let segment = decodePolyline(shape.attributes.polyline);
+            return L.polyline(segment, {
+                color: 'orange',
+                weight: 5,
+                opacity: 0.6
+            }).addTo(map);
+        });
 
         // Store the route polyline layers
         window.routeLayer = L.layerGroup(layers).addTo(map);
