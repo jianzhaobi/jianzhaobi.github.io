@@ -42,3 +42,12 @@ select {
   right: 10px;
   transform: translateY(40vh);
 }
+
+.tracker-credit {
+    margin-top: 5px;  /* Reduce space above */
+    margin-bottom: 2px;  /* Reduce space below */
+    font-size: 14px;  /* Adjust font size if needed */
+    font-style: italic;  /* Italicize the text */
+    color: #555;  /* Slightly muted color */
+    text-align: left;
+}
