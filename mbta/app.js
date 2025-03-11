@@ -277,7 +277,7 @@ async function fetchAndShowPredictions(routeId, stopId, stopMarker) {
         // Format predictions by direction, ensuring direction 0 appears first
         for (const directionId of [0, 1]) {
             let headsignEntries = Object.entries(directionPredictions[directionId]).map(([headsign, times]) => {
-                return `<b>${headsign}:</b> ${times.join(" / ")} min`;
+                return `<b>To ${headsign}:</b> ${times.join(" / ")} min`;
             });
 
             if (headsignEntries.length > 0) {
