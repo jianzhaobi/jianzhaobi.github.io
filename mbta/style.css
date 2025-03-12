@@ -1,5 +1,5 @@
 #map {
-    height: 100vh;
+    height: 90vh;
     width: 100vw;
 }
 
@@ -30,13 +30,6 @@ select {
     margin-top: 5px;
 }
 
-.leaflet-control-zoom a {
-  -webkit-user-select: none;  /* For Chrome/Safari */
-  -moz-user-select: none;     /* For Firefox */
-  -ms-user-select: none;      /* For IE/Edge */
-  user-select: none;          /* Standard syntax */
-}
-
 .leaflet-control-zoom {
   position: absolute;
   right: 10px;
@@ -50,4 +43,27 @@ select {
     font-style: italic;  /* Italicize the text */
     color: #555;  /* Slightly muted color */
     text-align: left;
+}
+
+/* Disable text selection and copying */
+.leaflet-control-zoom a {
+  -webkit-user-select: none;  /* For Chrome/Safari */
+  -moz-user-select: none;     /* For Firefox */
+  -ms-user-select: none;      /* For IE/Edge */
+  user-select: none;          /* Standard syntax */
+}
+
+body {
+    user-select: none; /* Standard */
+    -webkit-user-select: none; /* Chrome, Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */
+}
+
+/* Disable right-click context menu */
+body {
+    pointer-events: auto;
+}
+body * {
+    -webkit-touch-callout: none; /* Disable long press selection on iOS */
 }
