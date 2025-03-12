@@ -35,8 +35,8 @@ const getUserLocationIcon = () => L.icon({
                   d="M16 0c-5.523 0-10 4.477-10 10 0 10 10 22 10 22s10-12 10-22c0-5.523-4.477-10-10-10zm0 16c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z"/>
         </svg>
     `)}`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32]
+    iconSize: [28, 28],
+    iconAnchor: [14, 28]
 });
 
 if ('geolocation' in navigator) {
@@ -48,7 +48,7 @@ if ('geolocation' in navigator) {
             // Add user location marker
             L.marker([position.coords.latitude, position.coords.longitude], {
                 icon: getUserLocationIcon(),
-                zIndexOffset: 1000
+                zIndexOffset: 500
             }).addTo(map).bindPopup("Your Location");
         },
         error => {
@@ -122,8 +122,8 @@ function updateRouteFilterOptions(newRoutes) {
 function getDirectionIcon(directionId) {
     // Bus body colors based on direction
     const busColors = {
-        0: 'rgba(0, 138, 0, 0.5)',   // Green
-        1: 'rgba(0, 0, 228, 0.5)'    // Blue
+        0: 'rgba(0, 160, 0, 0.6)',   // Brighter Green with more opacity
+        1: 'rgba(200, 0, 0, 0.6)'    // Slightly deeper Blue with more opacity
     };
 
     // Default icon settings
@@ -147,19 +147,18 @@ function getDirectionIcon(directionId) {
     // Return a larger bus icon
     return L.icon({
         iconUrl: `data:image/svg+xml;base64,${btoa(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
-                <!-- Bus body -->
-                <rect x="8" y="15" width="44" height="26" rx="6" fill="${busColors[directionId]}" stroke="black" stroke-width="3"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+            <!-- Square bus body -->
+            <rect x="17" y="10" width="26" height="26" rx="4" fill="${busColors[directionId]}" stroke="black" stroke-width="2"/>
 
-                <!-- Windows -->
-                <rect x="10" y="18" width="10" height="10" fill="white"/>
-                <rect x="22" y="18" width="10" height="10" fill="white"/>
-                <rect x="34" y="18" width="10" height="10" fill="white"/>
+            <!-- Two windows -->
+            <rect x="20" y="15" width="8" height="10" fill="white"/>
+            <rect x="32" y="15" width="8" height="10" fill="white"/>
 
-                <!-- Wheels -->
-                <circle cx="15" cy="45" r="5" fill="black"/>
-                <circle cx="45" cy="45" r="5" fill="black"/>
-            </svg>
+            <!-- Wheels -->
+            <circle cx="22" cy="42" r="5" fill="black"/>
+            <circle cx="38" cy="42" r="5" fill="black"/>
+        </svg>
         `)}`,
         iconSize: iconSize,
         iconAnchor: iconAnchor
@@ -486,7 +485,7 @@ async function updateBusPositions() {
             const headsign = tripId && tripLookup.has(tripId) ? tripLookup.get(tripId) : "Unknown";
 
             // Apply slight random offset to reduce overlap
-            const offsetAmount = 0.0002;  // Small offset in latitude/longitude; 0 if no needed
+            const offsetAmount = 0;  // Small offset in latitude/longitude; 0 if no needed
             const offsetLat = (Math.random() - 0.5) * offsetAmount;
             const offsetLng = (Math.random() - 0.5) * offsetAmount;
             const marker = L.marker([latitude + offsetLat, longitude + offsetLng], {
