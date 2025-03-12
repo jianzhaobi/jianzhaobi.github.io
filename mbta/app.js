@@ -120,29 +120,23 @@ function updateRouteFilterOptions(newRoutes) {
 
 
 function getDirectionIcon(directionId) {
-    // Semi-transparent fill colors
-    const fillColors = {
-        0: 'rgba(0, 138, 0, 0.2)',
-        1: 'rgba(0, 0, 228, 0.2)'
+    // Bus body colors based on direction
+    const busColors = {
+        0: 'rgba(0, 138, 0, 0.5)',   // Green
+        1: 'rgba(0, 0, 228, 0.5)'    // Blue
     };
 
-    // Fully opaque stroke colors matching the fill colors
-    const strokeColors = {
-        0: 'rgba(0, 138, 0, 0.6)',
-        1: 'rgba(0, 0, 228, 0.6)'
-    };
+    // Default icon settings
+    const iconSize = [40, 40];  // Increased size for better visibility
+    const iconAnchor = [20, 20];
 
-    // Define the new icon size and anchor for the icon (28x28 => center is 14,14)
-    const iconSize = [28, 28];
-    const iconAnchor = [14, 14];
-
-    // If no valid directionId is provided, return a yellow circle icon
+    // If direction is not valid, show a default yellow warning icon
     if (directionId !== 0 && directionId !== 1) {
         return L.icon({
             iconUrl: `data:image/svg+xml;base64,${btoa(`
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                    <circle cx="16" cy="16" r="14" fill="rgba(204, 204, 0, 0.2)"
-                            stroke="rgba(204, 204, 0, 0.6)" stroke-width="6"/>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="rgba(204, 204, 0, 0.8)"
+                            stroke="rgba(204, 204, 0, 1)" stroke-width="4"/>
                 </svg>
             `)}`,
             iconSize: iconSize,
@@ -150,12 +144,21 @@ function getDirectionIcon(directionId) {
         });
     }
 
-    // Otherwise, return the icon based on the provided directionId (0 or 1)
+    // Return a larger bus icon
     return L.icon({
         iconUrl: `data:image/svg+xml;base64,${btoa(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="14" fill="${fillColors[directionId]}"
-                        stroke="${strokeColors[directionId]}" stroke-width="6"/>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+                <!-- Bus body -->
+                <rect x="8" y="15" width="44" height="26" rx="6" fill="${busColors[directionId]}" stroke="black" stroke-width="3"/>
+
+                <!-- Windows -->
+                <rect x="10" y="18" width="10" height="10" fill="white"/>
+                <rect x="22" y="18" width="10" height="10" fill="white"/>
+                <rect x="34" y="18" width="10" height="10" fill="white"/>
+
+                <!-- Wheels -->
+                <circle cx="15" cy="45" r="5" fill="black"/>
+                <circle cx="45" cy="45" r="5" fill="black"/>
             </svg>
         `)}`,
         iconSize: iconSize,
@@ -383,11 +386,11 @@ async function plotRouteStops(selectedRouteId) {
             const stopName = stop.attributes.name || "Unknown Stop";
             const stopId = stop.id;
 
-            // Define a dark red stop icon
+            // Define a dark orange stop icon
             const stopIcon = L.icon({
                 iconUrl: `data:image/svg+xml;base64,${btoa(`
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                        <circle cx="16" cy="16" r="14" fill="rgba(139, 0, 0, 0.8)" stroke="rgba(139, 0, 0, 1)" stroke-width="6"/>
+                        <circle cx="16" cy="16" r="14" fill="rgba(190, 110, 0, 0.8)" stroke="rgba(190, 110, 0, 1)" stroke-width="6"/>
                     </svg>
                 `)}`,
                 iconSize: [14, 14],
@@ -482,8 +485,13 @@ async function updateBusPositions() {
             const tripId = relationships.trip?.data?.id;
             const headsign = tripId && tripLookup.has(tripId) ? tripLookup.get(tripId) : "Unknown";
 
-            const marker = L.marker([latitude, longitude], {
-                icon: getDirectionIcon(directionId)
+            // Apply slight random offset to reduce overlap
+            const offsetAmount = 0.0002;  // Small offset in latitude/longitude; 0 if no needed
+            const offsetLat = (Math.random() - 0.5) * offsetAmount;
+            const offsetLng = (Math.random() - 0.5) * offsetAmount;
+            const marker = L.marker([latitude + offsetLat, longitude + offsetLng], {
+                icon: getDirectionIcon(directionId),
+                zIndexOffset: 1000 // Ensures bus markers are always above stops
             }).addTo(map);
 
             const popupContent = `
