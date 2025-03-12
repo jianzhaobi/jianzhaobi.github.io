@@ -31,7 +31,7 @@ L.tileLayer('https://tile.thunderforest.com/atlas/{z}/{x}/{y}.png?apikey=7400297
 const getUserLocationIcon = () => L.icon({
     iconUrl: `data:image/svg+xml;base64,${btoa(`
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-            <path fill="rgba(228, 0, 0, 0.7)"
+            <path fill="rgba(250, 128, 114, 1)"
                   d="M16 0c-5.523 0-10 4.477-10 10 0 10 10 22 10 22s10-12 10-22c0-5.523-4.477-10-10-10zm0 16c-3.314 0-6-2.686-6-6s2.686-6 6-6 6 2.686 6 6-2.686 6-6 6z"/>
         </svg>
     `)}`,
@@ -340,9 +340,9 @@ async function plotRouteShape(selectedRouteId) {
         let layers = filteredShapes.map(shape => {
             let segment = decodePolyline(shape.attributes.polyline);
             return L.polyline(segment, {
-                color: 'orange',
+                color: '#FFD580',
                 weight: 5,
-                opacity: 0.6
+                opacity: 0.5
             }).addTo(map);
         });
 
@@ -389,7 +389,7 @@ async function plotRouteStops(selectedRouteId) {
             const stopIcon = L.icon({
                 iconUrl: `data:image/svg+xml;base64,${btoa(`
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                        <circle cx="16" cy="16" r="14" fill="rgba(190, 110, 0, 0.8)" stroke="rgba(190, 110, 0, 1)" stroke-width="6"/>
+                        <circle cx="16" cy="16" r="14" fill="rgba(218, 165, 32, 0.9)" stroke="rgba(204, 119, 34, 0.5)" stroke-width="6"/>
                     </svg>
                 `)}`,
                 iconSize: [14, 14],
