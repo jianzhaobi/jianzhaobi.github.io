@@ -70,6 +70,19 @@ if ('geolocation' in navigator) {
 let busMarkers = [];
 const routeFilter = document.getElementById('routeFilter');
 
+// Function to update the URL when a new route is selected
+function updateURLWithRoute(routeId) {
+    const currentURL = new URL(window.location);
+    currentURL.searchParams.set('route', routeId); // Set the `route` query parameter
+    window.history.pushState({}, '', currentURL);
+}
+
+// Function to get the route from the URL
+function getRouteFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('route'); // Extracts the `route` parameter
+}
+
 // Update the route filter options using the routes from the new API
 function updateRouteFilterOptions(newRoutes) {
     // Save the current selection (route id)
@@ -418,25 +431,28 @@ async function plotRouteStops(selectedRouteId) {
 
 async function initializeRoutes() {
     try {
-        const currentRoutes = await getRoutes();
-        updateRouteFilterOptions(currentRoutes);
+        const currentRoutes = await getRoutes(); // Fetch all routes
+        updateRouteFilterOptions(currentRoutes); // Populate dropdown
 
-        // Ensure a default route is selected
-        if (!routeFilter.value && currentRoutes.length > 0) {
-            routeFilter.value = currentRoutes[0].id;
+        // Get the route from the URL
+        const routeFromURL = getRouteFromURL();
+
+        // Ensure the URL route exists in the fetched routes
+        if (routeFromURL && currentRoutes.some(route => route.id === routeFromURL)) {
+            routeFilter.value = routeFromURL; // Set dropdown to the URL route
+        } else if (currentRoutes.length > 0) {
+            routeFilter.value = currentRoutes[0].id; // Default to first available route
         }
 
-        // Fetch and plot the selected route shape on startup
-        await plotRouteShape(routeFilter.value);
-
+        return routeFilter.value; // Return the selected route
     } catch (error) {
         console.error("Error initializing routes:", error);
     }
 }
 
-async function updateBusPositions() {
+async function updateBusPositions(routeId = null) {
     try {
-        const selectedRoute = routeFilter.value;
+        const selectedRoute = routeId || routeFilter.value;
         if (!selectedRoute) {
             console.warn("No selected route available.");
             return;
@@ -511,10 +527,19 @@ async function updateBusPositions() {
 }
 
 /* ==== Load Routes Once on Page Load ==== */
-initializeRoutes().then(() => updateBusPositions());
+document.addEventListener("DOMContentLoaded", async () => {
+    const selectedRoute = await initializeRoutes(); // Ensure dropdown is populated
+    if (selectedRoute) {
+        await updateBusPositions(selectedRoute); // Load data for the correct route
+    }
+});
 
 /* ==== Start Bus Position Updates Every 5 Seconds ==== */
 setInterval(updateBusPositions, 5000);
 
 /* ==== Update Bus Positions & Route Shape When Route is Manually Changed ==== */
-routeFilter.addEventListener('change', updateBusPositions);
+routeFilter.addEventListener('change', async () => {
+    const selectedRoute = routeFilter.value;
+    updateURLWithRoute(selectedRoute); // Update the URL
+    await updateBusPositions(); // Fetch the new route data
+});
