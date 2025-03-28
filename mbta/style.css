@@ -72,6 +72,9 @@ select {
     z-index: 1000;
     width: calc(100% - 20px);
     max-width: 220px;
+    max-height: 300px; /* Limit height to prevent overflow */
+    overflow-y: auto;  /* Enables scroll if content exceeds max-height */
+    scroll-behavior: smooth; /* optional: makes scrolling nicer */
     padding: 8px;
     background-color: #fff3cd;
     border: 1px solid #ffeeba;

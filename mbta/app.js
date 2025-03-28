@@ -447,7 +447,23 @@ async function fetchAndDisplayAlert(routeId) {
         const alertsWithHeader = jsonData.data.filter(alert => alert.attributes.header);
 
         if (alertsWithHeader.length > 0) {
-            alertBox.innerHTML = alertsWithHeader.map(a => `⚠️ ${a.attributes.header}`).join('<br>');
+            // Sort by severity (lower is more critical), then by start time
+            alertsWithHeader.sort((a, b) => {
+                const severityDiff = a.attributes.severity - b.attributes.severity;
+                if (severityDiff !== 0) return severityDiff;
+
+                const aStart = new Date(a.attributes.active_period?.[0]?.start || 0);
+                const bStart = new Date(b.attributes.active_period?.[0]?.start || 0);
+                return aStart - bStart;
+            });
+
+            // Display alert with emoji and severity level
+            alertBox.innerHTML = alertsWithHeader.map(a => {
+                const severity = a.attributes.severity;
+                const header = a.attributes.header;
+                return `&#x26A0;&#xFE0F; <i><b>(Severity ${severity})</b></i> ${header}`;
+            }).join('<br>');
+
             alertBox.style.display = "none";         // Folded by default
             toggleBtn.style.display = "inline-block";
             toggleBtn.textContent = "Show Alerts";   // Button default state
