@@ -460,8 +460,9 @@ async function fetchAndDisplayAlert(routeId) {
             // Display alert with emoji and severity level
             alertBox.innerHTML = alertsWithHeader.map(a => {
                 const severity = a.attributes.severity;
+                const lifecycle = a.attributes.lifecycle;
                 const header = a.attributes.header;
-                return `&#x26A0;&#xFE0F; <i><b>(Severity ${severity})</b></i> ${header}`;
+                return `&#x26A0;&#xFE0F; <i><b>(${lifecycle})</b></i> ${header}`;
             }).join('<br>');
 
             alertBox.style.display = "none";         // Folded by default
