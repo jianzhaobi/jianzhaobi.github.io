@@ -429,6 +429,44 @@ async function plotRouteStops(selectedRouteId) {
     }
 }
 
+async function fetchAndDisplayAlert(routeId) {
+    try {
+        const response = await fetch(`https://api-v3.mbta.com/alerts?${mbtaKeyParams}&filter[route]=${routeId}`);
+        const jsonData = await response.json();
+
+        const alertBox = document.getElementById("routeAlert");
+        const toggleBtn = document.getElementById("toggleAlert");
+
+        // Hide everything if no alerts
+        if (!jsonData.data || jsonData.data.length === 0) {
+            alertBox.style.display = "none";
+            toggleBtn.style.display = "none";
+            return;
+        }
+
+        const alertsWithHeader = jsonData.data.filter(alert => alert.attributes.header);
+
+        if (alertsWithHeader.length > 0) {
+            alertBox.innerHTML = alertsWithHeader.map(a => `⚠️ ${a.attributes.header}`).join('<br>');
+            alertBox.style.display = "none";         // Folded by default
+            toggleBtn.style.display = "inline-block";
+            toggleBtn.textContent = "Show Alerts";   // Button default state
+        } else {
+            alertBox.style.display = "none";
+            toggleBtn.style.display = "none";
+        }
+    } catch (error) {
+        console.error("Error fetching alerts:", error);
+        const alertBox = document.getElementById("routeAlert");
+        const toggleBtn = document.getElementById("toggleAlert");
+
+        alertBox.textContent = "Unable to load alert.";
+        alertBox.style.display = "none";            // Fold by default even on error
+        toggleBtn.style.display = "inline-block";
+        toggleBtn.textContent = "Show Alerts";
+    }
+}
+
 async function initializeRoutes() {
     try {
         const currentRoutes = await getRoutes(); // Fetch all routes
@@ -531,6 +569,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const selectedRoute = await initializeRoutes(); // Ensure dropdown is populated
     if (selectedRoute) {
         await updateBusPositions(selectedRoute); // Load data for the correct route
+        await fetchAndDisplayAlert(selectedRoute);
     }
 });
 
@@ -542,4 +581,17 @@ routeFilter.addEventListener('change', async () => {
     const selectedRoute = routeFilter.value;
     updateURLWithRoute(selectedRoute); // Update the URL
     await updateBusPositions(); // Fetch the new route data
+    await fetchAndDisplayAlert(selectedRoute);
+});
+
+// Toggle visibility of the alert box when the button is clicked.
+// If currently visible, hide the alert and change the button text to "Show Alerts".
+// If currently hidden, show the alert and change the button text to "Hide Alerts".
+document.getElementById("toggleAlert").addEventListener("click", () => {
+    const alertBox = document.getElementById("routeAlert");
+    const toggleBtn = document.getElementById("toggleAlert");
+    const isVisible = alertBox.style.display === "block";
+
+    alertBox.style.display = isVisible ? "none" : "block";
+    toggleBtn.textContent = isVisible ? "Show Alerts" : "Hide Alerts";
 });

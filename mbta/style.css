@@ -50,6 +50,38 @@ select {
     text-align: left;
 }
 
+#toggleAlert {
+    position: absolute;
+    top: 120px; /* Below the route selector */
+    left: 10px;
+    z-index: 1000;
+    background-color: #F4D27B;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    display: none; /* Shown only when alerts exist */
+}
+
+.route-alert {
+    position: absolute;
+    top: 155px; /* BELOW the toggle button */
+    left: 10px;
+    z-index: 1000;
+    width: calc(100% - 20px);
+    max-width: 220px;
+    padding: 8px;
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 4px;
+    font-size: 0.95em;
+    color: #856404;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    display: none; /* Hidden by default until toggled */
+}
+
 /* Disable text selection and copying */
 .leaflet-control-zoom a {
   -webkit-user-select: none;  /* For Chrome/Safari */
