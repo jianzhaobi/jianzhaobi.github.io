@@ -89,7 +89,7 @@ function updateRouteFilterOptions(newRoutes) {
     const currentSelection = routeFilter.value;
 
     // Define the prioritized routes in the desired order.
-    const prioritizedRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red"];
+    const prioritizedRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red", "Mattapan"];
     const priorityMapping = {};
     prioritizedRoutes.forEach((route, index) => {
         priorityMapping[route] = index;
@@ -332,7 +332,7 @@ async function plotRouteShape(selectedRouteId) {
         }
 
         // Define subway and commuter rail routes
-        const subwayRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red"];
+        const subwayRoutes = ["Blue", "Green-B", "Green-C", "Green-D", "Green-E", "Orange", "Red", "Mattapan"];
         const isCommuterRail = selectedRouteId.startsWith("CR-");
 
         let filteredShapes;
