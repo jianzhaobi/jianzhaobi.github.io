@@ -451,17 +451,16 @@ function createVehicleIcon(vehicle, route, stopInfo) {
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
     const markerAccent = directionColor(route, directionId);
-    const markerGlow = mixColor(markerAccent, "#ffffff", 0.1);
+    const markerGlow = mixColor(markerAccent, "#ffffff", 0.08);
     const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
-    const markerCore = stopInfo
-        ? (stopInfo.kind === "at" ? "#c4ccd4" : "#e1e5e9")
-        : "#fbfcfd";
+    const markerCore = directionId === 1 ? "#d5dbe1" : "#fbfcfd";
 
     return L.divIcon({
         className: "",
         html: `
             <div class="vehicle-marker ${directionClass} ${stopClass}"
                  style="--vehicle-accent: ${markerAccent}; --vehicle-core: ${markerCore}; --vehicle-glow: ${markerGlow}; transform: rotate(${bearing}deg);">
+                <span class="vehicle-station-halo" aria-hidden="true"></span>
                 <svg class="vehicle-arrow" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
                     <path class="vehicle-arrow-shape" d="M14 2.5 L23.5 25.5 L14 20.5 L4.5 25.5 Z"></path>
                 </svg>
