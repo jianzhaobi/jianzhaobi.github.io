@@ -1,0 +1,110 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden; /* Prevent scrolling */
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh; /* Full viewport height */
+}
+
+.route-selector {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+}
+
+select {
+    padding: 5px;
+    font-size: 16px;
+}
+
+.fetch-time {
+    text-align: center;
+    font-size: 15px;
+    margin-top: 5px;
+}
+
+.leaflet-control-zoom {
+  position: absolute;
+  right: 10px;
+  transform: translateY(40vh);
+}
+
+.tracker-credit {
+    margin-top: 5px;  /* Reduce space above */
+    margin-bottom: 2px;  /* Reduce space below */
+    font-size: 14px;  /* Adjust font size if needed */
+    font-style: italic;  /* Italicize the text */
+    color: #555;  /* Slightly muted color */
+    text-align: left;
+}
+
+#toggleAlert {
+    position: absolute;
+    top: 120px; /* Below the route selector */
+    left: 10px;
+    z-index: 1000;
+    background-color: #F4D27B;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    display: none; /* Shown only when alerts exist */
+    touch-action: manipulation; /* Disable double-tap zoom on cell phone */
+}
+
+.route-alert {
+    position: absolute;
+    top: 155px; /* BELOW the toggle button */
+    left: 10px;
+    z-index: 1000;
+    width: calc(100% - 20px);
+    max-width: 220px;
+    max-height: 300px; /* Limit height to prevent overflow */
+    overflow-y: auto;  /* Enables scroll if content exceeds max-height */
+    scroll-behavior: smooth; /* optional: makes scrolling nicer */
+    padding: 8px;
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 4px;
+    font-size: 0.95em;
+    color: #856404;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    display: none; /* Hidden by default until toggled */
+}
+
+/* Disable text selection and copying */
+.leaflet-control-zoom a {
+  -webkit-user-select: none;  /* For Chrome/Safari */
+  -moz-user-select: none;     /* For Firefox */
+  -ms-user-select: none;      /* For IE/Edge */
+  user-select: none;          /* Standard syntax */
+}
+
+body {
+    user-select: none; /* Standard */
+    -webkit-user-select: none; /* Chrome, Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */
+}
+
+/* Disable right-click context menu */
+body {
+    pointer-events: auto;
+}
+body * {
+    -webkit-touch-callout: none; /* Disable long press selection on iOS */
+}

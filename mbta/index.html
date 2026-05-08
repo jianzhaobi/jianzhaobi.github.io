@@ -5,24 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260508-6">
+    <link rel="stylesheet" href="style.css?v=20260508-14">
 </head>
 <body>
 <div id="map"></div>
-<button id="locateUser" class="locate-user" hidden>My location</button>
+<button id="locateUser" class="locate-user" type="button" aria-label="My location" title="My location" hidden>
+    <span class="locate-dot" aria-hidden="true"></span>
+</button>
 <div class="route-panel">
     <label class="route-label" for="routeFilter">Route</label>
     <select id="routeFilter" disabled>
         <option>Loading routes...</option>
     </select>
-    <div id="directionLegend" class="direction-legend" hidden></div>
-    <div id="fetchTime" class="fetch-time">Last updated: --</div>
-    <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
-    <p class="tracker-credit">MBTA Tracker by Jianzhao Bi</p>
+    <div class="panel-summary">
+        <div id="fetchTime" class="fetch-time">Last updated: --</div>
+        <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
+    </div>
+    <div id="panelDetails" class="panel-details" hidden>
+        <div id="directionLegend" class="direction-legend" hidden></div>
+        <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
+        <div id="routeAlert" class="route-alert"></div>
+        <p class="tracker-credit">MBTA Tracker by Jianzhao Bi</p>
+    </div>
 </div>
-<div id="routeAlert" class="route-alert"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260508-6"></script>
+<script src="app.js?v=20260508-14"></script>
 </body>
 </html>

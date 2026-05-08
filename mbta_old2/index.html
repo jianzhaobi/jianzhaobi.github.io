@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time MBTA Tracker By J. Bi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map"></div>
+<div class="route-selector">
+    <select id="routeFilter">
+        <!-- Additional routes will be added dynamically -->
+    </select>
+    <div id="fetchTime" class="fetch-time">Last Updated: --</div>
+    <p class="tracker-credit">MBTA Tracker by Jianzhao Bi</p>
+</div>
+<button id="toggleAlert" style="display: none;">Show Alerts</button>
+<div id="routeAlert" class="route-alert"></div>
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

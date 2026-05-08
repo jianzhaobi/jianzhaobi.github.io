@@ -40,6 +40,8 @@ const directionLegend = document.getElementById("directionLegend");
 const locateUserButton = document.getElementById("locateUser");
 const alertBox = document.getElementById("routeAlert");
 const toggleAlertButton = document.getElementById("toggleAlert");
+const panelToggleButton = document.getElementById("panelToggle");
+const panelDetails = document.getElementById("panelDetails");
 
 const state = {
     routes: new Map(),
@@ -49,7 +51,9 @@ const state = {
     vehicleTimer: null,
     hasFitRoute: false,
     userLocation: null,
-    userMarker: null
+    userMarker: null,
+    stops: new Map(),
+    panelExpanded: false
 };
 
 /* ====================== */
@@ -61,7 +65,7 @@ const map = L.map("map", {
     doubleClickZoom: false
 }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
 
-L.control.zoom({ position: "bottomright" }).addTo(map);
+L.control.zoom({ position: "topright" }).addTo(map);
 
 L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     maxZoom: 19,
@@ -243,6 +247,13 @@ function renderDirectionLegend(route) {
     directionLegend.hidden = false;
 }
 
+function setPanelExpanded(expanded) {
+    state.panelExpanded = expanded;
+    panelDetails.hidden = !expanded;
+    panelToggleButton.setAttribute("aria-expanded", String(expanded));
+    panelToggleButton.textContent = expanded ? "Hide" : "Details";
+}
+
 function sortRoutes(routes) {
     const priority = new Map(ROUTE_PRIORITY.map((routeId, index) => [routeId, index]));
 
@@ -342,6 +353,58 @@ function vehiclesWithDisplayPositions(vehicles) {
     }));
 }
 
+function distanceMeters(aLat, aLng, bLat, bLng) {
+    const earthRadiusMeters = 6371000;
+    const toRadians = degrees => degrees * Math.PI / 180;
+    const deltaLat = toRadians(bLat - aLat);
+    const deltaLng = toRadians(bLng - aLng);
+    const lat1 = toRadians(aLat);
+    const lat2 = toRadians(bLat);
+    const haversine = Math.sin(deltaLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+
+    return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function nearestRenderedStop(lat, lng, maxMeters) {
+    let nearest = null;
+    state.stops.forEach(stop => {
+        const distance = distanceMeters(lat, lng, stop.lat, stop.lng);
+        if (distance <= maxMeters && (!nearest || distance < nearest.distance)) {
+            nearest = { stop, distance };
+        }
+    });
+    return nearest;
+}
+
+function vehicleStopInfo(vehicle) {
+    const attributes = vehicle.attributes || {};
+    const lat = attributes.latitude;
+    const lng = attributes.longitude;
+    const status = attributes.current_status;
+    const relationshipStopId = vehicle.relationships?.stop?.data?.id;
+    const relatedStop = relationshipStopId ? state.stops.get(relationshipStopId) : null;
+
+    if (relatedStop && status === "STOPPED_AT") {
+        return { kind: "at", stop: relatedStop };
+    }
+    if (relatedStop) {
+        return { kind: "near", stop: relatedStop };
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+    }
+
+    const nearest = nearestRenderedStop(lat, lng, status === "STOPPED_AT" ? 45 : 26);
+    if (!nearest) return null;
+
+    return {
+        kind: status === "STOPPED_AT" || nearest.distance <= 12 ? "at" : "near",
+        stop: nearest.stop,
+        distance: nearest.distance
+    };
+}
+
 async function getRepresentativeShapeIds(routeId) {
     const json = await fetchMbta("/route_patterns", {
         "filter[route]": routeId,
@@ -383,18 +446,25 @@ function createStopIcon(route) {
     });
 }
 
-function createVehicleIcon(vehicle, route) {
+function createVehicleIcon(vehicle, route, stopInfo) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
-    const markerColor = directionColor(route, directionId);
+    const markerAccent = directionColor(route, directionId);
+    const markerGlow = mixColor(markerAccent, "#ffffff", 0.1);
+    const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
+    const markerCore = stopInfo
+        ? (stopInfo.kind === "at" ? "#c4ccd4" : "#e1e5e9")
+        : "#fbfcfd";
 
     return L.divIcon({
         className: "",
         html: `
-            <div class="vehicle-marker ${directionClass}"
-                 style="background: ${markerColor}; border-color: ${routeColor(route)};">
-                <span class="vehicle-bearing" style="transform: translateX(-50%) rotate(${bearing}deg);"></span>
+            <div class="vehicle-marker ${directionClass} ${stopClass}"
+                 style="--vehicle-accent: ${markerAccent}; --vehicle-core: ${markerCore}; --vehicle-glow: ${markerGlow}; transform: rotate(${bearing}deg);">
+                <svg class="vehicle-arrow" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
+                    <path class="vehicle-arrow-shape" d="M14 2.5 L23.5 25.5 L14 20.5 L4.5 25.5 Z"></path>
+                </svg>
             </div>
         `,
         iconSize: [28, 28],
@@ -406,10 +476,10 @@ function createVehicleIcon(vehicle, route) {
 function createUserLocationIcon() {
     return L.divIcon({
         className: "",
-        html: '<div class="vehicle-marker" style="background: #f26f5b;"></div>',
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14]
+        html: '<div class="user-location-marker"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -9]
     });
 }
 
@@ -500,6 +570,7 @@ function clearMapForRouteChange() {
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
+    state.stops.clear();
 }
 
 /* ====================== */
@@ -559,6 +630,7 @@ async function renderRouteStops(routeId, route, requestId) {
     if (!isCurrentRoute(routeId, requestId)) return;
 
     stopLayer.clearLayers();
+    state.stops.clear();
 
     if (!json.data?.length) {
         console.warn(`No stops found for route: ${routeId}`);
@@ -571,6 +643,13 @@ async function renderRouteStops(routeId, route, requestId) {
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
         const stopName = stop.attributes.name || "Unknown Stop";
+        state.stops.set(stop.id, {
+            id: stop.id,
+            name: stopName,
+            lat,
+            lng
+        });
+
         const marker = L.marker([lat, lng], {
             icon: createStopIcon(route),
             title: stopName,
@@ -723,6 +802,10 @@ toggleAlertButton.addEventListener("click", () => {
         : "Hide alerts";
 });
 
+panelToggleButton.addEventListener("click", () => {
+    setPanelExpanded(!state.panelExpanded);
+});
+
 /* ====================== */
 /* ====== VEHICLES ====== */
 /* ====================== */
@@ -757,9 +840,10 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const attributes = vehicle.attributes;
             const tripId = vehicle.relationships?.trip?.data?.id;
             const directionId = attributes.direction_id;
+            const stopInfo = vehicleStopInfo(vehicle);
             const marker = L.marker(position, {
-                icon: createVehicleIcon(vehicle, route),
-                zIndexOffset: 1000
+                icon: createVehicleIcon(vehicle, route, stopInfo),
+                zIndexOffset: stopInfo ? 1200 : 1000
             }).addTo(vehicleLayer);
 
             const headsign = tripLookup.get(tripId)
@@ -772,11 +856,15 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const direction = directionId === 0 || directionId === 1
                 ? directionLabel(route, directionId)
                 : "Unknown direction";
+            const stopLine = stopInfo
+                ? `${stopInfo.kind === "at" ? "At stop" : "Near stop"}: ${escapeHtml(stopInfo.stop.name)}<br>`
+                : "";
 
             marker.bindPopup(`
                 <span class="popup-title">${escapeHtml(routeId)} - ${escapeHtml(label)}</span>
                 Direction: ${escapeHtml(direction)}<br>
                 Destination: ${escapeHtml(headsign)}<br>
+                ${stopLine}
                 Status: ${escapeHtml(status)}<br>
                 Updated: ${escapeHtml(formatTime(attributes.updated_at))}
             `);
@@ -847,6 +935,7 @@ routeFilter.addEventListener("change", () => {
 
 document.addEventListener("DOMContentLoaded", async () => {
     try {
+        setPanelExpanded(false);
         initializeGeolocation();
         await initializeRoutes();
     } catch (error) {
