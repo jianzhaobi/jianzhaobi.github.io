@@ -1,25 +1,28 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Real-Time MBTA Tracker By J. Bi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="style.css?v=20260508-6">
 </head>
 <body>
 <div id="map"></div>
-<div class="route-selector">
-    <select id="routeFilter">
-        <!-- Additional routes will be added dynamically -->
+<button id="locateUser" class="locate-user" hidden>My location</button>
+<div class="route-panel">
+    <label class="route-label" for="routeFilter">Route</label>
+    <select id="routeFilter" disabled>
+        <option>Loading routes...</option>
     </select>
-    <div id="fetchTime" class="fetch-time">Last Updated: --</div>
+    <div id="directionLegend" class="direction-legend" hidden></div>
+    <div id="fetchTime" class="fetch-time">Last updated: --</div>
+    <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
     <p class="tracker-credit">MBTA Tracker by Jianzhao Bi</p>
 </div>
-<button id="toggleAlert" style="display: none;">Show Alerts</button>
 <div id="routeAlert" class="route-alert"></div>
 
-<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-<script src="app.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js?v=20260508-6"></script>
 </body>
 </html>

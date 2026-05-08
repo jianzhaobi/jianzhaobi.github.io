@@ -2,7 +2,13 @@ html, body {
     margin: 0;
     padding: 0;
     height: 100%;
-    overflow: hidden; /* Prevent scrolling */
+    overflow: hidden;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #17202a;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 #map {
@@ -10,101 +16,284 @@ html, body {
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh; /* Full viewport height */
+    height: 100vh;
 }
 
-.route-selector {
+:root {
+    --route-color: #165c96;
+    --route-text-color: #ffffff;
+}
+
+.route-panel {
     position: absolute;
-    top: 10px;
-    left: 10px;
+    top: 12px;
+    left: 12px;
     z-index: 1000;
-    background: white;
-    padding: 10px;
-    border-radius: 5px;
-    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    width: min(330px, calc(100vw - 24px));
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.94);
+    padding: 12px;
+    border-top: 5px solid var(--route-color);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(20, 31, 43, 0.2);
+    backdrop-filter: blur(8px);
 }
 
-select {
-    padding: 5px;
+.route-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: #56616d;
+}
+
+#routeFilter {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
     font-size: 16px;
+    line-height: 1.2;
+    color: #17202a;
+    background: #ffffff;
+    border: 1px solid #cfd7df;
+    border-radius: 6px;
+}
+
+#routeFilter:disabled {
+    color: #6f7a85;
+    background: #f3f6f8;
 }
 
 .fetch-time {
-    text-align: center;
-    font-size: 15px;
-    margin-top: 5px;
+    margin-top: 7px;
+    font-size: 13px;
+    color: #4d5965;
+}
+
+.direction-legend {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px;
+    background: #f5f7f9;
+    border: 1px solid #d9e0e7;
+    border-radius: 6px;
+}
+
+.direction-legend[hidden] {
+    display: none;
+}
+
+.direction-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 7px;
+    align-items: center;
+    min-width: 0;
+    font-size: 12px;
+    color: #2e3a45;
+}
+
+.direction-chip {
+    display: inline-grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border-radius: 50%;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+.direction-chip.direction-0,
+.vehicle-marker.direction-0 {
+    background: var(--direction-0-color);
+}
+
+.direction-chip.direction-1,
+.vehicle-marker.direction-1 {
+    background: var(--direction-1-color);
+}
+
+.direction-chip.direction-unknown,
+.vehicle-marker.direction-unknown {
+    background: #6b7280;
+}
+
+.direction-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .leaflet-control-zoom {
-  position: absolute;
-  right: 10px;
-  transform: translateY(40vh);
+    margin-right: 12px !important;
+    margin-bottom: 30px !important;
+}
+
+.locate-user {
+    position: absolute;
+    right: 12px;
+    top: 104px;
+    z-index: 1000;
+    padding: 8px 10px;
+    border: 1px solid #cfd7df;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.94);
+    color: #17202a;
+    box-shadow: 0 8px 22px rgba(20, 31, 43, 0.18);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    touch-action: manipulation;
+}
+
+.locate-user[hidden] {
+    display: none;
 }
 
 .tracker-credit {
-    margin-top: 5px;  /* Reduce space above */
-    margin-bottom: 2px;  /* Reduce space below */
-    font-size: 14px;  /* Adjust font size if needed */
-    font-style: italic;  /* Italicize the text */
-    color: #555;  /* Slightly muted color */
+    margin: 8px 0 0;
+    font-size: 12px;
+    font-style: italic;
+    color: #64717d;
     text-align: left;
 }
 
-#toggleAlert {
-    position: absolute;
-    top: 120px; /* Below the route selector */
-    left: 10px;
-    z-index: 1000;
-    background-color: #F4D27B;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
-    padding: 6px 12px;
-    border-radius: 4px;
+.alert-toggle {
+    width: 100%;
+    margin-top: 9px;
+    background: #fff6d8;
+    border: 1px solid #edc656;
+    color: #593f00;
+    padding: 8px 10px;
+    border-radius: 6px;
     font-size: 14px;
+    font-weight: 650;
     cursor: pointer;
-    display: none; /* Shown only when alerts exist */
-    touch-action: manipulation; /* Disable double-tap zoom on cell phone */
+    touch-action: manipulation;
 }
 
 .route-alert {
     position: absolute;
-    top: 155px; /* BELOW the toggle button */
-    left: 10px;
+    top: 252px;
+    left: 12px;
     z-index: 1000;
-    width: calc(100% - 20px);
-    max-width: 220px;
-    max-height: 300px; /* Limit height to prevent overflow */
-    overflow-y: auto;  /* Enables scroll if content exceeds max-height */
-    scroll-behavior: smooth; /* optional: makes scrolling nicer */
-    padding: 8px;
-    background-color: #fff3cd;
-    border: 1px solid #ffeeba;
-    border-radius: 4px;
-    font-size: 0.95em;
-    color: #856404;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    display: none; /* Hidden by default until toggled */
+    width: min(330px, calc(100vw - 24px));
+    max-height: min(340px, calc(100vh - 280px));
+    box-sizing: border-box;
+    overflow-y: auto;
+    padding: 10px 12px;
+    background-color: rgba(255, 248, 222, 0.97);
+    border: 1px solid #f0ce68;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #4f3b05;
+    box-shadow: 0 12px 28px rgba(20, 31, 43, 0.18);
+    display: none;
 }
 
-/* Disable text selection and copying */
+.alert-item + .alert-item {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(89, 63, 0, 0.18);
+}
+
+.alert-meta {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 11px;
+    font-weight: 750;
+    text-transform: uppercase;
+    color: #765900;
+}
+
 .leaflet-control-zoom a {
-  -webkit-user-select: none;  /* For Chrome/Safari */
-  -moz-user-select: none;     /* For Firefox */
-  -ms-user-select: none;      /* For IE/Edge */
-  user-select: none;          /* Standard syntax */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
-body {
-    user-select: none; /* Standard */
-    -webkit-user-select: none; /* Chrome, Safari */
-    -moz-user-select: none; /* Firefox */
-    -ms-user-select: none; /* Internet Explorer/Edge */
+.leaflet-popup-content {
+    margin: 12px 14px;
+    line-height: 1.35;
 }
 
-/* Disable right-click context menu */
-body {
-    pointer-events: auto;
+.popup-title {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 750;
+    color: #17202a;
 }
+
+.popup-muted {
+    color: #65717d;
+}
+
+.vehicle-marker {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px #ffffff, 0 3px 8px rgba(20, 31, 43, 0.28);
+    position: relative;
+}
+
+.vehicle-bearing {
+    position: absolute;
+    left: 50%;
+    top: 3px;
+    width: 0;
+    height: 0;
+    transform: translateX(-50%);
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 8px solid #ffffff;
+    opacity: 0.92;
+    transform-origin: 50% 9px;
+}
+
+.stop-marker {
+    display: block;
+    width: 10px;
+    height: 10px;
+    background: #ffffff;
+    border: 2px solid var(--route-color);
+    border-radius: 50%;
+    box-shadow: 0 1px 6px rgba(20, 31, 43, 0.25);
+}
+
 body * {
-    -webkit-touch-callout: none; /* Disable long press selection on iOS */
+    -webkit-touch-callout: none;
+}
+
+@media (max-width: 640px) {
+    .route-panel {
+        top: 8px;
+        left: 8px;
+        width: calc(100vw - 16px);
+        padding: 10px;
+    }
+
+    .route-alert {
+        top: auto;
+        bottom: 12px;
+        left: 8px;
+        width: calc(100vw - 16px);
+        max-height: 35vh;
+    }
+
+    .leaflet-control-zoom {
+        margin-right: 8px !important;
+        margin-bottom: 24px !important;
+    }
+
+    .locate-user {
+        top: 272px;
+        right: 8px;
+    }
 }
