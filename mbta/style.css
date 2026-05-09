@@ -27,6 +27,7 @@ html, body {
     --safe-bottom: max(12px, env(safe-area-inset-bottom));
     --safe-left: max(12px, env(safe-area-inset-left));
     --control-size: 44px;
+    --locate-inset: 12px;
 }
 
 .route-panel {
@@ -56,7 +57,8 @@ html, body {
     color: #56616d;
 }
 
-#routeFilter {
+#routeFilter,
+.panel-select {
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;
@@ -68,9 +70,22 @@ html, body {
     border-radius: 6px;
 }
 
-#routeFilter:disabled {
+#routeFilter:disabled,
+.panel-select:disabled {
     color: #6f7a85;
     background: #f3f6f8;
+}
+
+.basemap-control {
+    margin-top: 9px;
+}
+
+.basemap-control .route-label {
+    margin-bottom: 6px;
+}
+
+.panel-details > .basemap-control:first-child {
+    margin-top: 0;
 }
 
 .fetch-time {
@@ -184,8 +199,8 @@ html, body {
 
 .locate-user {
     position: fixed;
-    left: var(--safe-left);
-    bottom: var(--safe-bottom);
+    left: calc(var(--safe-left) + var(--locate-inset));
+    bottom: calc(var(--safe-bottom) + var(--locate-inset));
     z-index: 1000;
     display: grid;
     width: var(--control-size);
@@ -382,6 +397,7 @@ body * {
         --safe-right: max(8px, env(safe-area-inset-right));
         --safe-bottom: max(12px, env(safe-area-inset-bottom));
         --safe-left: max(8px, env(safe-area-inset-left));
+        --locate-inset: 14px;
     }
 
     .route-panel {

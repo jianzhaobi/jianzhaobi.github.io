@@ -30,11 +30,35 @@ const ROUTE_TYPE_ORDER = {
     4: 4
 };
 
+const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const ESRI_ATTRIBUTION = "Tiles &copy; Esri - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+const DEFAULT_BASEMAP = "light";
+
+const BASEMAPS = {
+    light: {
+        url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+    },
+    dark: {
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+    },
+    detail: {
+        url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        attribution: CARTO_ATTRIBUTION
+    },
+    satellite: {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: ESRI_ATTRIBUTION
+    }
+};
+
 /* ====================== */
 /* ======= STATE ======== */
 /* ====================== */
 
 const routeFilter = document.getElementById("routeFilter");
+const basemapSelect = document.getElementById("basemapSelect");
 const fetchTime = document.getElementById("fetchTime");
 const directionLegend = document.getElementById("directionLegend");
 const locateUserButton = document.getElementById("locateUser");
@@ -67,10 +91,7 @@ const map = L.map("map", {
 
 L.control.zoom({ position: "topright" }).addTo(map);
 
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-}).addTo(map);
+let basemapLayer = createBasemapLayer(DEFAULT_BASEMAP).addTo(map);
 
 const routeLayer = L.featureGroup().addTo(map);
 const stopLayer = L.layerGroup().addTo(map);
@@ -80,6 +101,24 @@ const userLayer = L.layerGroup().addTo(map);
 /* ====================== */
 /* ===== UTILITIES ====== */
 /* ====================== */
+
+function createBasemapLayer(basemapId) {
+    const basemap = BASEMAPS[basemapId] || BASEMAPS[DEFAULT_BASEMAP];
+    return L.tileLayer(basemap.url, {
+        maxZoom: 19,
+        attribution: basemap.attribution
+    });
+}
+
+function setBasemap(basemapId) {
+    if (!BASEMAPS[basemapId]) return;
+
+    if (basemapLayer) {
+        map.removeLayer(basemapLayer);
+    }
+    basemapLayer = createBasemapLayer(basemapId).addTo(map);
+    basemapLayer.bringToBack();
+}
 
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -895,8 +934,13 @@ routeFilter.addEventListener("change", () => {
     selectRoute(routeFilter.value, { updateUrl: true, fitRoute: true });
 });
 
+basemapSelect.addEventListener("change", () => {
+    setBasemap(basemapSelect.value);
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
     try {
+        basemapSelect.value = DEFAULT_BASEMAP;
         setPanelExpanded(false);
         initializeGeolocation();
         await initializeRoutes();

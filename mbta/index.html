@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260508-19">
+    <link rel="stylesheet" href="style.css?v=20260509-01">
 </head>
 <body>
 <div id="map"></div>
@@ -22,6 +22,15 @@
         <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
     </div>
     <div id="panelDetails" class="panel-details" hidden>
+        <div class="basemap-control">
+            <label class="route-label" for="basemapSelect">Map</label>
+            <select id="basemapSelect" class="panel-select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="detail">Detailed</option>
+                <option value="satellite">Satellite</option>
+            </select>
+        </div>
         <div id="directionLegend" class="direction-legend" hidden></div>
         <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
         <div id="routeAlert" class="route-alert"></div>
@@ -30,6 +39,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260508-19"></script>
+<script src="app.js?v=20260509-01"></script>
 </body>
 </html>
