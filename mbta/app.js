@@ -33,9 +33,9 @@ const ROUTE_TYPE_ORDER = {
 const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const ESRI_ATTRIBUTION = "Tiles &copy; Esri - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const DEFAULT_BASEMAP = "light";
-const VEHICLE_OFFSET_PX = 22;
+const VEHICLE_OFFSET_PX = 24;
 const VEHICLE_ICON_SIZE = 116;
-const VEHICLE_MARKER_RADIUS_PX = 10;
+const VEHICLE_MARKER_RADIUS_PX = 12;
 const VEHICLE_COLLISION_PADDING_PX = 6;
 const VEHICLE_COLLISION_ITERATIONS = 9;
 const VEHICLE_MAX_COLLISION_SHIFT_PX = 44;
@@ -622,6 +622,37 @@ function resolveVehicleOffsets(records) {
     }));
 }
 
+function vehicleModeClass(route) {
+    if (route?.type === 3) return "vehicle-bus";
+    if (route?.type === 4) return "vehicle-ferry";
+    return "vehicle-train";
+}
+
+function vehicleGlyph(route) {
+    if (route?.type === 3) {
+        return `
+            <rect x="8" y="7" width="20" height="22" rx="5"></rect>
+            <rect class="vehicle-cutout" x="11" y="10" width="14" height="7" rx="2"></rect>
+            <circle class="vehicle-cutout" cx="13" cy="25" r="2.3"></circle>
+            <circle class="vehicle-cutout" cx="23" cy="25" r="2.3"></circle>
+        `;
+    }
+    if (route?.type === 4) {
+        return `
+            <path d="M7 19.5H29L25.5 28H10.5Z"></path>
+            <path d="M11 14H25L27 19.5H9Z"></path>
+            <path d="M12 31C15 29 18 33 21 31C24 29 27 33 30 31"></path>
+        `;
+    }
+    return `
+        <rect x="10" y="6" width="16" height="22" rx="4"></rect>
+        <rect class="vehicle-cutout" x="13" y="10" width="10" height="8" rx="2"></rect>
+        <circle class="vehicle-cutout" cx="14" cy="24" r="2"></circle>
+        <circle class="vehicle-cutout" cx="22" cy="24" r="2"></circle>
+        <path class="vehicle-rail" d="M14 29L10 34M22 29L26 34M12 32H24"></path>
+    `;
+}
+
 function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
@@ -641,13 +672,17 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     return L.divIcon({
         className: "",
         html: `
-            <div class="vehicle-offset-marker ${directionClass} ${stopClass}"
+            <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
                  style="--vehicle-color: ${markerAccent}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
                 </svg>
-                <span class="vehicle-marker" aria-hidden="true"></span>
+                <span class="vehicle-marker">
+                    <svg class="vehicle-symbol" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+                        ${vehicleGlyph(route)}
+                    </svg>
+                </span>
                 <svg class="vehicle-hit-target" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <circle cx="${markerCenterX}" cy="${markerCenterY}" r="${VEHICLE_MARKER_RADIUS_PX + 4}"></circle>
                 </svg>

@@ -468,8 +468,8 @@ html, body {
     top: 50%;
     z-index: 3;
     display: grid;
-    width: 20px;
-    height: 20px;
+    width: 24px;
+    height: 24px;
     place-items: center;
     box-sizing: border-box;
     color: var(--vehicle-color);
@@ -478,6 +478,38 @@ html, body {
     border-radius: 50%;
     box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
     transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y)));
+}
+
+.vehicle-symbol {
+    width: 17px;
+    height: 17px;
+    overflow: visible;
+}
+
+.vehicle-symbol rect,
+.vehicle-symbol path,
+.vehicle-symbol circle {
+    fill: #ffffff;
+}
+
+.vehicle-symbol path {
+    stroke: #ffffff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.vehicle-symbol .vehicle-cutout {
+    fill: var(--vehicle-color);
+}
+
+.vehicle-symbol .vehicle-rail {
+    fill: none;
+    stroke: #ffffff;
+}
+
+.vehicle-ferry .vehicle-symbol path {
+    fill: none;
 }
 
 .vehicle-offset-marker.direction-unknown .vehicle-marker {
