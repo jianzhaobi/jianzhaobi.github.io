@@ -31,8 +31,7 @@ html, body {
     --basemap-size: 68px;
     --map-control-size: 34px;
     --map-control-outer-size: calc(var(--map-control-size) + 2px);
-    --map-control-gap: 10px;
-    --zoom-control-height: calc(var(--map-control-size) * 2 + 2px);
+    --map-control-gap: 12px;
     --right-control-inset: calc(var(--safe-right) + var(--locate-inset));
 }
 
@@ -432,9 +431,9 @@ html, body {
 }
 
 .leaflet-top.leaflet-right {
-    top: 50%;
+    top: calc(50% - (var(--map-control-gap) / 2));
     right: var(--right-control-inset);
-    transform: translateY(-50%);
+    transform: translateY(-100%);
 }
 
 .leaflet-control-zoom {
@@ -449,7 +448,7 @@ html, body {
     --locate-icon-color: #17202a;
     position: fixed;
     right: var(--right-control-inset);
-    top: calc(50% + (var(--zoom-control-height) / 2) + var(--map-control-gap));
+    top: calc(50% + (var(--map-control-gap) / 2));
     z-index: 1000;
     display: grid;
     width: var(--map-control-outer-size);

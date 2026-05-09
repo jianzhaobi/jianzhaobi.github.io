@@ -641,13 +641,28 @@ function nearestRenderedStop(lat, lng, maxMeters) {
     return nearest;
 }
 
-function vehicleStopInfo(vehicle) {
+function stopInfoFromMbtaStop(stop) {
+    if (!stop) return null;
+
+    const lat = stop.attributes?.latitude;
+    const lng = stop.attributes?.longitude;
+    return {
+        id: stop.id,
+        name: stop.attributes?.name || "Unknown Stop",
+        lat,
+        lng
+    };
+}
+
+function vehicleStopInfo(vehicle, stopLookup = new Map()) {
     const attributes = vehicle.attributes || {};
     const lat = attributes.latitude;
     const lng = attributes.longitude;
     const status = attributes.current_status;
     const relationshipStopId = vehicle.relationships?.stop?.data?.id;
-    const relatedStop = relationshipStopId ? state.stops.get(relationshipStopId) : null;
+    const relatedStop = relationshipStopId
+        ? state.stops.get(relationshipStopId) || stopInfoFromMbtaStop(stopLookup.get(relationshipStopId))
+        : null;
 
     if (relatedStop && status === "STOPPED_AT") {
         return { kind: "at", stop: relatedStop };
@@ -1459,7 +1474,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
     try {
         const json = await fetchMbta("/vehicles", {
             "filter[route]": routeId,
-            include: "trip"
+            include: "trip,stop"
         });
 
         if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
@@ -1470,6 +1485,9 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
                 headsign: trip.attributes.headsign,
                 shapeId: trip.relationships?.shape?.data?.id
             }]));
+        const stopLookup = new Map((json.included || [])
+            .filter(item => item.type === "stop")
+            .map(stop => [stop.id, stop]));
 
         vehicleLayer.clearLayers();
         state.vehicleRecords = [];
@@ -1490,7 +1508,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             if (directionId === 0 || directionId === 1) {
                 vehicleCounts[directionId] += 1;
             }
-            const stopInfo = vehicleStopInfo(vehicle);
+            const stopInfo = vehicleStopInfo(vehicle, stopLookup);
             const marker = L.marker(position, {
                 icon: createVehicleIcon(vehicle, route, stopInfo),
                 zIndexOffset: stopInfo ? 1200 : 1000
