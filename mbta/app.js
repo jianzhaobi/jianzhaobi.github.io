@@ -1578,7 +1578,7 @@ function updateUserLocation(position) {
         state.userMarker = L.marker(latLng, {
             icon: createUserLocationIcon(),
             zIndexOffset: 500
-        }).addTo(userLayer).bindPopup('<span class="popup-title">Your location</span>');
+        }).addTo(userLayer);
     }
 
     if (state.followUserLocation) {
@@ -1599,7 +1599,6 @@ locateUserButton.addEventListener("click", () => {
     } else {
         setFollowUserLocation(true);
         centerMapOnUser(state.userLocation, Math.max(map.getZoom(), 15));
-        state.userMarker.openPopup();
     }
 });
 
