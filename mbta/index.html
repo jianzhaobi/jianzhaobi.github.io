@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260509-04">
+    <link rel="stylesheet" href="style.css?v=20260509-05">
 </head>
 <body>
 <div id="map"></div>
@@ -22,10 +22,26 @@
     <button id="basemapToggle" class="basemap-preview" type="button" data-basemap="light" aria-label="Choose map style" aria-expanded="false" aria-controls="basemapOptions"></button>
 </div>
 <div class="route-panel">
-    <label class="route-label" for="routeFilter">Route</label>
-    <select id="routeFilter" disabled>
+    <label class="route-label" id="routePickerLabel" for="routeFilter">Route</label>
+    <select id="routeFilter" class="route-filter-native" disabled tabindex="-1" aria-hidden="true">
         <option>Loading routes...</option>
     </select>
+    <div id="routePicker" class="route-picker">
+        <button id="routePickerButton" class="route-picker-button" type="button" disabled aria-haspopup="listbox" aria-expanded="false" aria-controls="routePickerMenu" aria-labelledby="routePickerLabel routePickerSelected">
+            <span id="routePickerSelected" class="route-picker-selected">
+                <span class="route-badge route-badge-placeholder" aria-hidden="true"></span>
+                <span class="route-picker-text">Loading routes...</span>
+            </span>
+            <span class="route-picker-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="routePickerMenu" class="route-picker-menu" hidden>
+            <div class="route-search-wrap">
+                <input id="routeSearch" class="route-search" type="search" placeholder="Search routes" autocomplete="off" spellcheck="false" aria-label="Search routes">
+            </div>
+            <div id="routeOptions" class="route-options" role="listbox" aria-labelledby="routePickerLabel"></div>
+            <div id="routeEmpty" class="route-empty" hidden>No matching routes</div>
+        </div>
+    </div>
     <div class="panel-summary">
         <div id="fetchTime" class="fetch-time">Last updated: --</div>
         <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
@@ -39,6 +55,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260509-04"></script>
+<script src="app.js?v=20260509-05"></script>
 </body>
 </html>

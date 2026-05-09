@@ -38,7 +38,8 @@ const VEHICLE_ICON_SIZE = 116;
 const VEHICLE_MARKER_RADIUS_PX = 12;
 const VEHICLE_COLLISION_PADDING_PX = 6;
 const VEHICLE_COLLISION_ITERATIONS = 9;
-const VEHICLE_MAX_COLLISION_SHIFT_PX = 44;
+const VEHICLE_COLLISION_ROTATION_STEP_DEG = 9;
+const VEHICLE_MAX_COLLISION_ROTATION_DEG = 72;
 const VEHICLE_LAYOUT_DEBOUNCE_MS = 80;
 const STOP_AVOID_RADIUS_PX = 13;
 
@@ -65,7 +66,15 @@ const BASEMAPS = {
 /* ======= STATE ======== */
 /* ====================== */
 
+const routePanel = document.querySelector(".route-panel");
 const routeFilter = document.getElementById("routeFilter");
+const routePicker = document.getElementById("routePicker");
+const routePickerButton = document.getElementById("routePickerButton");
+const routePickerSelected = document.getElementById("routePickerSelected");
+const routePickerMenu = document.getElementById("routePickerMenu");
+const routeSearch = document.getElementById("routeSearch");
+const routeOptions = document.getElementById("routeOptions");
+const routeEmpty = document.getElementById("routeEmpty");
 const basemapPicker = document.getElementById("basemapPicker");
 const basemapToggle = document.getElementById("basemapToggle");
 const basemapOptions = document.getElementById("basemapOptions");
@@ -87,10 +96,18 @@ const state = {
     hasFitRoute: false,
     userLocation: null,
     userMarker: null,
+    userWatchId: null,
+    followUserLocation: false,
+    isProgrammaticMapMove: false,
     stops: new Map(),
     panelExpanded: false,
+    routePickerExpanded: false,
+    routeSearchQuery: "",
+    activeRouteId: null,
     currentBasemap: DEFAULT_BASEMAP,
     vehicleRecords: [],
+    // Cached rendered route segments let vehicle circles align to the road geometry, not just MBTA bearing.
+    routeShapeSegments: [],
     vehicleLayoutTimer: null
 };
 
@@ -211,8 +228,23 @@ function relativeLuminance(hex) {
     }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
 }
 
+function isSilverLineRoute(route) {
+    const id = String(route?.id || "").toLowerCase();
+    const shortName = String(route?.shortName || "").toLowerCase();
+    const longName = String(route?.longName || "").toLowerCase();
+    return longName.includes("silver")
+        || /^sl\d/.test(id)
+        || /^sl\d/.test(shortName)
+        || normalizeHexColor(route?.color, "").toLowerCase() === "#7c878e";
+}
+
 function directionColor(route, directionId) {
     const base = routeColor(route);
+    if (isSilverLineRoute(route)) {
+        if (directionId === 0) return "#8c989f";
+        if (directionId === 1) return "#4b5660";
+    }
+
     if (directionId === 0) {
         return relativeLuminance(base) > 0.58 ? mixColor(base, "#000000", 0.22) : base;
     }
@@ -289,6 +321,198 @@ function displayRouteName(route) {
         return `${route.shortName} - ${route.longName}`;
     }
     return route.longName || route.shortName || route.id;
+}
+
+function routeTitle(route) {
+    return route?.longName || route?.shortName || route?.id || "Unknown route";
+}
+
+function routeMeta(route) {
+    if (!route) return "";
+    const type = routeGroupLabel(route);
+    const shortName = route.shortName && route.shortName !== routeTitle(route) ? route.shortName : "";
+    return [shortName, type].filter(Boolean).join(" · ");
+}
+
+function routeBadgeLabel(route) {
+    const label = route?.shortName || route?.id || "?";
+    return String(label).replace(/^Green-/, "").slice(0, 6);
+}
+
+function routeGroupKey(route) {
+    if (route?.type === 0 || route?.type === 1) return "rapid";
+    if (route?.type === 2) return "commuter";
+    if (route?.type === 3) return "bus";
+    if (route?.type === 4) return "ferry";
+    return "other";
+}
+
+function routeGroupLabel(routeOrKey) {
+    const key = typeof routeOrKey === "string" ? routeOrKey : routeGroupKey(routeOrKey);
+    return {
+        rapid: "Subway & Light Rail",
+        commuter: "Commuter Rail",
+        bus: "Bus",
+        ferry: "Ferry",
+        other: "Other"
+    }[key] || "Other";
+}
+
+function routeSearchText(route) {
+    return [
+        route.id,
+        route.shortName,
+        route.longName,
+        displayRouteName(route),
+        routeGroupLabel(route)
+    ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function routeStyleVars(route, colorVar = "--badge-bg") {
+    return `${colorVar}: ${routeColor(route)}; --badge-bg: ${routeColor(route)}; --badge-fg: ${routeTextColor(route)};`;
+}
+
+function routeButtonHtml(route) {
+    return `
+        <span class="route-badge" style="${routeStyleVars(route)}" aria-hidden="true">${escapeHtml(routeBadgeLabel(route))}</span>
+        <span class="route-picker-text">
+            <span class="route-picker-name">${escapeHtml(routeTitle(route))}</span>
+            <span class="route-picker-meta">${escapeHtml(routeMeta(route))}</span>
+        </span>
+    `;
+}
+
+function renderRoutePickerSelection(route) {
+    if (!route) {
+        routePickerSelected.innerHTML = `
+            <span class="route-badge route-badge-placeholder" aria-hidden="true"></span>
+            <span class="route-picker-text">Loading routes...</span>
+        `;
+        return;
+    }
+
+    routePickerSelected.innerHTML = routeButtonHtml(route);
+}
+
+function renderRoutePickerOptions() {
+    const query = state.routeSearchQuery.trim().toLowerCase();
+    const routes = [...state.routes.values()].filter(route =>
+        !query || routeSearchText(route).includes(query)
+    );
+    const groups = new Map();
+
+    routes.forEach(route => {
+        const key = routeGroupKey(route);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(route);
+    });
+
+    const groupOrder = ["rapid", "commuter", "bus", "ferry", "other"];
+    routeOptions.innerHTML = groupOrder
+        .filter(key => groups.has(key))
+        .map(key => `
+            <div class="route-group">
+                <div class="route-group-label">${escapeHtml(routeGroupLabel(key))}</div>
+                ${groups.get(key).map(route => routeOptionHtml(route)).join("")}
+            </div>
+        `).join("");
+
+    routeEmpty.hidden = routes.length > 0;
+    routeOptions.hidden = routes.length === 0;
+    updateActiveRouteOption();
+}
+
+function routeOptionHtml(route) {
+    const selected = route.id === state.selectedRouteId;
+    const active = route.id === state.activeRouteId;
+    return `
+        <button id="route-option-${escapeHtml(route.id)}" class="route-option${selected ? " is-selected" : ""}${active ? " is-active" : ""}" type="button" role="option" aria-selected="${selected}" data-route-id="${escapeHtml(route.id)}" style="${routeStyleVars(route, "--option-color")}">
+            <span class="route-option-content">
+                <span class="route-badge" aria-hidden="true">${escapeHtml(routeBadgeLabel(route))}</span>
+                <span class="route-option-text">
+                    <span class="route-option-name">${escapeHtml(routeTitle(route))}</span>
+                    <span class="route-option-meta">${escapeHtml(routeMeta(route))}</span>
+                </span>
+            </span>
+            <span class="route-option-check${selected ? " is-visible" : ""}" aria-hidden="true"></span>
+        </button>
+    `;
+}
+
+function setRoutePickerExpanded(expanded) {
+    if (expanded && !state.routes.size) return;
+
+    state.routePickerExpanded = expanded;
+    routePickerMenu.hidden = !expanded;
+    routePanel.classList.toggle("is-route-picker-open", expanded);
+    routePickerButton.setAttribute("aria-expanded", String(expanded));
+
+    if (expanded) {
+        state.activeRouteId = state.selectedRouteId;
+        renderRoutePickerOptions();
+        window.setTimeout(() => {
+            routeSearch.focus();
+            scrollActiveRouteOptionIntoView();
+        }, 0);
+    } else {
+        state.routeSearchQuery = "";
+        routeSearch.value = "";
+        state.activeRouteId = null;
+        routePickerButton.removeAttribute("aria-activedescendant");
+    }
+}
+
+function visibleRouteIds() {
+    return [...routeOptions.querySelectorAll(".route-option")].map(button => button.dataset.routeId);
+}
+
+function moveActiveRoute(delta) {
+    const routeIds = visibleRouteIds();
+    if (!routeIds.length) return;
+
+    const currentIndex = routeIds.indexOf(state.activeRouteId);
+    const nextIndex = currentIndex === -1
+        ? (delta > 0 ? 0 : routeIds.length - 1)
+        : (currentIndex + delta + routeIds.length) % routeIds.length;
+
+    state.activeRouteId = routeIds[nextIndex];
+    updateActiveRouteOption();
+    scrollActiveRouteOptionIntoView();
+}
+
+function updateActiveRouteOption() {
+    routeOptions.querySelectorAll(".route-option").forEach(button => {
+        const isActive = button.dataset.routeId === state.activeRouteId;
+        button.classList.toggle("is-active", isActive);
+        if (isActive) {
+            routePickerButton.setAttribute("aria-activedescendant", button.id);
+        }
+    });
+}
+
+function scrollActiveRouteOptionIntoView() {
+    const activeButton = routeOptions.querySelector(".route-option.is-active");
+    if (!activeButton) return;
+
+    const optionTop = activeButton.offsetTop;
+    const optionBottom = optionTop + activeButton.offsetHeight;
+    const viewportTop = routeOptions.scrollTop;
+    const viewportBottom = viewportTop + routeOptions.clientHeight;
+
+    if (optionTop < viewportTop) {
+        routeOptions.scrollTop = optionTop;
+    } else if (optionBottom > viewportBottom) {
+        routeOptions.scrollTop = optionBottom - routeOptions.clientHeight;
+    }
+}
+
+function chooseActiveRoute() {
+    const routeId = state.activeRouteId;
+    if (!routeId) return;
+
+    routeFilter.value = routeId;
+    setRoutePickerExpanded(false);
+    selectRoute(routeId, { updateUrl: true, fitRoute: true });
 }
 
 function directionLabel(route, directionId) {
@@ -455,21 +679,36 @@ async function getRepresentativeShapeIds(routeId) {
         .filter(item => item.type === "trip")
         .map(trip => [trip.id, trip]));
 
-    const patterns = json.data || [];
+    const patterns = (json.data || []).filter(pattern =>
+        pattern.relationships?.route?.data?.id === routeId
+    );
     const typicalPatterns = patterns.filter(pattern => pattern.attributes?.typicality === 1);
     const canonicalPatterns = patterns.filter(pattern => pattern.attributes?.canonical);
     const selectedPatterns = typicalPatterns.length
         ? typicalPatterns
         : (canonicalPatterns.length ? canonicalPatterns : patterns);
 
-    const shapeIds = selectedPatterns
+    const shapeInfo = selectedPatterns
         .map(pattern => {
             const tripId = pattern.relationships?.representative_trip?.data?.id;
-            return trips.get(tripId)?.relationships?.shape?.data?.id;
+            return {
+                id: trips.get(tripId)?.relationships?.shape?.data?.id,
+                directionId: pattern.attributes?.direction_id
+            };
         })
-        .filter(Boolean);
+        .filter(shape => shape.id);
 
-    return [...new Set(shapeIds)];
+    return [...new Map(shapeInfo.map(shape => [shape.id, shape])).values()];
+}
+
+function canonicalShapeId(shapeId) {
+    if (!shapeId) return null;
+    return String(shapeId).replace(/^canonical-/, "");
+}
+
+function shapeIdMatches(segmentShapeId, vehicleShapeId) {
+    if (!segmentShapeId || !vehicleShapeId) return false;
+    return canonicalShapeId(segmentShapeId) === canonicalShapeId(vehicleShapeId);
 }
 
 /* ====================== */
@@ -498,19 +737,111 @@ function vehicleOffsetForDirection(bearing, directionId) {
     };
 }
 
-function clampVehicleOffset(offset, baseOffset) {
-    const shiftX = offset.x - baseOffset.x;
-    const shiftY = offset.y - baseOffset.y;
-    const shiftDistance = Math.hypot(shiftX, shiftY);
+function normalizeVector(vector) {
+    const length = Math.hypot(vector.x, vector.y);
+    if (!length) return null;
+    return { x: vector.x / length, y: vector.y / length };
+}
 
-    if (shiftDistance <= VEHICLE_MAX_COLLISION_SHIFT_PX || shiftDistance === 0) {
-        return offset;
+function rotateVector(vector, degrees) {
+    const radians = degrees * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+        x: vector.x * cos - vector.y * sin,
+        y: vector.x * sin + vector.y * cos
+    };
+}
+
+function rotateOffsetOnSameSide(baseOffset, degrees) {
+    const rotated = rotateVector(baseOffset, degrees);
+    return rotated.x * baseOffset.x + rotated.y * baseOffset.y > 0 ? rotated : null;
+}
+
+function bearingToScreenVector(bearing) {
+    const radians = bearing * Math.PI / 180;
+    return {
+        x: Math.sin(radians),
+        y: -Math.cos(radians)
+    };
+}
+
+function findNearestRouteSegment(anchor, predicate) {
+    let nearest = null;
+
+    state.routeShapeSegments.forEach(segment => {
+        if (predicate && !predicate(segment)) return;
+
+        const start = map.latLngToLayerPoint(segment.start);
+        const end = map.latLngToLayerPoint(segment.end);
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSq = dx * dx + dy * dy;
+        if (!lengthSq) return;
+
+        const t = Math.max(0, Math.min(1, ((anchor.x - start.x) * dx + (anchor.y - start.y) * dy) / lengthSq));
+        const projectedX = start.x + dx * t;
+        const projectedY = start.y + dy * t;
+        const distanceSq = (anchor.x - projectedX) ** 2 + (anchor.y - projectedY) ** 2;
+
+        if (!nearest || distanceSq < nearest.distanceSq) {
+            nearest = {
+                distanceSq,
+                vector: normalizeVector({ x: dx, y: dy })
+            };
+        }
+    });
+
+    return nearest;
+}
+
+function nearestRouteSegment(anchor, shapeId = null, directionId = null) {
+    const hasDirection = directionId === 0 || directionId === 1;
+    const sameShape = segment => shapeIdMatches(segment.shapeId, shapeId);
+    const sameDirection = segment => segment.directionId === directionId;
+
+    if (shapeId && hasDirection) {
+        const nearest = findNearestRouteSegment(anchor, segment => sameShape(segment) && sameDirection(segment));
+        if (nearest) return nearest.vector;
     }
 
-    const scale = VEHICLE_MAX_COLLISION_SHIFT_PX / shiftDistance;
+    if (shapeId) {
+        const nearest = findNearestRouteSegment(anchor, sameShape);
+        if (nearest) return nearest.vector;
+    }
+
+    if (hasDirection) {
+        const nearest = findNearestRouteSegment(anchor, sameDirection);
+        if (nearest) return nearest.vector;
+    }
+
+    return findNearestRouteSegment(anchor)?.vector || null;
+}
+
+function vehicleBaseOffset(record, anchor) {
+    const attributes = record.vehicle.attributes || {};
+    const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
+    const fallbackOffset = vehicleOffsetForDirection(bearing ?? 0, attributes.direction_id);
+    const routeVector = nearestRouteSegment(anchor, record.shapeId, attributes.direction_id);
+
+    if (!routeVector) {
+        return fallbackOffset;
+    }
+
+    let travelVector = routeVector;
+    const bearingVector = bearing === null ? null : bearingToScreenVector(bearing);
+    if (bearingVector && travelVector.x * bearingVector.x + travelVector.y * bearingVector.y < 0) {
+        travelVector = { x: -travelVector.x, y: -travelVector.y };
+    }
+
+    // Vehicle-circle layout rule:
+    // 1. The default circle position is on the right side of the actual travel direction.
+    // 2. The travel direction comes from the nearest rendered route segment, corrected with the vehicle bearing when available.
+    // 3. Therefore the leader line starts perpendicular to the current route segment; overlap handling may rotate it later.
+    const rightNormal = { x: -travelVector.y, y: travelVector.x };
     return {
-        x: baseOffset.x + shiftX * scale,
-        y: baseOffset.y + shiftY * scale
+        x: rightNormal.x * VEHICLE_OFFSET_PX,
+        y: rightNormal.y * VEHICLE_OFFSET_PX
     };
 }
 
@@ -528,16 +859,15 @@ function resolveVehicleOffsets(records) {
         .map((record, index) => {
             const attributes = record.vehicle.attributes || {};
             const anchor = map.latLngToLayerPoint([attributes.latitude, attributes.longitude]);
-            const baseOffset = vehicleOffsetForDirection(
-                Number.isFinite(attributes.bearing) ? attributes.bearing : 0,
-                attributes.direction_id
-            );
+            const baseOffset = vehicleBaseOffset(record, anchor);
 
             return {
                 index,
                 anchor,
                 baseOffset,
                 offset: { ...baseOffset },
+                rotation: 0,
+                directionId: attributes.direction_id,
                 participates: visibleBounds.contains(anchor)
             };
         });
@@ -551,36 +881,44 @@ function resolveVehicleOffsets(records) {
             for (let j = i + 1; j < activeItems.length; j += 1) {
                 const a = activeItems[i];
                 const b = activeItems[j];
+                if ((a.directionId !== 0 && a.directionId !== 1) || a.directionId !== b.directionId) continue;
+
                 const ax = a.anchor.x + a.offset.x;
                 const ay = a.anchor.y + a.offset.y;
                 const bx = b.anchor.x + b.offset.x;
                 const by = b.anchor.y + b.offset.y;
-                let dx = bx - ax;
-                let dy = by - ay;
-                let distance = Math.hypot(dx, dy);
+                const distance = Math.hypot(bx - ax, by - ay);
 
                 if (distance >= minDistance) continue;
 
-                if (distance < 0.1) {
-                    const angle = ((a.index + b.index + iteration) * 137.508) * Math.PI / 180;
-                    dx = Math.cos(angle);
-                    dy = Math.sin(angle);
-                    distance = 1;
+                // Same-direction overlap rule:
+                // Keep each circle on its own fixed-radius path around the true vehicle point.
+                // When two same-direction circles collide, rotate them in opposite directions.
+                // This intentionally allows the leader line to deviate from perpendicular only while avoiding overlap.
+                const aSign = a.index <= b.index ? -1 : 1;
+                const bSign = -aSign;
+                const nextARotation = Math.max(
+                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
+                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, a.rotation + aSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
+                );
+                const nextBRotation = Math.max(
+                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
+                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, b.rotation + bSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
+                );
+
+                const nextAOffset = rotateOffsetOnSameSide(a.baseOffset, nextARotation);
+                const nextBOffset = rotateOffsetOnSameSide(b.baseOffset, nextBRotation);
+
+                if (nextARotation !== a.rotation && nextAOffset) {
+                    a.rotation = nextARotation;
+                    a.offset = nextAOffset;
+                    moved = true;
                 }
-
-                const push = (minDistance - distance) / 2;
-                const nx = dx / distance;
-                const ny = dy / distance;
-
-                a.offset = clampVehicleOffset({
-                    x: a.offset.x - nx * push,
-                    y: a.offset.y - ny * push
-                }, a.baseOffset);
-                b.offset = clampVehicleOffset({
-                    x: b.offset.x + nx * push,
-                    y: b.offset.y + ny * push
-                }, b.baseOffset);
-                moved = true;
+                if (nextBRotation !== b.rotation && nextBOffset) {
+                    b.rotation = nextBRotation;
+                    b.offset = nextBOffset;
+                    moved = true;
+                }
             }
         }
 
@@ -602,14 +940,20 @@ function resolveVehicleOffsets(records) {
                 }
 
                 const push = stopMinDistance - distance;
-                const nx = dx / distance;
-                const ny = dy / distance;
+                const direction = item.index % 2 === 0 ? 1 : -1;
+                const rotationStep = Math.max(VEHICLE_COLLISION_ROTATION_STEP_DEG, push / 2);
+                const nextRotation = Math.max(
+                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
+                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, item.rotation + direction * rotationStep)
+                );
 
-                item.offset = clampVehicleOffset({
-                    x: item.offset.x + nx * push,
-                    y: item.offset.y + ny * push
-                }, item.baseOffset);
-                moved = true;
+                const nextOffset = rotateOffsetOnSameSide(item.baseOffset, nextRotation);
+
+                if (nextRotation !== item.rotation && nextOffset) {
+                    item.rotation = nextRotation;
+                    item.offset = nextOffset;
+                    moved = true;
+                }
             });
         });
 
@@ -723,6 +1067,34 @@ function createUserLocationIcon() {
     });
 }
 
+function setFollowUserLocation(isFollowing) {
+    state.followUserLocation = isFollowing && Boolean(state.userLocation);
+    document.body.classList.toggle("is-following-user", state.followUserLocation);
+    locateUserButton.classList.toggle("is-following", state.followUserLocation);
+    locateUserButton.setAttribute("aria-pressed", String(state.followUserLocation));
+    locateUserButton.title = state.followUserLocation ? "Stop following my location" : "My location";
+}
+
+function setUserLocationAvailable(isAvailable) {
+    locateUserButton.hidden = false;
+    locateUserButton.classList.toggle("is-unavailable", !isAvailable);
+    locateUserButton.setAttribute("aria-disabled", String(!isAvailable));
+    if (!isAvailable) {
+        setFollowUserLocation(false);
+    }
+}
+
+function centerMapOnUser(latLng, zoom = map.getZoom()) {
+    state.isProgrammaticMapMove = true;
+    map.setView(latLng, zoom, { animate: true });
+    map.once("moveend", () => {
+        state.isProgrammaticMapMove = false;
+    });
+    window.setTimeout(() => {
+        state.isProgrammaticMapMove = false;
+    }, 500);
+}
+
 /* ====================== */
 /* ======= ROUTES ======= */
 /* ====================== */
@@ -747,6 +1119,8 @@ async function loadRoutes() {
     });
 
     routeFilter.disabled = false;
+    routePickerButton.disabled = false;
+    renderRoutePickerOptions();
     return routes;
 }
 
@@ -764,6 +1138,7 @@ async function initializeRoutes() {
     }
 
     routeFilter.value = initialRoute;
+    renderRoutePickerSelection(state.routes.get(initialRoute));
     await selectRoute(initialRoute, { updateUrl: false, fitRoute: true });
 }
 
@@ -772,11 +1147,16 @@ async function selectRoute(routeId, options = {}) {
     if (!route) return;
 
     state.selectedRouteId = routeId;
+    routeFilter.value = routeId;
     state.routeRequestId += 1;
     state.hasFitRoute = false;
     const requestId = state.routeRequestId;
 
     setRouteTheme(route);
+    renderRoutePickerSelection(route);
+    if (state.routePickerExpanded) {
+        renderRoutePickerOptions();
+    }
     renderDirectionLegend(route);
     setUpdated(`Loading ${displayRouteName(route)}...`);
     clearMapForRouteChange();
@@ -812,6 +1192,7 @@ function clearMapForRouteChange() {
     vehicleLayer.clearLayers();
     state.vehicleRecords = [];
     state.stops.clear();
+    state.routeShapeSegments = [];
 }
 
 /* ====================== */
@@ -819,7 +1200,7 @@ function clearMapForRouteChange() {
 /* ====================== */
 
 async function renderRouteShape(routeId, route, requestId, shouldFit) {
-    const [json, representativeShapeIds] = await Promise.all([
+    const [json, representativeShapeInfo] = await Promise.all([
         fetchMbta("/shapes", { "filter[route]": routeId }),
         getRepresentativeShapeIds(routeId).catch(error => {
             console.warn(`Unable to load representative route patterns for ${routeId}:`, error);
@@ -829,19 +1210,37 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
     if (!isCurrentRoute(routeId, requestId)) return;
 
     routeLayer.clearLayers();
+    state.routeShapeSegments = [];
 
     if (!json.data?.length) {
         console.warn(`No shape data found for route: ${routeId}`);
         return;
     }
 
-    const representativeShapeSet = new Set(representativeShapeIds);
-    const representativeShapes = json.data.filter(shape => representativeShapeSet.has(shape.id));
+    const representativeShapeSet = new Set(representativeShapeInfo.map(shape => shape.id));
+    const representativeDirectionByShape = new Map(representativeShapeInfo.map(shape => [
+        canonicalShapeId(shape.id),
+        shape.directionId
+    ]));
+    const representativeShapes = json.data.filter(shape =>
+        representativeShapeSet.has(shape.id)
+            || representativeShapeInfo.some(representativeShape => shapeIdMatches(shape.id, representativeShape.id))
+    );
     const shapes = representativeShapes.length ? representativeShapes : json.data;
 
     shapes.forEach(shape => {
         const segment = decodePolyline(shape.attributes.polyline || "");
         if (!segment.length) return;
+        const directionId = representativeDirectionByShape.get(canonicalShapeId(shape.id));
+
+        for (let index = 0; index < segment.length - 1; index += 1) {
+            state.routeShapeSegments.push({
+                shapeId: shape.id,
+                directionId,
+                start: segment[index],
+                end: segment[index + 1]
+            });
+        }
 
         L.polyline(segment, {
             color: routeColor(route),
@@ -1067,7 +1466,10 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
 
         const tripLookup = new Map((json.included || [])
             .filter(item => item.type === "trip")
-            .map(trip => [trip.id, trip.attributes.headsign]));
+            .map(trip => [trip.id, {
+                headsign: trip.attributes.headsign,
+                shapeId: trip.relationships?.shape?.data?.id
+            }]));
 
         vehicleLayer.clearLayers();
         state.vehicleRecords = [];
@@ -1083,6 +1485,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const attributes = vehicle.attributes;
             const position = [attributes.latitude, attributes.longitude];
             const tripId = vehicle.relationships?.trip?.data?.id;
+            const trip = tripLookup.get(tripId);
             const directionId = attributes.direction_id;
             if (directionId === 0 || directionId === 1) {
                 vehicleCounts[directionId] += 1;
@@ -1092,9 +1495,9 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
                 icon: createVehicleIcon(vehicle, route, stopInfo),
                 zIndexOffset: stopInfo ? 1200 : 1000
             }).addTo(vehicleLayer);
-            state.vehicleRecords.push({ marker, vehicle, route, stopInfo });
+            state.vehicleRecords.push({ marker, vehicle, route, stopInfo, shapeId: trip?.shapeId });
 
-            const headsign = tripLookup.get(tripId)
+            const headsign = trip?.headsign
                 || route?.directionDestinations?.[directionId]
                 || "Unknown destination";
             const status = attributes.current_status
@@ -1139,39 +1542,70 @@ function restartVehiclePolling() {
 /* ====================== */
 
 function initializeGeolocation() {
+    setUserLocationAvailable(false);
+
     if (!("geolocation" in navigator)) return;
 
-    navigator.geolocation.getCurrentPosition(
-        position => {
-            const latLng = [position.coords.latitude, position.coords.longitude];
-            state.userLocation = latLng;
-            userLayer.clearLayers();
-            state.userMarker = L.marker(latLng, {
-                icon: createUserLocationIcon(),
-                zIndexOffset: 500
-            }).addTo(userLayer).bindPopup('<span class="popup-title">Your location</span>');
-            locateUserButton.hidden = false;
+    if (state.userWatchId !== null) {
+        navigator.geolocation.clearWatch(state.userWatchId);
+        state.userWatchId = null;
+    }
 
-            if (!state.hasFitRoute) {
-                map.setView(latLng, 13);
-            }
-        },
+    state.userWatchId = navigator.geolocation.watchPosition(
+        updateUserLocation,
         error => {
             console.log("Using default location:", error.message);
+            setUserLocationAvailable(false);
         },
         {
-            timeout: 5000,
-            maximumAge: 60000
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
         }
     );
 }
 
-locateUserButton.addEventListener("click", () => {
-    if (!state.userLocation) return;
+function updateUserLocation(position) {
+    const latLng = [position.coords.latitude, position.coords.longitude];
+    const isFirstLocation = !state.userLocation;
 
-    map.setView(state.userLocation, 15);
+    state.userLocation = latLng;
+    setUserLocationAvailable(true);
+
     if (state.userMarker) {
+        state.userMarker.setLatLng(latLng);
+    } else {
+        state.userMarker = L.marker(latLng, {
+            icon: createUserLocationIcon(),
+            zIndexOffset: 500
+        }).addTo(userLayer).bindPopup('<span class="popup-title">Your location</span>');
+    }
+
+    if (state.followUserLocation) {
+        centerMapOnUser(latLng);
+    } else if (isFirstLocation && !state.hasFitRoute) {
+        centerMapOnUser(latLng, 13);
+    }
+}
+
+locateUserButton.addEventListener("click", () => {
+    if (!state.userLocation) {
+        initializeGeolocation();
+        return;
+    }
+
+    if (state.followUserLocation) {
+        setFollowUserLocation(false);
+    } else {
+        setFollowUserLocation(true);
+        centerMapOnUser(state.userLocation, Math.max(map.getZoom(), 15));
         state.userMarker.openPopup();
+    }
+});
+
+map.on("dragstart zoomstart", () => {
+    if (!state.isProgrammaticMapMove) {
+        setFollowUserLocation(false);
     }
 });
 
@@ -1181,6 +1615,59 @@ locateUserButton.addEventListener("click", () => {
 
 routeFilter.addEventListener("change", () => {
     selectRoute(routeFilter.value, { updateUrl: true, fitRoute: true });
+});
+
+routePickerButton.addEventListener("click", event => {
+    event.stopPropagation();
+    setRoutePickerExpanded(!state.routePickerExpanded);
+});
+
+routePickerButton.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setRoutePickerExpanded(true);
+        moveActiveRoute(event.key === "ArrowDown" ? 1 : -1);
+    }
+});
+
+routeSearch.addEventListener("input", () => {
+    state.routeSearchQuery = routeSearch.value;
+    state.activeRouteId = state.selectedRouteId;
+    renderRoutePickerOptions();
+
+    if (!routeOptions.querySelector(".route-option.is-active")) {
+        state.activeRouteId = visibleRouteIds()[0] || null;
+        updateActiveRouteOption();
+    }
+});
+
+routeSearch.addEventListener("keydown", event => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveActiveRoute(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+        event.preventDefault();
+        chooseActiveRoute();
+    } else if (event.key === "Escape") {
+        setRoutePickerExpanded(false);
+        routePickerButton.focus();
+    }
+});
+
+routeOptions.addEventListener("click", event => {
+    const option = event.target.closest(".route-option");
+    if (!option) return;
+
+    state.activeRouteId = option.dataset.routeId;
+    chooseActiveRoute();
+});
+
+routeOptions.addEventListener("mousemove", event => {
+    const option = event.target.closest(".route-option");
+    if (!option || state.activeRouteId === option.dataset.routeId) return;
+
+    state.activeRouteId = option.dataset.routeId;
+    updateActiveRouteOption();
 });
 
 basemapToggle.addEventListener("click", event => {
@@ -1197,6 +1684,10 @@ basemapOptionButtons.forEach(button => {
 });
 
 document.addEventListener("click", event => {
+    if (!routePicker.contains(event.target)) {
+        setRoutePickerExpanded(false);
+    }
+
     if (!basemapPicker.contains(event.target)) {
         setBasemapPickerExpanded(false);
     }
@@ -1204,6 +1695,7 @@ document.addEventListener("click", event => {
 
 document.addEventListener("keydown", event => {
     if (event.key === "Escape") {
+        setRoutePickerExpanded(false);
         setBasemapPickerExpanded(false);
     }
 });
@@ -1217,6 +1709,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
         console.error(error);
         routeFilter.disabled = true;
+        routePickerButton.disabled = true;
         setUpdated("Last updated: fetch error");
     }
 });

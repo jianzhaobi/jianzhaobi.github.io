@@ -30,8 +30,9 @@ html, body {
     --locate-inset: 12px;
     --basemap-size: 68px;
     --map-control-size: 34px;
+    --map-control-outer-size: calc(var(--map-control-size) + 2px);
     --map-control-gap: 10px;
-    --zoom-control-height: calc(var(--map-control-size) * 2 + 1px);
+    --zoom-control-height: calc(var(--map-control-size) * 2 + 2px);
     --right-control-inset: calc(var(--safe-right) + var(--locate-inset));
 }
 
@@ -52,6 +53,10 @@ html, body {
     overflow-y: auto;
 }
 
+.route-panel.is-route-picker-open {
+    overflow: visible;
+}
+
 .route-label {
     display: block;
     margin-bottom: 6px;
@@ -62,7 +67,245 @@ html, body {
     color: #56616d;
 }
 
-#routeFilter,
+.route-filter-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.route-picker {
+    position: relative;
+}
+
+.route-picker-button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    padding: 7px 10px;
+    color: #17202a;
+    background: #ffffff;
+    border: 1px solid #c8d2dc;
+    border-left: 5px solid var(--route-color);
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.65), 0 2px 8px rgba(20, 31, 43, 0.08);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.route-picker-button:hover:not(:disabled),
+.route-picker-button[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--route-color) 42%, #c8d2dc);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--route-color) 17%, transparent), 0 7px 18px rgba(20, 31, 43, 0.14);
+}
+
+.route-picker-button:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--route-color) 26%, transparent);
+    outline-offset: 2px;
+}
+
+.route-picker-button:disabled {
+    color: #6f7a85;
+    background: #f3f6f8;
+    border-left-color: #aeb8c2;
+    cursor: default;
+    box-shadow: none;
+}
+
+.route-picker-selected,
+.route-option-content {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    align-items: center;
+    min-width: 0;
+}
+
+.route-picker-text,
+.route-option-text {
+    min-width: 0;
+}
+
+.route-picker-name,
+.route-option-name {
+    display: block;
+    overflow: hidden;
+    color: #17202a;
+    font-size: 15px;
+    font-weight: 750;
+    line-height: 1.18;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-picker-meta,
+.route-option-meta {
+    display: block;
+    margin-top: 2px;
+    overflow: hidden;
+    color: #61707e;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.15;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-badge {
+    display: inline-grid;
+    min-width: 32px;
+    height: 28px;
+    box-sizing: border-box;
+    place-items: center;
+    padding: 0 7px;
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    border-radius: 999px;
+    background: var(--badge-bg, var(--route-color));
+    color: var(--badge-fg, var(--route-text-color));
+    font-size: 13px;
+    font-weight: 850;
+    line-height: 1;
+    box-shadow: 0 0 0 1px rgba(20, 31, 43, 0.18), 0 2px 7px rgba(20, 31, 43, 0.16);
+}
+
+.route-badge-placeholder {
+    background: #aeb8c2;
+}
+
+.route-picker-chevron {
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid #293542;
+    border-bottom: 2px solid #293542;
+    transform: translateY(-2px) rotate(45deg);
+}
+
+.route-picker-button[aria-expanded="true"] .route-picker-chevron {
+    transform: translateY(2px) rotate(225deg);
+}
+
+.route-picker-menu {
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 0;
+    right: 0;
+    z-index: 1010;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(99, 112, 125, 0.24);
+    border-radius: 8px;
+    box-shadow: 0 18px 42px rgba(20, 31, 43, 0.28);
+    backdrop-filter: blur(10px);
+}
+
+.route-picker-menu[hidden] {
+    display: none;
+}
+
+.route-search-wrap {
+    padding: 8px;
+    border-bottom: 1px solid #e1e7ed;
+    background: #f8fafc;
+}
+
+.route-search {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 34px;
+    padding: 7px 9px;
+    color: #17202a;
+    background: #ffffff;
+    border: 1px solid #cfd7df;
+    border-radius: 7px;
+    font-size: 14px;
+}
+
+.route-search:focus {
+    border-color: var(--route-color);
+    outline: 3px solid color-mix(in srgb, var(--route-color) 18%, transparent);
+}
+
+.route-options {
+    max-height: min(390px, calc(100vh - var(--safe-top) - var(--safe-bottom) - 166px));
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.route-group + .route-group {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #e7ecf1;
+}
+
+.route-group-label {
+    padding: 5px 8px 4px;
+    color: #697684;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.route-option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    min-height: 42px;
+    box-sizing: border-box;
+    padding: 6px 7px;
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    color: #17202a;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.route-option:hover,
+.route-option.is-active {
+    background: color-mix(in srgb, var(--option-color) 14%, #ffffff);
+}
+
+.route-option.is-selected {
+    background: color-mix(in srgb, var(--option-color) 18%, #ffffff);
+}
+
+.route-option-check {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    color: var(--option-color);
+}
+
+.route-option-check.is-visible::before {
+    content: "";
+    width: 8px;
+    height: 13px;
+    border-right: 3px solid currentColor;
+    border-bottom: 3px solid currentColor;
+    transform: translateY(-1px) rotate(45deg);
+}
+
+.route-empty {
+    padding: 16px 12px 18px;
+    color: #65717d;
+    font-size: 13px;
+    font-weight: 650;
+    text-align: center;
+}
+
 .panel-select {
     width: 100%;
     box-sizing: border-box;
@@ -75,7 +318,6 @@ html, body {
     border-radius: 6px;
 }
 
-#routeFilter:disabled,
 .panel-select:disabled {
     color: #6f7a85;
     background: #f3f6f8;
@@ -204,14 +446,16 @@ html, body {
 }
 
 .locate-user {
+    --locate-icon-color: #17202a;
     position: fixed;
     right: var(--right-control-inset);
     top: calc(50% + (var(--zoom-control-height) / 2) + var(--map-control-gap));
     z-index: 1000;
     display: grid;
-    width: var(--map-control-size);
-    height: var(--map-control-size);
+    width: var(--map-control-outer-size);
+    height: var(--map-control-outer-size);
     place-items: center;
+    box-sizing: border-box;
     padding: 0;
     border: 1px solid rgba(92, 104, 116, 0.28);
     border-radius: 8px;
@@ -221,6 +465,14 @@ html, body {
     cursor: pointer;
     touch-action: manipulation;
     backdrop-filter: blur(8px);
+}
+
+.locate-user.is-following {
+    --locate-icon-color: #1677ff;
+}
+
+.locate-user.is-unavailable {
+    --locate-icon-color: #a7b0ba;
 }
 
 .locate-user[hidden] {
@@ -314,14 +566,14 @@ html, body {
 .locate-user::before {
     width: 16px;
     height: 16px;
-    border: 2px solid #17202a;
+    border: 2px solid var(--locate-icon-color);
     border-radius: 50%;
 }
 
 .locate-user::after {
     width: 6px;
     height: 6px;
-    background: #111820;
+    background: var(--locate-icon-color);
     border-radius: 50%;
 }
 
@@ -329,10 +581,10 @@ html, body {
     width: 23px;
     height: 23px;
     background:
-        linear-gradient(#17202a, #17202a) center top / 2px 5px no-repeat,
-        linear-gradient(#17202a, #17202a) center bottom / 2px 5px no-repeat,
-        linear-gradient(#17202a, #17202a) left center / 5px 2px no-repeat,
-        linear-gradient(#17202a, #17202a) right center / 5px 2px no-repeat;
+        linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) center top / 2px 5px no-repeat,
+        linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) center bottom / 2px 5px no-repeat,
+        linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) left center / 5px 2px no-repeat,
+        linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) right center / 5px 2px no-repeat;
 }
 
 .tracker-credit {
@@ -480,10 +732,26 @@ html, body {
     transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y)));
 }
 
+.vehicle-marker::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .vehicle-symbol {
+    position: relative;
+    z-index: 1;
     width: 17px;
     height: 17px;
     overflow: visible;
+}
+
+.vehicle-train .vehicle-symbol {
+    transform: translateY(-1px);
 }
 
 .vehicle-symbol rect,
@@ -519,15 +787,23 @@ html, body {
 .vehicle-offset-marker.near-stop .vehicle-marker {
     box-shadow:
         0 1.5px 4px rgba(20, 31, 43, 0.24),
-        0 0 0 1px rgba(20, 31, 43, 0.14),
-        0 0 0 2px color-mix(in srgb, var(--vehicle-color) 16%, transparent);
+        0 0 0 1px rgba(20, 31, 43, 0.14);
 }
 
 .vehicle-offset-marker.at-stop .vehicle-marker {
     box-shadow:
         0 1.5px 4px rgba(20, 31, 43, 0.24),
-        0 0 0 1px rgba(20, 31, 43, 0.14),
-        0 0 0 3px color-mix(in srgb, var(--vehicle-color) 24%, transparent);
+        0 0 0 1px rgba(20, 31, 43, 0.14);
+}
+
+.vehicle-offset-marker.near-stop .vehicle-marker::after {
+    --vehicle-halo-color: color-mix(in srgb, var(--vehicle-color) 24%, transparent);
+    animation: vehicle-stop-halo-breathe 1.9s ease-in-out infinite;
+}
+
+.vehicle-offset-marker.at-stop .vehicle-marker::after {
+    --vehicle-halo-color: color-mix(in srgb, var(--vehicle-color) 34%, transparent);
+    animation: vehicle-stop-halo-breathe 1.65s ease-in-out infinite;
 }
 
 .vehicle-hit-target {
@@ -544,6 +820,52 @@ html, body {
     border: 3px solid #ffffff;
     border-radius: 50%;
     box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.45), 0 4px 10px rgba(20, 31, 43, 0.32);
+}
+
+.is-following-user .user-location-marker {
+    animation: user-location-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes user-location-breathe {
+    0%,
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.45), 0 4px 10px rgba(20, 31, 43, 0.32);
+    }
+
+    50% {
+        transform: scale(1.28);
+        box-shadow: 0 0 0 7px rgba(22, 119, 255, 0.16), 0 6px 14px rgba(20, 31, 43, 0.28);
+    }
+}
+
+@keyframes vehicle-stop-halo-breathe {
+    0%,
+    100% {
+        opacity: 0.72;
+        transform: scale(1);
+        box-shadow: 0 0 0 2px var(--vehicle-halo-color);
+    }
+
+    50% {
+        opacity: 0.18;
+        transform: scale(1.72);
+        box-shadow: 0 0 0 6px var(--vehicle-halo-color);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .is-following-user .user-location-marker {
+        animation: none;
+    }
+
+    .vehicle-offset-marker.near-stop .vehicle-marker::after,
+    .vehicle-offset-marker.at-stop .vehicle-marker::after {
+        animation: none;
+        opacity: 0.42;
+        transform: scale(1.28);
+        box-shadow: 0 0 0 4px var(--vehicle-halo-color);
+    }
 }
 
 .stop-marker {
