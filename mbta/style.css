@@ -157,28 +157,29 @@ html, body {
 
 .direction-chip {
     display: inline-grid;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     place-items: center;
     border-radius: 50%;
-    color: #1f2933;
+    color: transparent;
     font-size: 12px;
     font-weight: 800;
-    border: 2px solid #58636f;
+    border: 3px solid #ffffff;
     box-sizing: border-box;
-    box-shadow: 0 1px 4px rgba(20, 31, 43, 0.2);
+    background: var(--direction-color, #6b7280);
+    box-shadow: 0 0 0 1px rgba(38, 48, 60, 0.28), 0 1px 4px rgba(20, 31, 43, 0.2);
 }
 
 .direction-chip.direction-0 {
-    background: #fbfcfd;
+    background: var(--direction-0-color);
 }
 
 .direction-chip.direction-1 {
-    background: #d5dbe1;
+    background: var(--direction-1-color);
 }
 
 .direction-chip.direction-unknown {
-    background: #eef1f4;
+    background: #6b7280;
 }
 
 .direction-text {
@@ -412,39 +413,126 @@ html, body {
     color: #65717d;
 }
 
+.vehicle-offset-marker {
+    width: 66px;
+    height: 66px;
+    position: relative;
+    --vehicle-color: #165c96;
+    --vehicle-x: 0px;
+    --vehicle-y: -26px;
+    pointer-events: auto;
+}
+
+.vehicle-leader,
+.vehicle-hit-target {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+}
+
+.vehicle-leader {
+    z-index: 0;
+    pointer-events: none;
+}
+
+.vehicle-leader line {
+    stroke: #ffffff;
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    opacity: 0.7;
+}
+
+.vehicle-leader line + circle {
+    fill: #ffffff;
+    opacity: 0.95;
+}
+
+.vehicle-leader::after {
+    content: "";
+}
+
+.vehicle-offset-marker .vehicle-leader line {
+    stroke: color-mix(in srgb, var(--vehicle-color) 68%, #ffffff);
+}
+
+.vehicle-offset-marker .vehicle-leader circle {
+    fill: var(--vehicle-color);
+    stroke: #ffffff;
+    stroke-width: 1.8;
+}
+
 .vehicle-marker {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 3;
+    display: grid;
     width: 28px;
     height: 28px;
-    position: relative;
-    transform-origin: 50% 50%;
-    --vehicle-accent: #165c96;
-    --vehicle-core: #e1e5e9;
-    --vehicle-stroke: #58636f;
+    place-items: center;
+    box-sizing: border-box;
+    color: var(--vehicle-color);
+    background: var(--vehicle-color);
+    border: 3px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y)));
 }
 
-.vehicle-arrow {
-    position: absolute;
-    inset: -2px;
-    z-index: 3;
+.vehicle-symbol {
+    width: 20px;
+    height: 20px;
     overflow: visible;
-    filter: drop-shadow(0 1.5px 2.5px rgba(20, 31, 43, 0.28));
 }
 
-.vehicle-arrow-shape {
-    fill: var(--vehicle-core);
-    stroke: var(--vehicle-stroke);
-    stroke-width: 2.15;
+.vehicle-symbol rect,
+.vehicle-symbol path,
+.vehicle-symbol circle {
+    fill: #ffffff;
+}
+
+.vehicle-symbol path {
+    stroke: #ffffff;
+    stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
-    paint-order: stroke fill;
 }
 
-.vehicle-marker.near-stop .vehicle-arrow-shape {
-    stroke-width: 2.9;
+.vehicle-symbol .vehicle-cutout {
+    fill: var(--vehicle-color);
 }
 
-.vehicle-marker.at-stop .vehicle-arrow-shape {
-    stroke-width: 3.7;
+.vehicle-symbol .vehicle-rail {
+    fill: none;
+    stroke: #ffffff;
+}
+
+.vehicle-ferry .vehicle-symbol path {
+    fill: none;
+}
+
+.vehicle-offset-marker.direction-unknown .vehicle-marker {
+    background: #6b7280;
+}
+
+.vehicle-offset-marker.near-stop .vehicle-marker {
+    box-shadow:
+        0 1.5px 4px rgba(20, 31, 43, 0.24),
+        0 0 0 1px rgba(20, 31, 43, 0.14),
+        0 0 0 2px color-mix(in srgb, var(--vehicle-color) 16%, transparent);
+}
+
+.vehicle-offset-marker.at-stop .vehicle-marker {
+    box-shadow:
+        0 1.5px 4px rgba(20, 31, 43, 0.24),
+        0 0 0 1px rgba(20, 31, 43, 0.14),
+        0 0 0 3px color-mix(in srgb, var(--vehicle-color) 24%, transparent);
+}
+
+.vehicle-hit-target {
+    z-index: 3;
+    fill: transparent;
+    pointer-events: none;
 }
 
 .user-location-marker {

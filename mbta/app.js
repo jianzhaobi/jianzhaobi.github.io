@@ -33,6 +33,9 @@ const ROUTE_TYPE_ORDER = {
 const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const ESRI_ATTRIBUTION = "Tiles &copy; Esri - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const DEFAULT_BASEMAP = "light";
+const VEHICLE_OFFSET_PX = 26;
+const VEHICLE_ICON_SIZE = 66;
+const VEHICLE_MARKER_RADIUS_PX = 14;
 
 const BASEMAPS = {
     light: {
@@ -202,21 +205,25 @@ function relativeLuminance(hex) {
 function directionColor(route, directionId) {
     const base = routeColor(route);
     if (directionId === 0) {
-        return relativeLuminance(base) > 0.58 ? mixColor(base, "#000000", 0.28) : base;
+        return relativeLuminance(base) > 0.58 ? mixColor(base, "#000000", 0.22) : base;
     }
     if (directionId === 1) {
         return relativeLuminance(base) > 0.58
-            ? mixColor(base, "#000000", 0.48)
-            : mixColor(base, "#ffffff", 0.38);
+            ? mixColor(base, "#000000", 0.58)
+            : mixColor(base, "#ffffff", 0.42);
     }
     return "#6b7280";
+}
+
+function vehicleDirectionColor(route, directionId) {
+    return directionColor(route, directionId);
 }
 
 function setRouteTheme(route) {
     document.documentElement.style.setProperty("--route-color", routeColor(route));
     document.documentElement.style.setProperty("--route-text-color", routeTextColor(route));
-    document.documentElement.style.setProperty("--direction-0-color", directionColor(route, 0));
-    document.documentElement.style.setProperty("--direction-1-color", directionColor(route, 1));
+    document.documentElement.style.setProperty("--direction-0-color", vehicleDirectionColor(route, 0));
+    document.documentElement.style.setProperty("--direction-1-color", vehicleDirectionColor(route, 1));
 }
 
 function setUpdated(message) {
@@ -287,7 +294,7 @@ function directionLabel(route, directionId) {
     return `Direction ${directionId}`;
 }
 
-function renderDirectionLegend(route) {
+function renderDirectionLegend(route, vehicleCounts = {}) {
     const directionIds = [0, 1].filter(directionId =>
         route?.directionNames?.[directionId] || route?.directionDestinations?.[directionId]
     );
@@ -300,8 +307,8 @@ function renderDirectionLegend(route) {
 
     directionLegend.innerHTML = directionIds.map(directionId => `
         <div class="direction-row">
-            <span class="direction-chip direction-${directionId}">${directionId}</span>
-            <span class="direction-text">${escapeHtml(directionLabel(route, directionId))}</span>
+            <span class="direction-chip direction-${directionId}" style="--direction-color: ${vehicleDirectionColor(route, directionId)}" aria-hidden="true"></span>
+            <span class="direction-text">${escapeHtml(directionLabel(route, directionId))}${Number.isFinite(vehicleCounts[directionId]) ? ` · ${vehicleCounts[directionId]}` : ""}</span>
         </div>
     `).join("");
     directionLegend.hidden = false;
@@ -470,27 +477,85 @@ function createStopIcon(route) {
     });
 }
 
+function vehicleOffsetForDirection(bearing, directionId) {
+    if (directionId !== 0 && directionId !== 1) {
+        return { x: 0, y: -VEHICLE_OFFSET_PX };
+    }
+
+    const radians = bearing * Math.PI / 180;
+    return {
+        x: Math.round(Math.cos(radians) * VEHICLE_OFFSET_PX),
+        y: Math.round(Math.sin(radians) * VEHICLE_OFFSET_PX)
+    };
+}
+
+function vehicleModeClass(route) {
+    if (route?.type === 3) return "vehicle-bus";
+    if (route?.type === 4) return "vehicle-ferry";
+    return "vehicle-train";
+}
+
+function vehicleGlyph(route) {
+    if (route?.type === 3) {
+        return `
+            <rect x="8" y="7" width="20" height="22" rx="5"></rect>
+            <rect class="vehicle-cutout" x="11" y="10" width="14" height="7" rx="2"></rect>
+            <circle class="vehicle-cutout" cx="13" cy="25" r="2.3"></circle>
+            <circle class="vehicle-cutout" cx="23" cy="25" r="2.3"></circle>
+        `;
+    }
+    if (route?.type === 4) {
+        return `
+            <path d="M7 19.5H29L25.5 28H10.5Z"></path>
+            <path d="M11 14H25L27 19.5H9Z"></path>
+            <path d="M12 31C15 29 18 33 21 31C24 29 27 33 30 31"></path>
+        `;
+    }
+    return `
+        <rect x="10" y="6" width="16" height="22" rx="4"></rect>
+        <rect class="vehicle-cutout" x="13" y="10" width="10" height="8" rx="2"></rect>
+        <circle class="vehicle-cutout" cx="14" cy="24" r="2"></circle>
+        <circle class="vehicle-cutout" cx="22" cy="24" r="2"></circle>
+        <path class="vehicle-rail" d="M14 29L10 34M22 29L26 34M12 32H24"></path>
+    `;
+}
+
 function createVehicleIcon(vehicle, route, stopInfo) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
-    const markerAccent = directionColor(route, directionId);
     const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
-    const markerCore = directionId === 1 ? "#b8c0c8" : "#fbfcfd";
+    const markerAccent = vehicleDirectionColor(route, directionId);
+    const offset = vehicleOffsetForDirection(bearing, directionId);
+    const center = VEHICLE_ICON_SIZE / 2;
+    const leaderScale = (VEHICLE_OFFSET_PX - VEHICLE_MARKER_RADIUS_PX + 1) / VEHICLE_OFFSET_PX;
+    const leaderEndX = center + Math.round(offset.x * leaderScale);
+    const leaderEndY = center + Math.round(offset.y * leaderScale);
+    const markerCenterX = center + offset.x;
+    const markerCenterY = center + offset.y;
 
     return L.divIcon({
         className: "",
         html: `
-            <div class="vehicle-marker ${directionClass} ${stopClass}"
-                 style="--vehicle-accent: ${markerAccent}; --vehicle-core: ${markerCore}; transform: rotate(${bearing}deg);">
-                <svg class="vehicle-arrow" viewBox="0 0 28 28" aria-hidden="true" focusable="false">
-                    <path class="vehicle-arrow-shape" d="M14 2.5 L23.5 25.5 L14 20.5 L4.5 25.5 Z"></path>
+            <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
+                 style="--vehicle-color: ${markerAccent}; --vehicle-x: ${offset.x}px; --vehicle-y: ${offset.y}px;">
+                <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
+                    <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
+                    <circle cx="${center}" cy="${center}" r="3"></circle>
+                </svg>
+                <span class="vehicle-marker">
+                    <svg class="vehicle-symbol" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+                        ${vehicleGlyph(route)}
+                    </svg>
+                </span>
+                <svg class="vehicle-hit-target" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
+                    <circle cx="${markerCenterX}" cy="${markerCenterY}" r="${VEHICLE_MARKER_RADIUS_PX + 4}"></circle>
                 </svg>
             </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16]
+        iconSize: [VEHICLE_ICON_SIZE, VEHICLE_ICON_SIZE],
+        iconAnchor: [center, center],
+        popupAnchor: [offset.x, offset.y - 22]
     });
 }
 
@@ -856,12 +921,16 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const lng = vehicle.attributes?.longitude;
             return Number.isFinite(lat) && Number.isFinite(lng);
         });
+        const vehicleCounts = { 0: 0, 1: 0 };
 
         vehicles.forEach(vehicle => {
             const attributes = vehicle.attributes;
             const position = [attributes.latitude, attributes.longitude];
             const tripId = vehicle.relationships?.trip?.data?.id;
             const directionId = attributes.direction_id;
+            if (directionId === 0 || directionId === 1) {
+                vehicleCounts[directionId] += 1;
+            }
             const stopInfo = vehicleStopInfo(vehicle);
             const marker = L.marker(position, {
                 icon: createVehicleIcon(vehicle, route, stopInfo),
@@ -892,6 +961,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             `);
         });
 
+        renderDirectionLegend(route, vehicleCounts);
         setUpdated(`Last updated: ${formatTimestamp()}${vehicles.length ? "" : " - no vehicles in service"}`);
     } catch (error) {
         console.error("Error fetching vehicles:", error);
