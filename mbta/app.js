@@ -317,42 +317,6 @@ function decodePolyline(encoded) {
     return points;
 }
 
-function vehiclesWithDisplayPositions(vehicles) {
-    const groups = new Map();
-    vehicles.forEach(vehicle => {
-        const lat = vehicle.attributes.latitude;
-        const lng = vehicle.attributes.longitude;
-        const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-        if (!groups.has(key)) {
-            groups.set(key, []);
-        }
-        groups.get(key).push(vehicle);
-    });
-
-    const displayPositions = new Map();
-    groups.forEach(group => {
-        if (group.length === 1) {
-            const vehicle = group[0];
-            displayPositions.set(vehicle.id, [vehicle.attributes.latitude, vehicle.attributes.longitude]);
-            return;
-        }
-
-        const radius = Math.min(0.00022, 0.00008 + group.length * 0.000018);
-        group.forEach((vehicle, index) => {
-            const angle = (Math.PI * 2 * index) / group.length;
-            displayPositions.set(vehicle.id, [
-                vehicle.attributes.latitude + Math.sin(angle) * radius,
-                vehicle.attributes.longitude + Math.cos(angle) * radius
-            ]);
-        });
-    });
-
-    return vehicles.map(vehicle => ({
-        vehicle,
-        position: displayPositions.get(vehicle.id)
-    }));
-}
-
 function distanceMeters(aLat, aLng, bLat, bLng) {
     const earthRadiusMeters = 6371000;
     const toRadians = degrees => degrees * Math.PI / 180;
@@ -452,7 +416,7 @@ function createVehicleIcon(vehicle, route, stopInfo) {
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
     const markerAccent = directionColor(route, directionId);
     const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
-    const markerCore = directionId === 1 ? "#d5dbe1" : "#fbfcfd";
+    const markerCore = directionId === 1 ? "#b8c0c8" : "#fbfcfd";
 
     return L.divIcon({
         className: "",
@@ -464,9 +428,9 @@ function createVehicleIcon(vehicle, route, stopInfo) {
                 </svg>
             </div>
         `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14]
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
     });
 }
 
@@ -833,8 +797,9 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             return Number.isFinite(lat) && Number.isFinite(lng);
         });
 
-        vehiclesWithDisplayPositions(vehicles).forEach(({ vehicle, position }) => {
+        vehicles.forEach(vehicle => {
             const attributes = vehicle.attributes;
+            const position = [attributes.latitude, attributes.longitude];
             const tripId = vehicle.relationships?.trip?.data?.id;
             const directionId = attributes.direction_id;
             const stopInfo = vehicleStopInfo(vehicle);

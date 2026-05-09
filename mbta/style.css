@@ -318,12 +318,12 @@ html, body {
 }
 
 .vehicle-marker {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     position: relative;
     transform-origin: 50% 50%;
     --vehicle-accent: #165c96;
-    --vehicle-core: #fbfcfd;
+    --vehicle-core: #e1e5e9;
     --vehicle-stroke: #58636f;
 }
 
