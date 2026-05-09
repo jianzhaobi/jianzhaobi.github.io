@@ -31,6 +31,7 @@ html, body {
     --basemap-size: 68px;
     --map-control-size: 34px;
     --map-control-gap: 10px;
+    --zoom-control-height: calc(var(--map-control-size) * 2 + 1px);
     --right-control-inset: calc(var(--safe-right) + var(--locate-inset));
 }
 
@@ -205,7 +206,7 @@ html, body {
 .locate-user {
     position: fixed;
     right: var(--right-control-inset);
-    top: calc(50% + var(--map-control-size) + var(--map-control-gap));
+    top: calc(50% + (var(--zoom-control-height) / 2) + var(--map-control-gap));
     z-index: 1000;
     display: grid;
     width: var(--map-control-size);
@@ -414,8 +415,8 @@ html, body {
 }
 
 .vehicle-offset-marker {
-    width: 66px;
-    height: 66px;
+    width: 116px;
+    height: 116px;
     position: relative;
     --vehicle-color: #165c96;
     --vehicle-x: 0px;
@@ -467,8 +468,8 @@ html, body {
     top: 50%;
     z-index: 3;
     display: grid;
-    width: 28px;
-    height: 28px;
+    width: 20px;
+    height: 20px;
     place-items: center;
     box-sizing: border-box;
     color: var(--vehicle-color);
@@ -477,38 +478,6 @@ html, body {
     border-radius: 50%;
     box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
     transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y)));
-}
-
-.vehicle-symbol {
-    width: 20px;
-    height: 20px;
-    overflow: visible;
-}
-
-.vehicle-symbol rect,
-.vehicle-symbol path,
-.vehicle-symbol circle {
-    fill: #ffffff;
-}
-
-.vehicle-symbol path {
-    stroke: #ffffff;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.vehicle-symbol .vehicle-cutout {
-    fill: var(--vehicle-color);
-}
-
-.vehicle-symbol .vehicle-rail {
-    fill: none;
-    stroke: #ffffff;
-}
-
-.vehicle-ferry .vehicle-symbol path {
-    fill: none;
 }
 
 .vehicle-offset-marker.direction-unknown .vehicle-marker {

@@ -33,9 +33,14 @@ const ROUTE_TYPE_ORDER = {
 const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const ESRI_ATTRIBUTION = "Tiles &copy; Esri - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const DEFAULT_BASEMAP = "light";
-const VEHICLE_OFFSET_PX = 26;
-const VEHICLE_ICON_SIZE = 66;
-const VEHICLE_MARKER_RADIUS_PX = 14;
+const VEHICLE_OFFSET_PX = 22;
+const VEHICLE_ICON_SIZE = 116;
+const VEHICLE_MARKER_RADIUS_PX = 10;
+const VEHICLE_COLLISION_PADDING_PX = 6;
+const VEHICLE_COLLISION_ITERATIONS = 9;
+const VEHICLE_MAX_COLLISION_SHIFT_PX = 44;
+const VEHICLE_LAYOUT_DEBOUNCE_MS = 80;
+const STOP_AVOID_RADIUS_PX = 13;
 
 const BASEMAPS = {
     light: {
@@ -84,7 +89,9 @@ const state = {
     userMarker: null,
     stops: new Map(),
     panelExpanded: false,
-    currentBasemap: DEFAULT_BASEMAP
+    currentBasemap: DEFAULT_BASEMAP,
+    vehicleRecords: [],
+    vehicleLayoutTimer: null
 };
 
 /* ====================== */
@@ -104,6 +111,8 @@ const routeLayer = L.featureGroup().addTo(map);
 const stopLayer = L.layerGroup().addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map);
+
+map.on("zoomend moveend", scheduleVehicleLayout);
 
 /* ====================== */
 /* ===== UTILITIES ====== */
@@ -489,65 +498,156 @@ function vehicleOffsetForDirection(bearing, directionId) {
     };
 }
 
-function vehicleModeClass(route) {
-    if (route?.type === 3) return "vehicle-bus";
-    if (route?.type === 4) return "vehicle-ferry";
-    return "vehicle-train";
+function clampVehicleOffset(offset, baseOffset) {
+    const shiftX = offset.x - baseOffset.x;
+    const shiftY = offset.y - baseOffset.y;
+    const shiftDistance = Math.hypot(shiftX, shiftY);
+
+    if (shiftDistance <= VEHICLE_MAX_COLLISION_SHIFT_PX || shiftDistance === 0) {
+        return offset;
+    }
+
+    const scale = VEHICLE_MAX_COLLISION_SHIFT_PX / shiftDistance;
+    return {
+        x: baseOffset.x + shiftX * scale,
+        y: baseOffset.y + shiftY * scale
+    };
 }
 
-function vehicleGlyph(route) {
-    if (route?.type === 3) {
-        return `
-            <rect x="8" y="7" width="20" height="22" rx="5"></rect>
-            <rect class="vehicle-cutout" x="11" y="10" width="14" height="7" rx="2"></rect>
-            <circle class="vehicle-cutout" cx="13" cy="25" r="2.3"></circle>
-            <circle class="vehicle-cutout" cx="23" cy="25" r="2.3"></circle>
-        `;
+function resolveVehicleOffsets(records) {
+    const minDistance = VEHICLE_MARKER_RADIUS_PX * 2 + VEHICLE_COLLISION_PADDING_PX;
+    const visibleBounds = map.getPixelBounds().pad(0.15);
+    const visibleStops = [];
+    state.stops.forEach(stop => {
+        const point = map.latLngToLayerPoint([stop.lat, stop.lng]);
+        if (visibleBounds.contains(point)) {
+            visibleStops.push(point);
+        }
+    });
+    const layoutItems = records
+        .map((record, index) => {
+            const attributes = record.vehicle.attributes || {};
+            const anchor = map.latLngToLayerPoint([attributes.latitude, attributes.longitude]);
+            const baseOffset = vehicleOffsetForDirection(
+                Number.isFinite(attributes.bearing) ? attributes.bearing : 0,
+                attributes.direction_id
+            );
+
+            return {
+                index,
+                anchor,
+                baseOffset,
+                offset: { ...baseOffset },
+                participates: visibleBounds.contains(anchor)
+            };
+        });
+
+    const activeItems = layoutItems.filter(item => item.participates);
+
+    for (let iteration = 0; iteration < VEHICLE_COLLISION_ITERATIONS; iteration += 1) {
+        let moved = false;
+
+        for (let i = 0; i < activeItems.length; i += 1) {
+            for (let j = i + 1; j < activeItems.length; j += 1) {
+                const a = activeItems[i];
+                const b = activeItems[j];
+                const ax = a.anchor.x + a.offset.x;
+                const ay = a.anchor.y + a.offset.y;
+                const bx = b.anchor.x + b.offset.x;
+                const by = b.anchor.y + b.offset.y;
+                let dx = bx - ax;
+                let dy = by - ay;
+                let distance = Math.hypot(dx, dy);
+
+                if (distance >= minDistance) continue;
+
+                if (distance < 0.1) {
+                    const angle = ((a.index + b.index + iteration) * 137.508) * Math.PI / 180;
+                    dx = Math.cos(angle);
+                    dy = Math.sin(angle);
+                    distance = 1;
+                }
+
+                const push = (minDistance - distance) / 2;
+                const nx = dx / distance;
+                const ny = dy / distance;
+
+                a.offset = clampVehicleOffset({
+                    x: a.offset.x - nx * push,
+                    y: a.offset.y - ny * push
+                }, a.baseOffset);
+                b.offset = clampVehicleOffset({
+                    x: b.offset.x + nx * push,
+                    y: b.offset.y + ny * push
+                }, b.baseOffset);
+                moved = true;
+            }
+        }
+
+        activeItems.forEach(item => {
+            visibleStops.forEach(stopPoint => {
+                const markerX = item.anchor.x + item.offset.x;
+                const markerY = item.anchor.y + item.offset.y;
+                let dx = markerX - stopPoint.x;
+                let dy = markerY - stopPoint.y;
+                let distance = Math.hypot(dx, dy);
+                const stopMinDistance = VEHICLE_MARKER_RADIUS_PX + STOP_AVOID_RADIUS_PX;
+
+                if (distance >= stopMinDistance) return;
+
+                if (distance < 0.1) {
+                    dx = item.offset.x || item.baseOffset.x || 1;
+                    dy = item.offset.y || item.baseOffset.y || 0;
+                    distance = Math.hypot(dx, dy) || 1;
+                }
+
+                const push = stopMinDistance - distance;
+                const nx = dx / distance;
+                const ny = dy / distance;
+
+                item.offset = clampVehicleOffset({
+                    x: item.offset.x + nx * push,
+                    y: item.offset.y + ny * push
+                }, item.baseOffset);
+                moved = true;
+            });
+        });
+
+        if (!moved) break;
     }
-    if (route?.type === 4) {
-        return `
-            <path d="M7 19.5H29L25.5 28H10.5Z"></path>
-            <path d="M11 14H25L27 19.5H9Z"></path>
-            <path d="M12 31C15 29 18 33 21 31C24 29 27 33 30 31"></path>
-        `;
-    }
-    return `
-        <rect x="10" y="6" width="16" height="22" rx="4"></rect>
-        <rect class="vehicle-cutout" x="13" y="10" width="10" height="8" rx="2"></rect>
-        <circle class="vehicle-cutout" cx="14" cy="24" r="2"></circle>
-        <circle class="vehicle-cutout" cx="22" cy="24" r="2"></circle>
-        <path class="vehicle-rail" d="M14 29L10 34M22 29L26 34M12 32H24"></path>
-    `;
+
+    return layoutItems.map(item => ({
+        x: Math.round(item.offset.x),
+        y: Math.round(item.offset.y)
+    }));
 }
 
-function createVehicleIcon(vehicle, route, stopInfo) {
+function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
     const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
     const markerAccent = vehicleDirectionColor(route, directionId);
-    const offset = vehicleOffsetForDirection(bearing, directionId);
+    const visualOffset = offset || vehicleOffsetForDirection(bearing, directionId);
     const center = VEHICLE_ICON_SIZE / 2;
-    const leaderScale = (VEHICLE_OFFSET_PX - VEHICLE_MARKER_RADIUS_PX + 1) / VEHICLE_OFFSET_PX;
-    const leaderEndX = center + Math.round(offset.x * leaderScale);
-    const leaderEndY = center + Math.round(offset.y * leaderScale);
-    const markerCenterX = center + offset.x;
-    const markerCenterY = center + offset.y;
+    const offsetDistance = Math.hypot(visualOffset.x, visualOffset.y);
+    const leaderLength = Math.max(0, offsetDistance - VEHICLE_MARKER_RADIUS_PX + 1);
+    const leaderScale = offsetDistance ? leaderLength / offsetDistance : 0;
+    const leaderEndX = center + Math.round(visualOffset.x * leaderScale);
+    const leaderEndY = center + Math.round(visualOffset.y * leaderScale);
+    const markerCenterX = center + visualOffset.x;
+    const markerCenterY = center + visualOffset.y;
 
     return L.divIcon({
         className: "",
         html: `
-            <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
-                 style="--vehicle-color: ${markerAccent}; --vehicle-x: ${offset.x}px; --vehicle-y: ${offset.y}px;">
+            <div class="vehicle-offset-marker ${directionClass} ${stopClass}"
+                 style="--vehicle-color: ${markerAccent}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
                 </svg>
-                <span class="vehicle-marker">
-                    <svg class="vehicle-symbol" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
-                        ${vehicleGlyph(route)}
-                    </svg>
-                </span>
+                <span class="vehicle-marker" aria-hidden="true"></span>
                 <svg class="vehicle-hit-target" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <circle cx="${markerCenterX}" cy="${markerCenterY}" r="${VEHICLE_MARKER_RADIUS_PX + 4}"></circle>
                 </svg>
@@ -555,8 +655,27 @@ function createVehicleIcon(vehicle, route, stopInfo) {
         `,
         iconSize: [VEHICLE_ICON_SIZE, VEHICLE_ICON_SIZE],
         iconAnchor: [center, center],
-        popupAnchor: [offset.x, offset.y - 22]
+        popupAnchor: [visualOffset.x, visualOffset.y - 22]
     });
+}
+
+function applyVehicleLayout() {
+    if (!state.vehicleRecords.length) return;
+
+    const offsets = resolveVehicleOffsets(state.vehicleRecords);
+    state.vehicleRecords.forEach((record, index) => {
+        record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, offsets[index]));
+    });
+}
+
+function scheduleVehicleLayout() {
+    if (state.vehicleLayoutTimer) {
+        clearTimeout(state.vehicleLayoutTimer);
+    }
+    state.vehicleLayoutTimer = setTimeout(() => {
+        state.vehicleLayoutTimer = null;
+        applyVehicleLayout();
+    }, VEHICLE_LAYOUT_DEBOUNCE_MS);
 }
 
 function createUserLocationIcon() {
@@ -656,6 +775,7 @@ function clearMapForRouteChange() {
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
+    state.vehicleRecords = [];
     state.stops.clear();
 }
 
@@ -915,6 +1035,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             .map(trip => [trip.id, trip.attributes.headsign]));
 
         vehicleLayer.clearLayers();
+        state.vehicleRecords = [];
 
         const vehicles = (json.data || []).filter(vehicle => {
             const lat = vehicle.attributes?.latitude;
@@ -936,6 +1057,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
                 icon: createVehicleIcon(vehicle, route, stopInfo),
                 zIndexOffset: stopInfo ? 1200 : 1000
             }).addTo(vehicleLayer);
+            state.vehicleRecords.push({ marker, vehicle, route, stopInfo });
 
             const headsign = tripLookup.get(tripId)
                 || route?.directionDestinations?.[directionId]
@@ -961,6 +1083,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             `);
         });
 
+        applyVehicleLayout();
         renderDirectionLegend(route, vehicleCounts);
         setUpdated(`Last updated: ${formatTimestamp()}${vehicles.length ? "" : " - no vehicles in service"}`);
     } catch (error) {
