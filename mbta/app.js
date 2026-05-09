@@ -58,7 +58,10 @@ const BASEMAPS = {
 /* ====================== */
 
 const routeFilter = document.getElementById("routeFilter");
-const basemapSelect = document.getElementById("basemapSelect");
+const basemapPicker = document.getElementById("basemapPicker");
+const basemapToggle = document.getElementById("basemapToggle");
+const basemapOptions = document.getElementById("basemapOptions");
+const basemapOptionButtons = [...document.querySelectorAll(".basemap-option")];
 const fetchTime = document.getElementById("fetchTime");
 const directionLegend = document.getElementById("directionLegend");
 const locateUserButton = document.getElementById("locateUser");
@@ -77,7 +80,8 @@ const state = {
     userLocation: null,
     userMarker: null,
     stops: new Map(),
-    panelExpanded: false
+    panelExpanded: false,
+    currentBasemap: DEFAULT_BASEMAP
 };
 
 /* ====================== */
@@ -118,6 +122,23 @@ function setBasemap(basemapId) {
     }
     basemapLayer = createBasemapLayer(basemapId).addTo(map);
     basemapLayer.bringToBack();
+    state.currentBasemap = basemapId;
+    updateBasemapPicker();
+}
+
+function setBasemapPickerExpanded(isExpanded) {
+    basemapOptions.hidden = !isExpanded;
+    basemapPicker.classList.toggle("is-expanded", isExpanded);
+    basemapToggle.setAttribute("aria-expanded", String(isExpanded));
+}
+
+function updateBasemapPicker() {
+    basemapToggle.dataset.basemap = state.currentBasemap;
+    basemapOptionButtons.forEach(button => {
+        const isSelected = button.dataset.basemap === state.currentBasemap;
+        button.classList.toggle("is-selected", isSelected);
+        button.setAttribute("aria-pressed", String(isSelected));
+    });
 }
 
 function escapeHtml(value) {
@@ -934,13 +955,34 @@ routeFilter.addEventListener("change", () => {
     selectRoute(routeFilter.value, { updateUrl: true, fitRoute: true });
 });
 
-basemapSelect.addEventListener("change", () => {
-    setBasemap(basemapSelect.value);
+basemapToggle.addEventListener("click", event => {
+    event.stopPropagation();
+    setBasemapPickerExpanded(basemapOptions.hidden);
+});
+
+basemapOptionButtons.forEach(button => {
+    button.addEventListener("click", event => {
+        event.stopPropagation();
+        setBasemap(button.dataset.basemap);
+        setBasemapPickerExpanded(false);
+    });
+});
+
+document.addEventListener("click", event => {
+    if (!basemapPicker.contains(event.target)) {
+        setBasemapPickerExpanded(false);
+    }
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+        setBasemapPickerExpanded(false);
+    }
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
     try {
-        basemapSelect.value = DEFAULT_BASEMAP;
+        updateBasemapPicker();
         setPanelExpanded(false);
         initializeGeolocation();
         await initializeRoutes();

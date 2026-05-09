@@ -5,13 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260509-01">
+    <link rel="stylesheet" href="style.css?v=20260509-02">
 </head>
 <body>
 <div id="map"></div>
 <button id="locateUser" class="locate-user" type="button" aria-label="My location" title="My location" hidden>
     <span class="locate-dot" aria-hidden="true"></span>
 </button>
+<div id="basemapPicker" class="basemap-picker">
+    <div id="basemapOptions" class="basemap-options" hidden>
+        <button class="basemap-option" type="button" data-basemap="light" aria-label="Light map"></button>
+        <button class="basemap-option" type="button" data-basemap="dark" aria-label="Dark map"></button>
+        <button class="basemap-option" type="button" data-basemap="detail" aria-label="Detailed map"></button>
+        <button class="basemap-option" type="button" data-basemap="satellite" aria-label="Satellite map"></button>
+    </div>
+    <button id="basemapToggle" class="basemap-preview" type="button" data-basemap="light" aria-label="Choose map style" aria-expanded="false" aria-controls="basemapOptions"></button>
+</div>
 <div class="route-panel">
     <label class="route-label" for="routeFilter">Route</label>
     <select id="routeFilter" disabled>
@@ -22,15 +31,6 @@
         <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
     </div>
     <div id="panelDetails" class="panel-details" hidden>
-        <div class="basemap-control">
-            <label class="route-label" for="basemapSelect">Map</label>
-            <select id="basemapSelect" class="panel-select">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="detail">Detailed</option>
-                <option value="satellite">Satellite</option>
-            </select>
-        </div>
         <div id="directionLegend" class="direction-legend" hidden></div>
         <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
         <div id="routeAlert" class="route-alert"></div>
@@ -39,6 +39,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260509-01"></script>
+<script src="app.js?v=20260509-02"></script>
 </body>
 </html>

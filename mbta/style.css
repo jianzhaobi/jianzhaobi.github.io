@@ -28,6 +28,7 @@ html, body {
     --safe-left: max(12px, env(safe-area-inset-left));
     --control-size: 44px;
     --locate-inset: 12px;
+    --basemap-size: 68px;
 }
 
 .route-panel {
@@ -221,6 +222,82 @@ html, body {
     display: none;
 }
 
+.basemap-picker {
+    position: fixed;
+    right: calc(var(--safe-right) + var(--locate-inset));
+    bottom: calc(var(--safe-bottom) + var(--locate-inset) + 20px);
+    z-index: 1000;
+    display: grid;
+    gap: 8px;
+    justify-items: end;
+}
+
+.basemap-preview,
+.basemap-option {
+    display: block;
+    box-sizing: border-box;
+    padding: 0;
+    overflow: hidden;
+    background-color: #dfe5ea;
+    background-position: center;
+    background-size: cover;
+    border: 2px solid rgba(255, 255, 255, 0.96);
+    border-radius: 8px;
+    box-shadow: 0 8px 22px rgba(20, 31, 43, 0.26);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.basemap-preview {
+    width: var(--basemap-size);
+    height: var(--basemap-size);
+}
+
+.basemap-options {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(92, 104, 116, 0.24);
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(20, 31, 43, 0.24);
+    backdrop-filter: blur(8px);
+}
+
+.basemap-options[hidden] {
+    display: none;
+}
+
+.basemap-option {
+    width: 52px;
+    height: 52px;
+}
+
+.basemap-preview[data-basemap="light"],
+.basemap-option[data-basemap="light"] {
+    background-image: url("https://a.basemaps.cartocdn.com/light_all/12/1239/1512.png");
+}
+
+.basemap-preview[data-basemap="dark"],
+.basemap-option[data-basemap="dark"] {
+    background-image: url("https://a.basemaps.cartocdn.com/dark_all/12/1239/1512.png");
+}
+
+.basemap-preview[data-basemap="detail"],
+.basemap-option[data-basemap="detail"] {
+    background-image: url("https://a.basemaps.cartocdn.com/rastertiles/voyager/12/1239/1512.png");
+}
+
+.basemap-preview[data-basemap="satellite"],
+.basemap-option[data-basemap="satellite"] {
+    background-image: url("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/12/1512/1239");
+}
+
+.basemap-option.is-selected {
+    border-color: #ffffff;
+    box-shadow: 0 0 0 3px var(--route-color), 0 8px 20px rgba(20, 31, 43, 0.26);
+}
+
 .locate-user::before,
 .locate-user::after,
 .locate-dot {
@@ -398,6 +475,7 @@ body * {
         --safe-bottom: max(12px, env(safe-area-inset-bottom));
         --safe-left: max(8px, env(safe-area-inset-left));
         --locate-inset: 14px;
+        --basemap-size: 64px;
     }
 
     .route-panel {
