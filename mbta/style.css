@@ -29,6 +29,9 @@ html, body {
     --control-size: 44px;
     --locate-inset: 12px;
     --basemap-size: 68px;
+    --map-control-size: 34px;
+    --map-control-gap: 10px;
+    --right-control-inset: calc(var(--safe-right) + var(--locate-inset));
 }
 
 .route-panel {
@@ -186,7 +189,7 @@ html, body {
 
 .leaflet-top.leaflet-right {
     top: 50%;
-    right: var(--safe-right);
+    right: var(--right-control-inset);
     transform: translateY(-50%);
 }
 
@@ -200,16 +203,16 @@ html, body {
 
 .locate-user {
     position: fixed;
-    left: calc(var(--safe-left) + var(--locate-inset));
-    bottom: calc(var(--safe-bottom) + var(--locate-inset));
+    right: var(--right-control-inset);
+    top: calc(50% + var(--map-control-size) + var(--map-control-gap));
     z-index: 1000;
     display: grid;
-    width: var(--control-size);
-    height: var(--control-size);
+    width: var(--map-control-size);
+    height: var(--map-control-size);
     place-items: center;
     padding: 0;
     border: 1px solid rgba(92, 104, 116, 0.28);
-    border-radius: 50%;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.94);
     color: #17202a;
     box-shadow: 0 8px 24px rgba(20, 31, 43, 0.18);
@@ -224,7 +227,7 @@ html, body {
 
 .basemap-picker {
     position: fixed;
-    right: calc(var(--safe-right) + var(--locate-inset));
+    right: var(--right-control-inset);
     bottom: calc(var(--safe-bottom) + var(--locate-inset) + 20px);
     z-index: 1000;
     display: grid;
@@ -307,8 +310,8 @@ html, body {
 }
 
 .locate-user::before {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     border: 2px solid #17202a;
     border-radius: 50%;
 }
@@ -321,13 +324,13 @@ html, body {
 }
 
 .locate-dot {
-    width: 28px;
-    height: 28px;
+    width: 23px;
+    height: 23px;
     background:
-        linear-gradient(#17202a, #17202a) center top / 2px 6px no-repeat,
-        linear-gradient(#17202a, #17202a) center bottom / 2px 6px no-repeat,
-        linear-gradient(#17202a, #17202a) left center / 6px 2px no-repeat,
-        linear-gradient(#17202a, #17202a) right center / 6px 2px no-repeat;
+        linear-gradient(#17202a, #17202a) center top / 2px 5px no-repeat,
+        linear-gradient(#17202a, #17202a) center bottom / 2px 5px no-repeat,
+        linear-gradient(#17202a, #17202a) left center / 5px 2px no-repeat,
+        linear-gradient(#17202a, #17202a) right center / 5px 2px no-repeat;
 }
 
 .tracker-credit {
