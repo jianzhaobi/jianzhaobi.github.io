@@ -450,6 +450,8 @@ html, body {
 
 .locate-user {
     --locate-icon-color: #17202a;
+    position: relative;
+    pointer-events: auto;
     display: grid;
     width: var(--map-control-outer-size);
     height: var(--map-control-outer-size);

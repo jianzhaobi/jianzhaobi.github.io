@@ -34,12 +34,19 @@ const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyrig
 const ESRI_ATTRIBUTION = "Tiles &copy; Esri - Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const DEFAULT_BASEMAP = "light";
 const VEHICLE_OFFSET_PX = 24;
+const VEHICLE_OFFSET_MIN_PX = 18;
+const VEHICLE_OFFSET_MAX_PX = 48;
+const VEHICLE_OFFSET_REFERENCE_ZOOM = 14;
+const VEHICLE_OFFSET_ZOOM_SCALE = 4;
 const VEHICLE_ICON_SIZE = 116;
 const VEHICLE_MARKER_RADIUS_PX = 12;
 const VEHICLE_COLLISION_PADDING_PX = 6;
 const VEHICLE_COLLISION_ITERATIONS = 9;
 const VEHICLE_COLLISION_ROTATION_STEP_DEG = 9;
-const VEHICLE_MAX_COLLISION_ROTATION_DEG = 72;
+const VEHICLE_MAX_COLLISION_ROTATION_DEG = 120;
+const VEHICLE_CROSS_DIRECTION_PUSH_PX = 8;
+const VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX = 24;
+const VEHICLE_TANGENT_SMOOTH_PX = 60;
 const VEHICLE_LAYOUT_DEBOUNCE_MS = 80;
 const STOP_AVOID_RADIUS_PX = 13;
 
@@ -108,6 +115,8 @@ const state = {
     vehicleRecords: [],
     // Cached rendered route segments let vehicle circles align to the road geometry, not just MBTA bearing.
     routeShapeSegments: [],
+    // Segments grouped by shapeId for polyline traversal (used by smoothedTangent).
+    routeShapeIndex: new Map(),
     vehicleLayoutTimer: null
 };
 
@@ -125,7 +134,13 @@ L.control.zoom({ position: "topright" }).addTo(map);
 /* Move the locate button into the Leaflet top-right control container so both
    controls share the same positioning context (fixes overlap on iPad landscape). */
 const topRightContainer = map.getContainer().querySelector(".leaflet-top.leaflet-right");
-if (topRightContainer) topRightContainer.appendChild(locateUserButton);
+if (topRightContainer) {
+    topRightContainer.appendChild(locateUserButton);
+    /* Prevent Leaflet's Draggable from calling preventDefault() on mousedown for
+       this <button> element — without this, Leaflet swallows the mousedown and
+       the click event never fires (Leaflet only exempts <a> and <input> tags). */
+    locateUserButton.addEventListener("mousedown", e => e.stopPropagation());
+}
 
 let basemapLayer = createBasemapLayer(DEFAULT_BASEMAP).addTo(map);
 
@@ -764,15 +779,22 @@ function createStopIcon(route) {
     });
 }
 
-function vehicleOffsetForDirection(bearing, directionId) {
+function effectiveOffsetPx() {
+    const delta = VEHICLE_OFFSET_REFERENCE_ZOOM - map.getZoom();
+    const raw = VEHICLE_OFFSET_PX + delta * VEHICLE_OFFSET_ZOOM_SCALE;
+    return Math.max(VEHICLE_OFFSET_MIN_PX, Math.min(VEHICLE_OFFSET_MAX_PX, raw));
+}
+
+function vehicleOffsetForDirection(bearing, directionId, offsetPx) {
+    const px = offsetPx || effectiveOffsetPx();
     if (directionId !== 0 && directionId !== 1) {
-        return { x: 0, y: -VEHICLE_OFFSET_PX };
+        return { x: 0, y: -px };
     }
 
     const radians = bearing * Math.PI / 180;
     return {
-        x: Math.round(Math.cos(radians) * VEHICLE_OFFSET_PX),
-        y: Math.round(Math.sin(radians) * VEHICLE_OFFSET_PX)
+        x: Math.round(Math.cos(radians) * px),
+        y: Math.round(Math.sin(radians) * px)
     };
 }
 
@@ -797,14 +819,6 @@ function rotateOffsetOnSameSide(baseOffset, degrees) {
     return rotated.x * baseOffset.x + rotated.y * baseOffset.y > 0 ? rotated : null;
 }
 
-function bearingToScreenVector(bearing) {
-    const radians = bearing * Math.PI / 180;
-    return {
-        x: Math.sin(radians),
-        y: -Math.cos(radians)
-    };
-}
-
 function findNearestRouteSegment(anchor, predicate) {
     let nearest = null;
 
@@ -826,7 +840,11 @@ function findNearestRouteSegment(anchor, predicate) {
         if (!nearest || distanceSq < nearest.distanceSq) {
             nearest = {
                 distanceSq,
-                vector: normalizeVector({ x: dx, y: dy })
+                vector: normalizeVector({ x: dx, y: dy }),
+                segmentDirectionId: segment.directionId,
+                shapeId: segment.shapeId,
+                indexInShape: segment.indexInShape,
+                t
             };
         }
     });
@@ -841,50 +859,176 @@ function nearestRouteSegment(anchor, shapeId = null, directionId = null) {
 
     if (shapeId && hasDirection) {
         const nearest = findNearestRouteSegment(anchor, segment => sameShape(segment) && sameDirection(segment));
-        if (nearest) return nearest.vector;
+        if (nearest) return nearest;
     }
 
     if (shapeId) {
         const nearest = findNearestRouteSegment(anchor, sameShape);
-        if (nearest) return nearest.vector;
+        if (nearest) return nearest;
     }
 
     if (hasDirection) {
         const nearest = findNearestRouteSegment(anchor, sameDirection);
-        if (nearest) return nearest.vector;
+        if (nearest) return nearest;
     }
 
-    return findNearestRouteSegment(anchor)?.vector || null;
+    return findNearestRouteSegment(anchor) || null;
 }
 
-function vehicleBaseOffset(record, anchor) {
-    const attributes = record.vehicle.attributes || {};
-    const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
-    const fallbackOffset = vehicleOffsetForDirection(bearing ?? 0, attributes.direction_id);
-    const routeVector = nearestRouteSegment(anchor, record.shapeId, attributes.direction_id);
+/**
+ * Compute a smoothed tangent at a point on the polyline by walking forward
+ * and backward along the polyline by `radiusPx` pixels from the projection
+ * point, then returning the chord direction between those two distant points.
+ *
+ * This eliminates abrupt perpendicular changes at segment boundaries.
+ */
+function smoothedTangent(segResult, radiusPx) {
+    const shapeSegments = state.routeShapeIndex.get(segResult.shapeId);
+    if (!shapeSegments || !shapeSegments.length) return segResult.vector;
 
-    if (!routeVector) {
-        return fallbackOffset;
+    const idx = segResult.indexInShape;
+    const t = segResult.t;
+
+    // Compute the projection point in screen pixels on the matched segment.
+    const seg = shapeSegments[idx];
+    if (!seg) return segResult.vector;
+
+    const startPx = map.latLngToLayerPoint(seg.start);
+    const endPx = map.latLngToLayerPoint(seg.end);
+    const projX = startPx.x + (endPx.x - startPx.x) * t;
+    const projY = startPx.y + (endPx.y - startPx.y) * t;
+
+    // Walk forward along the polyline by radiusPx from the projection point.
+    let aheadX = projX;
+    let aheadY = projY;
+    let remaining = radiusPx;
+    // First, walk the rest of the current segment (from projection to end).
+    {
+        const dx = endPx.x - projX;
+        const dy = endPx.y - projY;
+        const len = Math.hypot(dx, dy);
+        if (len >= remaining) {
+            const frac = remaining / len;
+            aheadX = projX + dx * frac;
+            aheadY = projY + dy * frac;
+            remaining = 0;
+        } else {
+            aheadX = endPx.x;
+            aheadY = endPx.y;
+            remaining -= len;
+        }
+    }
+    for (let i = idx + 1; remaining > 0 && i < shapeSegments.length; i += 1) {
+        const s = shapeSegments[i];
+        const sStart = map.latLngToLayerPoint(s.start);
+        const sEnd = map.latLngToLayerPoint(s.end);
+        const dx = sEnd.x - sStart.x;
+        const dy = sEnd.y - sStart.y;
+        const len = Math.hypot(dx, dy);
+        if (len >= remaining) {
+            const frac = remaining / len;
+            aheadX = sStart.x + dx * frac;
+            aheadY = sStart.y + dy * frac;
+            remaining = 0;
+        } else {
+            aheadX = sEnd.x;
+            aheadY = sEnd.y;
+            remaining -= len;
+        }
     }
 
-    let travelVector = routeVector;
-    const bearingVector = bearing === null ? null : bearingToScreenVector(bearing);
-    if (bearingVector && travelVector.x * bearingVector.x + travelVector.y * bearingVector.y < 0) {
-        travelVector = { x: -travelVector.x, y: -travelVector.y };
+    // Walk backward along the polyline by radiusPx from the projection point.
+    let behindX = projX;
+    let behindY = projY;
+    remaining = radiusPx;
+    // First, walk back the current segment (from projection to start).
+    {
+        const dx = startPx.x - projX;
+        const dy = startPx.y - projY;
+        const len = Math.hypot(dx, dy);
+        if (len >= remaining) {
+            const frac = remaining / len;
+            behindX = projX + dx * frac;
+            behindY = projY + dy * frac;
+            remaining = 0;
+        } else {
+            behindX = startPx.x;
+            behindY = startPx.y;
+            remaining -= len;
+        }
+    }
+    for (let i = idx - 1; remaining > 0 && i >= 0; i -= 1) {
+        const s = shapeSegments[i];
+        const sStart = map.latLngToLayerPoint(s.start);
+        const sEnd = map.latLngToLayerPoint(s.end);
+        // Walk from end toward start (backward along polyline).
+        const dx = sStart.x - sEnd.x;
+        const dy = sStart.y - sEnd.y;
+        const len = Math.hypot(dx, dy);
+        if (len >= remaining) {
+            const frac = remaining / len;
+            behindX = sEnd.x + dx * frac;
+            behindY = sEnd.y + dy * frac;
+            remaining = 0;
+        } else {
+            behindX = sStart.x;
+            behindY = sStart.y;
+            remaining -= len;
+        }
+    }
+
+    const chord = normalizeVector({ x: aheadX - behindX, y: aheadY - behindY });
+    return chord || segResult.vector;
+}
+
+function vehicleBaseOffset(record, anchor, offsetPx) {
+    const attributes = record.vehicle.attributes || {};
+    const directionId = attributes.direction_id;
+    const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
+    const segmentResult = nearestRouteSegment(anchor, record.shapeId, directionId);
+
+    if (!segmentResult || !segmentResult.vector) {
+        // Fallback: no route geometry available — use bearing or default
+        return vehicleOffsetForDirection(bearing ?? 0, directionId, offsetPx);
     }
 
     // Vehicle-circle layout rule:
-    // 1. The default circle position is on the right side of the actual travel direction.
-    // 2. The travel direction comes from the nearest rendered route segment, corrected with the vehicle bearing when available.
-    // 3. Therefore the leader line starts perpendicular to the current route segment; overlap handling may rotate it later.
+    // 1. Compute a smoothed tangent at the projection point by averaging the
+    //    polyline direction over a window (chord tangent), eliminating abrupt
+    //    perpendicular changes at segment boundaries.
+    // 2. If the vehicle's directionId differs from the segment's directionId,
+    //    flip the vector so it represents the vehicle's actual travel direction.
+    // 3. Take the right-side perpendicular of the travel direction.
+    //    Since opposite directions have opposite travel vectors, their right-side
+    //    normals naturally point to opposite sides of the route.
+    let travelVector = smoothedTangent(segmentResult, VEHICLE_TANGENT_SMOOTH_PX);
+    const segDirId = segmentResult.segmentDirectionId;
+
+    if (segDirId === 0 || segDirId === 1) {
+        // Segment has a known directionId — use it to align the travel vector
+        if (directionId !== segDirId) {
+            travelVector = { x: -travelVector.x, y: -travelVector.y };
+        }
+    } else {
+        // Segment has no directionId — fall back to bearing for alignment
+        if (bearing !== null) {
+            const bearingRad = bearing * Math.PI / 180;
+            const bearingVector = { x: Math.sin(bearingRad), y: -Math.cos(bearingRad) };
+            if (travelVector.x * bearingVector.x + travelVector.y * bearingVector.y < 0) {
+                travelVector = { x: -travelVector.x, y: -travelVector.y };
+            }
+        }
+    }
+
     const rightNormal = { x: -travelVector.y, y: travelVector.x };
     return {
-        x: rightNormal.x * VEHICLE_OFFSET_PX,
-        y: rightNormal.y * VEHICLE_OFFSET_PX
+        x: rightNormal.x * offsetPx,
+        y: rightNormal.y * offsetPx
     };
 }
 
 function resolveVehicleOffsets(records) {
+    const offsetPx = effectiveOffsetPx();
     const minDistance = VEHICLE_MARKER_RADIUS_PX * 2 + VEHICLE_COLLISION_PADDING_PX;
     const visibleBounds = map.getPixelBounds().pad(0.15);
     const visibleStops = [];
@@ -898,7 +1042,7 @@ function resolveVehicleOffsets(records) {
         .map((record, index) => {
             const attributes = record.vehicle.attributes || {};
             const anchor = map.latLngToLayerPoint([attributes.latitude, attributes.longitude]);
-            const baseOffset = vehicleBaseOffset(record, anchor);
+            const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
 
             return {
                 index,
@@ -906,6 +1050,7 @@ function resolveVehicleOffsets(records) {
                 baseOffset,
                 offset: { ...baseOffset },
                 rotation: 0,
+                pushOut: 0,
                 directionId: attributes.direction_id,
                 participates: visibleBounds.contains(anchor)
             };
@@ -920,7 +1065,6 @@ function resolveVehicleOffsets(records) {
             for (let j = i + 1; j < activeItems.length; j += 1) {
                 const a = activeItems[i];
                 const b = activeItems[j];
-                if ((a.directionId !== 0 && a.directionId !== 1) || a.directionId !== b.directionId) continue;
 
                 const ax = a.anchor.x + a.offset.x;
                 const ay = a.anchor.y + a.offset.y;
@@ -930,33 +1074,62 @@ function resolveVehicleOffsets(records) {
 
                 if (distance >= minDistance) continue;
 
-                // Same-direction overlap rule:
-                // Keep each circle on its own fixed-radius path around the true vehicle point.
-                // When two same-direction circles collide, rotate them in opposite directions.
-                // This intentionally allows the leader line to deviate from perpendicular only while avoiding overlap.
-                const aSign = a.index <= b.index ? -1 : 1;
-                const bSign = -aSign;
-                const nextARotation = Math.max(
-                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
-                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, a.rotation + aSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
-                );
-                const nextBRotation = Math.max(
-                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
-                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, b.rotation + bSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
-                );
+                const sameDirection = (a.directionId === 0 || a.directionId === 1)
+                    && a.directionId === b.directionId;
 
-                const nextAOffset = rotateOffsetOnSameSide(a.baseOffset, nextARotation);
-                const nextBOffset = rotateOffsetOnSameSide(b.baseOffset, nextBRotation);
+                if (sameDirection) {
+                    // Same-direction overlap rule:
+                    // Keep each circle on its own fixed-radius path around the true vehicle point.
+                    // When two same-direction circles collide, rotate them in opposite directions.
+                    // This intentionally allows the leader line to deviate from perpendicular only while avoiding overlap.
+                    const aSign = a.index <= b.index ? -1 : 1;
+                    const bSign = -aSign;
+                    const nextARotation = Math.max(
+                        -VEHICLE_MAX_COLLISION_ROTATION_DEG,
+                        Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, a.rotation + aSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
+                    );
+                    const nextBRotation = Math.max(
+                        -VEHICLE_MAX_COLLISION_ROTATION_DEG,
+                        Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, b.rotation + bSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
+                    );
 
-                if (nextARotation !== a.rotation && nextAOffset) {
-                    a.rotation = nextARotation;
-                    a.offset = nextAOffset;
-                    moved = true;
-                }
-                if (nextBRotation !== b.rotation && nextBOffset) {
-                    b.rotation = nextBRotation;
-                    b.offset = nextBOffset;
-                    moved = true;
+                    const nextAOffset = rotateOffsetOnSameSide(a.baseOffset, nextARotation);
+                    const nextBOffset = rotateOffsetOnSameSide(b.baseOffset, nextBRotation);
+
+                    if (nextARotation !== a.rotation && nextAOffset) {
+                        a.rotation = nextARotation;
+                        a.offset = nextAOffset;
+                        moved = true;
+                    }
+                    if (nextBRotation !== b.rotation && nextBOffset) {
+                        b.rotation = nextBRotation;
+                        b.offset = nextBOffset;
+                        moved = true;
+                    }
+                } else {
+                    // Cross-direction overlap rule:
+                    // Push each circle outward along its own base-offset direction (the normal),
+                    // preserving perpendicularity and keeping each direction on its own side.
+                    // The leader line gets longer but the geometric relationship stays correct.
+                    const pushItems = [a, b];
+                    pushItems.forEach(item => {
+                        if (item.pushOut >= VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX) return;
+
+                        item.pushOut = Math.min(item.pushOut + VEHICLE_CROSS_DIRECTION_PUSH_PX, VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX);
+                        const baseNorm = normalizeVector(item.baseOffset);
+                        if (baseNorm) {
+                            const totalRadius = offsetPx + item.pushOut;
+                            const pushed = { x: baseNorm.x * totalRadius, y: baseNorm.y * totalRadius };
+                            // Re-apply any existing rotation on top of the new radius
+                            const rotated = item.rotation ? rotateOffsetOnSameSide(pushed, item.rotation) : pushed;
+                            if (rotated) {
+                                item.offset = rotated;
+                                // Update baseOffset to reflect new radius so future rotation stays consistent
+                                item.baseOffset = pushed;
+                                moved = true;
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -1239,6 +1412,7 @@ function clearMapForRouteChange() {
     state.vehicleRecords = [];
     state.stops.clear();
     state.routeShapeSegments = [];
+    state.routeShapeIndex.clear();
 }
 
 /* ====================== */
@@ -1257,6 +1431,7 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
 
     routeLayer.clearLayers();
     state.routeShapeSegments = [];
+    state.routeShapeIndex.clear();
 
     if (!json.data?.length) {
         console.warn(`No shape data found for route: ${routeId}`);
@@ -1275,20 +1450,26 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
     const shapes = representativeShapes.length ? representativeShapes : json.data;
 
     shapes.forEach(shape => {
-        const segment = decodePolyline(shape.attributes.polyline || "");
-        if (!segment.length) return;
+        const points = decodePolyline(shape.attributes.polyline || "");
+        if (!points.length) return;
         const directionId = representativeDirectionByShape.get(canonicalShapeId(shape.id));
+        const shapeSegments = [];
 
-        for (let index = 0; index < segment.length - 1; index += 1) {
-            state.routeShapeSegments.push({
+        for (let index = 0; index < points.length - 1; index += 1) {
+            const seg = {
                 shapeId: shape.id,
                 directionId,
-                start: segment[index],
-                end: segment[index + 1]
-            });
+                start: points[index],
+                end: points[index + 1],
+                indexInShape: index
+            };
+            state.routeShapeSegments.push(seg);
+            shapeSegments.push(seg);
         }
 
-        L.polyline(segment, {
+        state.routeShapeIndex.set(shape.id, shapeSegments);
+
+        L.polyline(points, {
             color: routeColor(route),
             weight: 5,
             opacity: 0.82,
