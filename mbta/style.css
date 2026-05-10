@@ -743,20 +743,82 @@ html, body {
     user-select: none;
 }
 
+.leaflet-popup-content-wrapper {
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(20, 31, 43, 0.2);
+}
+
 .leaflet-popup-content {
-    margin: 12px 14px;
-    line-height: 1.35;
+    margin: 11px 13px;
+    color: #17202a;
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.popup-card {
+    min-width: 190px;
+    max-width: min(285px, calc(100vw - 56px));
 }
 
 .popup-title {
     display: block;
     margin-bottom: 5px;
-    font-weight: 750;
+    font-size: 14px;
+    font-weight: 780;
+    line-height: 1.15;
     color: #17202a;
 }
 
 .popup-muted {
     color: #65717d;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+.popup-section {
+    display: grid;
+    gap: 0;
+}
+
+.popup-info-list {
+    display: grid;
+    gap: 0;
+    margin-top: 6px;
+}
+
+.popup-info-row {
+    display: grid;
+    gap: 1px;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e7ecf1;
+}
+
+.popup-info-row:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.popup-info-label {
+    color: #65717d;
+    font-size: 9px;
+    font-weight: 780;
+    line-height: 1.15;
+    text-transform: uppercase;
+}
+
+.popup-info-value {
+    color: #17202a;
+    font-size: 12px;
+    font-weight: 680;
+    line-height: 1.2;
+}
+
+.popup-time-value {
+    font-size: 13px;
+    font-weight: 780;
 }
 
 .leaflet-marker-icon:has(.vehicle-offset-marker) {

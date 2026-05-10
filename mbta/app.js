@@ -4,6 +4,11 @@
 
 const MBTA_API_BASE = "https://api-v3.mbta.com";
 const MBTA_API_KEY = "5fb2a20d05094524a0b35961a20cf9e4"; // Set to "" to use keyless MBTA requests.
+const MAPBOX_ACCESS_TOKEN = [
+    "pk.eyJ1IjoiaGl0b3JpMzgiLCJhIjoi",
+    "Y21wMDdhaXQ3MHplbTJxcGtrYzZpNWZzdyJ9",
+    ".3RBUyxTUMkYK79oxYKSD4A"
+].join("");
 const VEHICLE_REFRESH_MS = 5000;
 const VEHICLE_HALO_BREATHE_MS = 1650;
 
@@ -384,6 +389,52 @@ async function fetchMbta(path, params = {}) {
         throw new Error(`MBTA request failed: ${response.status} ${response.statusText}`);
     }
     return response.json();
+}
+
+function buildMapboxDirectionsUrl(profile, origin, destination) {
+    const coordinates = `${origin[1]},${origin[0]};${destination.lng},${destination.lat}`;
+    const url = new URL(`https://api.mapbox.com/directions/v5/${profile}/${coordinates}`);
+
+    url.searchParams.set("overview", "false");
+    url.searchParams.set("alternatives", "false");
+    url.searchParams.set("steps", "false");
+    url.searchParams.set("access_token", MAPBOX_ACCESS_TOKEN);
+
+    return url;
+}
+
+async function fetchMapboxDuration(profile, origin, destination) {
+    const response = await fetch(buildMapboxDirectionsUrl(profile, origin, destination));
+    if (!response.ok) {
+        throw new Error(`Mapbox request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const json = await response.json();
+    const durationSeconds = json.routes?.[0]?.duration;
+    if (!Number.isFinite(durationSeconds)) {
+        throw new Error("Mapbox response did not include a duration.");
+    }
+
+    return Math.max(1, Math.round(durationSeconds / 60));
+}
+
+async function fetchTravelTimeSummary(stop) {
+    if (!state.userLocation) return "Unavailable";
+    if (!MAPBOX_ACCESS_TOKEN) return "Unavailable";
+
+    const [walkResult, driveResult] = await Promise.allSettled([
+        fetchMapboxDuration("mapbox/walking", state.userLocation, stop),
+        fetchMapboxDuration("mapbox/driving-traffic", state.userLocation, stop)
+    ]);
+
+    const walk = walkResult.status === "fulfilled" ? `${walkResult.value} min` : "unavailable";
+    const drive = driveResult.status === "fulfilled" ? `${driveResult.value} min` : "unavailable";
+
+    if (walk === "unavailable" && drive === "unavailable") {
+        return "Unavailable";
+    }
+
+    return `Walk ${walk} · Drive ${drive}`;
 }
 
 function displayRouteName(route) {
@@ -1709,23 +1760,86 @@ async function renderRouteStops(routeId, route, requestId) {
             zIndexOffset: 300
         }).addTo(stopLayer);
 
-        marker.bindPopup(stopPopup(stopName, "Loading arrivals..."));
+        marker.bindPopup(stopPopup(stopName, {
+            travel: "Travel time loading...",
+            arrivals: '<span class="popup-muted">Loading arrivals...</span>'
+        }), { closeButton: false });
         marker.on("click", () => {
             renderPredictions(routeId, stop.id, marker);
         });
     });
 }
 
-function stopPopup(stopName, body) {
+function stopPopup(stopName, { travel = "", arrivals = "" } = {}) {
     return `
-        <span class="popup-title">${escapeHtml(stopName)}</span>
-        <span>${body}</span>
+        <div class="popup-card popup-card-stop">
+            <span class="popup-title">${escapeHtml(stopName)}</span>
+            ${travel ? popupInfoRow("Travel time", travel, "popup-time-value") : ""}
+            <div class="popup-section popup-arrivals">${arrivals}</div>
+        </div>
+    `;
+}
+
+function popupInfoRow(label, value, valueClass = "") {
+    if (!value) return "";
+    const className = ["popup-info-value", valueClass].filter(Boolean).join(" ");
+
+    return `
+        <div class="popup-info-row">
+            <span class="popup-info-label">${escapeHtml(label)}</span>
+            <span class="${escapeHtml(className)}">${escapeHtml(value)}</span>
+        </div>
+    `;
+}
+
+function vehiclePopup({ title, direction, destination, stopInfo, status, updatedAt }) {
+    const stopLabel = stopInfo
+        ? (stopInfo.kind === "at" ? "At stop" : "Near stop")
+        : "";
+    const stopName = stopInfo?.stop?.name || "";
+
+    return `
+        <div class="popup-card popup-card-vehicle">
+            <span class="popup-title">${escapeHtml(title)}</span>
+            <div class="popup-info-list">
+                ${popupInfoRow("Direction", direction)}
+                ${popupInfoRow("Destination", destination)}
+                ${popupInfoRow(stopLabel, stopName)}
+                ${popupInfoRow("Status", status)}
+                ${popupInfoRow("Updated", updatedAt)}
+            </div>
+        </div>
     `;
 }
 
 async function renderPredictions(routeId, stopId, stopMarker) {
     const route = state.routes.get(routeId);
-    stopMarker.setPopupContent(stopPopup(stopMarker.options.title, "Loading arrivals...")).openPopup();
+    const stop = state.stops.get(stopId);
+    let travel = "Travel time loading...";
+    let arrivals = '<span class="popup-muted">Loading arrivals...</span>';
+    const updatePopup = () => {
+        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, { travel, arrivals })).openPopup();
+    };
+
+    updatePopup();
+
+    if (stop) {
+        fetchTravelTimeSummary(stop)
+            .then(summary => {
+                if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+                travel = summary;
+                updatePopup();
+            })
+            .catch(error => {
+                if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+                console.error("Error fetching travel times:", error);
+                travel = "Unavailable";
+                updatePopup();
+            });
+    } else {
+        travel = "Unavailable";
+        updatePopup();
+    }
 
     try {
         const json = await fetchMbta("/predictions", {
@@ -1773,19 +1887,25 @@ async function renderPredictions(routeId, stopId, stopMarker) {
             .map(group => {
                 const times = group.minutes.sort((a, b) => a - b).slice(0, 3);
                 const label = route?.directionNames?.[group.directionId] || `Direction ${group.directionId}`;
-                return `<b>${escapeHtml(label)} to ${escapeHtml(group.headsign)}:</b> ${times.join(" / ")} min`;
+                return `
+                    <div class="popup-info-row">
+                        <span class="popup-info-label">${escapeHtml(label)} to ${escapeHtml(group.headsign)}</span>
+                        <span class="popup-info-value popup-time-value">${times.join(" / ")} min</span>
+                    </div>
+                `;
             });
 
-        const content = rows.length
-            ? rows.join("<br>")
+        arrivals = rows.length
+            ? rows.join("")
             : '<span class="popup-muted">No upcoming arrivals.</span>';
 
-        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, content)).openPopup();
+        updatePopup();
     } catch (error) {
         if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
 
         console.error("Error fetching predictions:", error);
-        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, "Unable to load arrivals.")).openPopup();
+        arrivals = '<span class="popup-muted">Unable to load arrivals.</span>';
+        updatePopup();
     }
 }
 
@@ -1946,18 +2066,15 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const direction = directionId === 0 || directionId === 1
                 ? directionLabel(route, directionId)
                 : "Unknown direction";
-            const stopLine = stopInfo
-                ? `${stopInfo.kind === "at" ? "At stop" : "Near stop"}: ${escapeHtml(stopInfo.stop.name)}<br>`
-                : "";
 
-            marker.bindPopup(`
-                <span class="popup-title">${escapeHtml(routeId)} - ${escapeHtml(label)}</span>
-                Direction: ${escapeHtml(direction)}<br>
-                Destination: ${escapeHtml(headsign)}<br>
-                ${stopLine}
-                Status: ${escapeHtml(status)}<br>
-                Updated: ${escapeHtml(formatTime(attributes.updated_at))}
-            `);
+            marker.bindPopup(vehiclePopup({
+                title: `${routeId} - ${label}`,
+                direction,
+                destination: headsign,
+                stopInfo,
+                status,
+                updatedAt: formatTime(attributes.updated_at)
+            }), { closeButton: false });
         });
 
         applyVehicleLayout();
