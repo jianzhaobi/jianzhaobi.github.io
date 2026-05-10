@@ -66,6 +66,16 @@ html, body {
     color: #56616d;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 .route-filter-native {
     position: absolute;
     width: 1px;
@@ -335,6 +345,7 @@ html, body {
 }
 
 .fetch-time {
+    flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -343,12 +354,31 @@ html, body {
     color: #4d5965;
 }
 
-.panel-summary {
+.alert-indicator {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    place-items: center;
+    flex: 0 0 auto;
+    color: #F59E0B;
+    line-height: 0;
+    cursor: default;
+}
+
+.alert-indicator[hidden] {
+    display: none;
+}
+
+.alert-indicator-icon {
+    width: 18px;
+    height: 17px;
+    display: block;
+}
+
+.panel-summary {
+    display: flex;
     align-items: center;
+    gap: 8px;
     margin-top: 8px;
+    min-width: 0;
 }
 
 .panel-toggle {

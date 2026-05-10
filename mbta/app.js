@@ -92,6 +92,7 @@ const locateUserButton = document.getElementById("locateUser");
 const alertBox = document.getElementById("routeAlert");
 const toggleAlertButton = document.getElementById("toggleAlert");
 const panelToggleButton = document.getElementById("panelToggle");
+const alertIndicator = document.getElementById("alertIndicator");
 const panelDetails = document.getElementById("panelDetails");
 
 const state = {
@@ -1646,6 +1647,7 @@ async function renderAlerts(routeId, requestId) {
         toggleAlertButton.hidden = false;
         toggleAlertButton.textContent = `Show alerts (${alerts.length})`;
         toggleAlertButton.dataset.count = String(alerts.length);
+        alertIndicator.hidden = false;
     } catch (error) {
         if (!isCurrentRoute(routeId, requestId)) return;
 
@@ -1664,6 +1666,7 @@ function hideAlerts() {
     toggleAlertButton.hidden = true;
     toggleAlertButton.textContent = "Show alerts";
     toggleAlertButton.dataset.count = "";
+    alertIndicator.hidden = true;
 }
 
 toggleAlertButton.addEventListener("click", () => {
