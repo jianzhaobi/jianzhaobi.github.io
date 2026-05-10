@@ -281,12 +281,20 @@ function formatTimestamp(date = new Date()) {
 }
 
 function formatTime(value) {
-    if (!value) return "Unknown";
-    return new Date(value).toLocaleTimeString("en-US", {
+    const date = parseMbtaDate(value);
+    if (!date) return "Unknown";
+    return date.toLocaleTimeString("en-US", {
         timeZone: "America/New_York",
         hour: "numeric",
         minute: "2-digit"
     });
+}
+
+function parseMbtaDate(value) {
+    if (!value) return null;
+
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function buildMbtaUrl(path, params = {}) {
@@ -481,13 +489,21 @@ function moveActiveRoute(delta) {
 }
 
 function updateActiveRouteOption() {
+    let activeOptionId = null;
+
     routeOptions.querySelectorAll(".route-option").forEach(button => {
         const isActive = button.dataset.routeId === state.activeRouteId;
         button.classList.toggle("is-active", isActive);
         if (isActive) {
-            routePickerButton.setAttribute("aria-activedescendant", button.id);
+            activeOptionId = button.id;
         }
     });
+
+    if (activeOptionId) {
+        routePickerButton.setAttribute("aria-activedescendant", activeOptionId);
+    } else {
+        routePickerButton.removeAttribute("aria-activedescendant");
+    }
 }
 
 function scrollActiveRouteOptionIntoView() {
@@ -513,6 +529,10 @@ function chooseActiveRoute() {
     routeFilter.value = routeId;
     setRoutePickerExpanded(false);
     selectRoute(routeId, { updateUrl: true, fitRoute: true });
+}
+
+function directionSortValue(directionId) {
+    return Number.isFinite(directionId) ? directionId : Number.MAX_SAFE_INTEGER;
 }
 
 function directionLabel(route, directionId) {
@@ -646,6 +666,8 @@ function stopInfoFromMbtaStop(stop) {
 
     const lat = stop.attributes?.latitude;
     const lng = stop.attributes?.longitude;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
     return {
         id: stop.id,
         name: stop.attributes?.name || "Unknown Stop",
@@ -1161,6 +1183,7 @@ async function selectRoute(routeId, options = {}) {
     const route = state.routes.get(routeId);
     if (!route) return;
 
+    stopVehiclePolling();
     state.selectedRouteId = routeId;
     routeFilter.value = routeId;
     state.routeRequestId += 1;
@@ -1348,10 +1371,11 @@ async function renderPredictions(routeId, stopId, stopMarker) {
         (json.data || []).forEach(prediction => {
             const attributes = prediction.attributes || {};
             const arrivalOrDeparture = attributes.arrival_time || attributes.departure_time;
-            if (!arrivalOrDeparture) return;
+            const predictionTime = parseMbtaDate(arrivalOrDeparture);
+            if (!predictionTime) return;
 
-            const minutes = Math.round((new Date(arrivalOrDeparture).getTime() - now) / 60000);
-            if (minutes < 0) return;
+            const minutes = Math.round((predictionTime.getTime() - now) / 60000);
+            if (!Number.isFinite(minutes) || minutes < 0) return;
 
             const directionId = attributes.direction_id;
             const tripId = prediction.relationships?.trip?.data?.id;
@@ -1367,7 +1391,10 @@ async function renderPredictions(routeId, stopId, stopMarker) {
         });
 
         const rows = Array.from(groups.values())
-            .sort((a, b) => a.directionId - b.directionId || a.headsign.localeCompare(b.headsign))
+            .sort((a, b) =>
+                directionSortValue(a.directionId) - directionSortValue(b.directionId)
+                    || a.headsign.localeCompare(b.headsign)
+            )
             .map(group => {
                 const times = group.minutes.sort((a, b) => a - b).slice(0, 3);
                 const label = route?.directionNames?.[group.directionId] || `Direction ${group.directionId}`;
@@ -1380,6 +1407,8 @@ async function renderPredictions(routeId, stopId, stopMarker) {
 
         stopMarker.setPopupContent(stopPopup(stopMarker.options.title, content)).openPopup();
     } catch (error) {
+        if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+
         console.error("Error fetching predictions:", error);
         stopMarker.setPopupContent(stopPopup(stopMarker.options.title, "Unable to load arrivals.")).openPopup();
     }
@@ -1543,15 +1572,22 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
         renderDirectionLegend(route, vehicleCounts);
         setUpdated(`Last updated: ${formatTimestamp()}${vehicles.length ? "" : " - no vehicles in service"}`);
     } catch (error) {
+        if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
+
         console.error("Error fetching vehicles:", error);
         setUpdated("Last updated: fetch error");
     }
 }
 
+function stopVehiclePolling() {
+    if (!state.vehicleTimer) return;
+
+    clearInterval(state.vehicleTimer);
+    state.vehicleTimer = null;
+}
+
 function restartVehiclePolling() {
-    if (state.vehicleTimer) {
-        clearInterval(state.vehicleTimer);
-    }
+    stopVehiclePolling();
     state.vehicleTimer = setInterval(() => refreshVehicles(), VEHICLE_REFRESH_MS);
 }
 
