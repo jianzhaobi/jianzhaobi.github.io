@@ -163,7 +163,7 @@ The app logs warnings or errors for:
 - Alerts are fetched on initial load and route changes, not on the 5-second vehicle polling interval.
 - Predictions filter out past arrivals by ignoring negative minute differences.
 - Prediction popup results are sorted ascending and limited to the next 3 arrivals per direction/headsign.
-- Alert sorting treats lower MBTA severity values as more critical, then sorts by active-period start time.
+- Alert sorting prioritizes lifecycle first (`NEW`, `ONGOING`, `ONGOING_UPCOMING`, `UPCOMING`), then higher MBTA severity values, then active-period start time.
 
 ## Running Locally
 

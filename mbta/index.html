@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260509-06">
+    <link rel="stylesheet" href="style.css?v=20260510-05">
 </head>
 <body>
 <div id="map"></div>
@@ -43,25 +43,26 @@
         </div>
     </div>
     <div class="panel-summary">
-        <div id="fetchTime" class="fetch-time">Last updated: --</div>
-        <span id="alertIndicator" class="alert-indicator" hidden aria-label="Active service alerts on this route" title="Active service alerts">
-            <svg class="alert-indicator-icon" viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M11 1.5L21 18.5H1Z" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
-                <path d="M11 7.5V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                <circle cx="11" cy="15.5" r="1.25" fill="white"/>
-            </svg>
-        </span>
+        <div id="fetchTime" class="fetch-time" data-state="loading">
+            <span class="fetch-status-dot" aria-hidden="true"></span>
+            <span class="fetch-status-text">Loading routes...</span>
+        </div>
+        <span id="alertIndicator" class="alert-indicator" hidden aria-label="Active service alerts on this route" title="Active service alerts"></span>
         <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
     </div>
     <div id="panelDetails" class="panel-details" hidden>
         <div id="directionLegend" class="direction-legend" hidden></div>
         <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
         <div id="routeAlert" class="route-alert"></div>
-        <p class="tracker-credit">MBTA Tracker by Jianzhao Bi</p>
+        <p class="tracker-credit">
+            <span class="tracker-credit-dot" aria-hidden="true"></span>
+            <span class="tracker-credit-product">MBTA Tracker</span>
+            <span class="tracker-credit-author">by Jianzhao Bi</span>
+        </p>
     </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260509-06"></script>
+<script src="app.js?v=20260510-02"></script>
 </body>
 </html>

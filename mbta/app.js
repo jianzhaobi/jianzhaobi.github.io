@@ -5,6 +5,7 @@
 const MBTA_API_BASE = "https://api-v3.mbta.com";
 const MBTA_API_KEY = "5fb2a20d05094524a0b35961a20cf9e4"; // Set to "" to use keyless MBTA requests.
 const VEHICLE_REFRESH_MS = 5000;
+const VEHICLE_HALO_BREATHE_MS = 1650;
 
 const DEFAULT_VIEW = {
     center: [42.3601, -71.0889],
@@ -28,6 +29,23 @@ const ROUTE_TYPE_ORDER = {
     2: 2,
     3: 3,
     4: 4
+};
+
+const ROUTE_BADGE_OVERRIDES = {
+    "CR-Fairmount": "Fair",
+    "CR-NewBedford": "NBedfd",
+    "CR-Fitchburg": "Fitch",
+    "CR-Worcester": "Worc",
+    "CR-Franklin": "Frank",
+    "CR-Greenbush": "Grnbsh",
+    "CR-Haverhill": "Havrhl",
+    "CR-Kingston": "King",
+    "CR-Lowell": "Lowell",
+    "CR-Needham": "Need",
+    "CR-Newburyport": "Nwbury",
+    "CR-Providence": "Prov",
+    "CR-Foxboro": "Foxbr",
+    "Boat-EastBoston": "EBos"
 };
 
 const CARTO_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
@@ -149,6 +167,7 @@ const routeLayer = L.featureGroup().addTo(map);
 const stopLayer = L.layerGroup().addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map);
+const vehicleHaloClockStartMs = performance.now();
 
 map.on("zoomend moveend", scheduleVehicleLayout);
 
@@ -288,8 +307,31 @@ function setRouteTheme(route) {
     document.documentElement.style.setProperty("--direction-1-color", vehicleDirectionColor(route, 1));
 }
 
+function updateStateForMessage(message) {
+    if (/fetch error|unable/i.test(message)) return "error";
+    if (/loading/i.test(message)) return "loading";
+    return "ok";
+}
+
+function updateLabelForMessage(message) {
+    if (/fetch error|unable/i.test(message)) return "Update failed";
+    if (message.startsWith("Last updated: ")) {
+        return `Updated ${message.replace("Last updated: ", "")}`;
+    }
+    return message;
+}
+
 function setUpdated(message) {
-    fetchTime.textContent = message;
+    const stateName = updateStateForMessage(message);
+    const label = updateLabelForMessage(message);
+
+    fetchTime.dataset.state = stateName;
+    fetchTime.title = message;
+    fetchTime.setAttribute("aria-label", label);
+    fetchTime.innerHTML = `
+        <span class="fetch-status-dot" aria-hidden="true"></span>
+        <span class="fetch-status-text">${escapeHtml(label)}</span>
+    `;
 }
 
 function formatTimestamp(date = new Date()) {
@@ -364,8 +406,130 @@ function routeMeta(route) {
 }
 
 function routeBadgeLabel(route) {
-    const label = route?.shortName || route?.id || "?";
-    return String(label).replace(/^Green-/, "").slice(0, 6);
+    return route?.badgeLabel || firstRouteBadgeCandidate(route) || "?";
+}
+
+function cleanBadgeLabel(value) {
+    return String(value || "").replace(/[^a-z0-9]/gi, "").slice(0, 6);
+}
+
+function splitRouteToken(value) {
+    return String(value || "")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .split(/[^a-z0-9]+/i)
+        .filter(Boolean);
+}
+
+function compressedBadgeLabel(value) {
+    const clean = cleanBadgeLabel(value);
+    if (clean.length <= 6) return clean;
+
+    const compressed = clean[0] + clean.slice(1).replace(/[aeiou]/gi, "");
+    return cleanBadgeLabel(compressed || clean);
+}
+
+function compactRouteId(route) {
+    if (!route) return "";
+    return String(route.id || "")
+        .replace(/^Green-/, "")
+        .replace(/^CR-/, "")
+        .replace(/^Boat-/, "");
+}
+
+function firstRouteBadgeCandidate(route) {
+    return routeBadgeCandidates(route)[0] || cleanBadgeLabel(route?.id) || "?";
+}
+
+function routeBadgeCandidates(route) {
+    if (!route) return [];
+
+    const compactId = compactRouteId(route);
+    const idParts = splitRouteToken(compactId);
+    const longName = String(route.longName || "")
+        .replace(/\b(Line|Ferry|Event|Service)\b/gi, "")
+        .trim();
+    const longParts = splitRouteToken(longName);
+    const candidates = [
+        ROUTE_BADGE_OVERRIDES[route.id],
+        route.id?.startsWith("Boat-F") ? compactId : "",
+        route.id?.startsWith("Green-") ? compactId : "",
+        route.type === 2 || route.type === 4 ? compressedBadgeLabel(compactId) : "",
+        route.type === 2 || route.type === 4 ? cleanBadgeLabel(compactId) : "",
+        route.type === 2 || route.type === 4 ? compressedBadgeLabel(longParts[0]) : "",
+        route.type === 2 || route.type === 4 ? cleanBadgeLabel(longParts[0]) : "",
+        idParts.length > 1 ? cleanBadgeLabel(idParts.map(part => part[0]).join("") + idParts[idParts.length - 1]) : "",
+        route.shortName,
+        compactId,
+        route.id
+    ].map(cleanBadgeLabel).filter(Boolean);
+
+    return [...new Set(candidates)];
+}
+
+function stableRouteHash(value, salt = 0) {
+    let hash = 2166136261 ^ salt;
+    String(value || "").split("").forEach(char => {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+    });
+    return (hash >>> 0).toString(36).toUpperCase();
+}
+
+function collisionSafeBadgeLabel(route, usedLabels) {
+    const base = firstRouteBadgeCandidate(route);
+
+    for (let suffixLength = 1; suffixLength <= 4; suffixLength += 1) {
+        for (let salt = 0; salt < 64; salt += 1) {
+            const suffix = stableRouteHash(route.id, salt).padStart(suffixLength, "0").slice(-suffixLength);
+            const candidate = cleanBadgeLabel(`${base.slice(0, 6 - suffixLength)}${suffix}`);
+            if (candidate && !usedLabels.has(candidate)) return candidate;
+        }
+    }
+
+    return cleanBadgeLabel(stableRouteHash(route.id).padStart(6, "0"));
+}
+
+function assignRouteBadgeLabels(routes) {
+    const labels = new Map();
+    const routesByLabel = new Map();
+
+    routes.forEach(route => {
+        const label = firstRouteBadgeCandidate(route);
+        labels.set(route.id, label);
+        if (!routesByLabel.has(label)) routesByLabel.set(label, []);
+        routesByLabel.get(label).push(route);
+    });
+
+    const usedLabels = new Set(
+        [...routesByLabel.entries()]
+            .filter(([, groupedRoutes]) => groupedRoutes.length === 1)
+            .map(([label]) => label)
+    );
+
+    routesByLabel.forEach(groupedRoutes => {
+        if (groupedRoutes.length === 1) return;
+
+        groupedRoutes.forEach(route => {
+            const label = routeBadgeCandidates(route).find(candidate => !usedLabels.has(candidate))
+                || collisionSafeBadgeLabel(route, usedLabels);
+            labels.set(route.id, label);
+            usedLabels.add(label);
+        });
+    });
+
+    routes.forEach(route => {
+        route.badgeLabel = labels.get(route.id) || collisionSafeBadgeLabel(route, usedLabels);
+        usedLabels.add(route.badgeLabel);
+    });
+
+    const duplicates = routes
+        .map(route => route.badgeLabel)
+        .filter((label, index, allLabels) => allLabels.indexOf(label) !== index);
+    const tooLong = routes.filter(route => route.badgeLabel.length > 6);
+
+    if (duplicates.length || tooLong.length) {
+        console.warn("Route badge labels must be unique and no more than 6 characters.", { duplicates, tooLong });
+    }
 }
 
 function routeGroupKey(route) {
@@ -480,7 +644,7 @@ function setRoutePickerExpanded(expanded) {
         state.activeRouteId = state.selectedRouteId;
         renderRoutePickerOptions();
         window.setTimeout(() => {
-            routeSearch.focus();
+            routeSearch.focus({ preventScroll: true });
             scrollActiveRouteOptionIntoView();
         }, 0);
     } else {
@@ -572,6 +736,10 @@ function renderDirectionLegend(route, vehicleCounts = {}) {
     const directionIds = [0, 1].filter(directionId =>
         route?.directionNames?.[directionId] || route?.directionDestinations?.[directionId]
     );
+    const hasVehicleCounts = directionIds.some(directionId => Number.isFinite(vehicleCounts[directionId]));
+    const vehicleTotal = directionIds.reduce((sum, directionId) =>
+        sum + (Number.isFinite(vehicleCounts[directionId]) ? vehicleCounts[directionId] : 0), 0
+    );
 
     if (!directionIds.length) {
         directionLegend.hidden = true;
@@ -579,12 +747,22 @@ function renderDirectionLegend(route, vehicleCounts = {}) {
         return;
     }
 
-    directionLegend.innerHTML = directionIds.map(directionId => `
+    const directionRows = directionIds.map(directionId => `
         <div class="direction-row">
             <span class="direction-chip direction-${directionId}" style="--direction-color: ${vehicleDirectionColor(route, directionId)}" aria-hidden="true"></span>
             <span class="direction-text">${escapeHtml(directionLabel(route, directionId))}${Number.isFinite(vehicleCounts[directionId]) ? ` · ${vehicleCounts[directionId]}` : ""}</span>
         </div>
-    `).join("");
+    `);
+
+    if (hasVehicleCounts && vehicleTotal === 0) {
+        directionRows.push(`
+            <div class="direction-service-state">
+                No vehicles in service
+            </div>
+        `);
+    }
+
+    directionLegend.innerHTML = directionRows.join("");
     directionLegend.hidden = false;
 }
 
@@ -1216,6 +1394,11 @@ function vehicleHaloBase(route) {
     return relativeLuminance(color0) <= relativeLuminance(color1) ? color0 : color1;
 }
 
+function vehicleHaloAnimationDelay() {
+    const elapsedMs = performance.now() - vehicleHaloClockStartMs;
+    return `-${((elapsedMs % VEHICLE_HALO_BREATHE_MS) / 1000).toFixed(3)}s`;
+}
+
 function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
@@ -1236,7 +1419,7 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
         className: "",
         html: `
             <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
-                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
+                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-halo-delay: ${vehicleHaloAnimationDelay()}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
@@ -1330,6 +1513,7 @@ async function loadRoutes() {
         directionNames: route.attributes.direction_names || [],
         directionDestinations: route.attributes.direction_destinations || []
     })));
+    assignRouteBadgeLabels(routes);
 
     state.routes = new Map(routes.map(route => [route.id, route]));
     routeFilter.innerHTML = "";
@@ -1617,6 +1801,17 @@ async function renderAlerts(routeId, requestId) {
         const alerts = (json.data || [])
             .filter(alert => alert.attributes?.header)
             .sort((a, b) => {
+                const lifecycleRank = {
+                    NEW: 0,
+                    ONGOING: 1,
+                    ONGOING_UPCOMING: 2,
+                    UPCOMING: 3
+                };
+                const aLifecycle = lifecycleRank[a.attributes.lifecycle] ?? 99;
+                const bLifecycle = lifecycleRank[b.attributes.lifecycle] ?? 99;
+                const lifecycle = aLifecycle - bLifecycle;
+                if (lifecycle !== 0) return lifecycle;
+
                 const severity = (b.attributes.severity || 0) - (a.attributes.severity || 0);
                 if (severity !== 0) return severity;
 
@@ -1647,6 +1842,9 @@ async function renderAlerts(routeId, requestId) {
         toggleAlertButton.hidden = false;
         toggleAlertButton.textContent = `Show alerts (${alerts.length})`;
         toggleAlertButton.dataset.count = String(alerts.length);
+        alertIndicator.textContent = alerts.length > 99 ? "99+" : String(alerts.length);
+        alertIndicator.setAttribute("aria-label", `${alerts.length} active service ${alerts.length === 1 ? "alert" : "alerts"} on this route`);
+        alertIndicator.title = `${alerts.length} active service ${alerts.length === 1 ? "alert" : "alerts"}`;
         alertIndicator.hidden = false;
     } catch (error) {
         if (!isCurrentRoute(routeId, requestId)) return;
@@ -1666,6 +1864,7 @@ function hideAlerts() {
     toggleAlertButton.hidden = true;
     toggleAlertButton.textContent = "Show alerts";
     toggleAlertButton.dataset.count = "";
+    alertIndicator.textContent = "";
     alertIndicator.hidden = true;
 }
 
@@ -1763,7 +1962,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
 
         applyVehicleLayout();
         renderDirectionLegend(route, vehicleCounts);
-        setUpdated(`Last updated: ${formatTimestamp()}${vehicles.length ? "" : " - no vehicles in service"}`);
+        setUpdated(`Last updated: ${formatTimestamp()}`);
     } catch (error) {
         if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
 
