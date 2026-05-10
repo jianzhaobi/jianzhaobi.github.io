@@ -118,7 +118,7 @@ The app fetches live JSON from the MBTA API:
 
 ### URL/Browser Outputs
 
-- When the user manually changes routes, `updateURLWithRoute()` writes the selected route into the browser URL query string as `route=<route-id>` using `history.pushState()`.
+- When the user manually changes routes, `updateURLWithRoute()` writes the selected route into the browser URL query string as `route=<route-id>` using `history.replaceState()` (not `pushState`) so route changes do not flood browser history.
 
 ### Console Outputs
 
@@ -141,13 +141,15 @@ The app logs warnings or errors for:
    - sorts and populates the route dropdown
    - applies the `route` query parameter when valid
    - fetches and renders the selected route's shape, stops, vehicles, and alerts
-5. Every 5 seconds, `setInterval(updateBusPositions, 5000)` refreshes:
-   - route shape
-   - stops
-   - vehicle positions
+5. Every 5 seconds, `setInterval(refreshVehicles, VEHICLE_REFRESH_MS)` refreshes:
+   - vehicle positions only (route shape, stops, and alerts are NOT refetched on the interval)
    - last-updated timestamp
-6. When the user changes the selected route:
-   - URL query parameter is updated
+   - vehicle markers are diff-updated by `vehicle.id` (existing markers get
+     `setLatLng` + `setPopupContent`; new ones are added; vanished ones are removed)
+   - polling is paused while the tab is hidden (`visibilitychange`) and resumes on reveal
+6. When the user changes the selected route (`selectRoute`):
+   - any in-flight route-load fetches from the previous route are aborted via `AbortController`
+   - URL query parameter is updated (via `history.replaceState`, not `pushState`)
    - route shape, stops, vehicles, and alerts are refetched
 7. When the user clicks a stop:
    - predictions for that route/stop are fetched
@@ -156,14 +158,16 @@ The app logs warnings or errors for:
 ## Important Implementation Details
 
 - `decodePolyline(encoded)` decodes MBTA encoded polylines into Leaflet `[lat, lng]` coordinate arrays.
-- `window.routeLayer` stores the current route polyline layer group so it can be removed before drawing a new route.
-- `window.stopMarkers` stores current stop markers so they can be removed before drawing stops for a new route.
-- `busMarkers` stores current vehicle markers so they can be removed before each vehicle refresh.
-- Vehicle polling currently calls `plotRouteShape(selectedRoute)` every 5 seconds, which also refetches and redraws stops. This keeps data fresh but causes repeated shape/stop network requests even when the route has not changed.
-- Alerts are fetched on initial load and route changes, not on the 5-second vehicle polling interval.
+- `routeLayer`, `stopLayer`, `vehicleLayer`, `userLayer` are module-level Leaflet feature/layer groups; their contents are cleared via `clearMapForRouteChange()` on route change.
+- `state.vehicleRecords` is a `Map` keyed by `vehicle.id` so polling can diff-update markers in place rather than tearing down and rebuilding the whole layer every 5 s. This preserves any open vehicle popup across refreshes.
+- Vehicle polling (`refreshVehicles` on a `setInterval`) only hits `/vehicles` — it does NOT refetch shapes, stops, or alerts. Those are loaded once per `selectRoute` call.
+- Alerts are fetched on initial load and route changes only, not on the 5-second vehicle polling interval.
 - Predictions filter out past arrivals by ignoring negative minute differences.
 - Prediction popup results are sorted ascending and limited to the next 3 arrivals per direction/headsign.
 - Alert sorting prioritizes lifecycle first (`NEW`, `ONGOING`, `ONGOING_UPCOMING`, `UPCOMING`), then higher MBTA severity values, then active-period start time.
+- `fetchMbta(path, params, signal)` retries up to 3 attempts with jittered exponential backoff (~400 ms, ~800 ms) on `429` and `5xx`; non-retryable client errors throw immediately. The optional `AbortSignal` is honored.
+- `selectRoute` owns a single `state.routeAbortController` that is aborted at the start of each route change so prior in-flight `/shapes`, `/stops`, `/alerts`, and initial `/vehicles` fetches are canceled.
+- `getSegmentLayerPoints(segment)` memoizes per-segment screen-pixel coordinates in a `WeakMap` that is invalidated on map `zoom`/`move` so a single layout pass doesn't re-project every segment per vehicle.
 
 ## Running Locally
 
@@ -183,4 +187,5 @@ Then open `http://localhost:8000`.
 - If changing API request behavior, preserve MBTA route IDs exactly as returned by the API; IDs like `Green-E` and `CR-*` are meaningful.
 - Be careful with public API keys. If this project becomes more than a personal/static demo, move API key handling behind a backend or use restricted keys.
 - If performance becomes an issue, the first likely improvement is to fetch route shapes/stops only when the route changes, while keeping the 5-second interval focused on vehicles.
-- If the MBTA API changes its response shape, the most sensitive code is in `getRoutes()`, `fetchAndShowPredictions()`, `plotRouteShape()`, `plotRouteStops()`, `fetchAndDisplayAlert()`, and `updateBusPositions()`.
+- If the MBTA API changes its response shape, the most sensitive code is in `loadRoutes()`, `renderPredictions()`, `renderRouteShape()`, `renderRouteStops()`, `renderAlerts()`, and `refreshVehicles()`.
+- Asset cache-busting: `index.html` defines `window.__APP_VERSION__` once and injects it into both the `style.css` and `app.js` URLs. Bump that single string when shipping changes; do not maintain two separate `?v=` values.

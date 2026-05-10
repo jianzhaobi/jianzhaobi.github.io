@@ -981,7 +981,11 @@ html, body {
 
 .vehicle-offset-marker.at-stop .vehicle-marker::after {
     --vehicle-halo-color: color-mix(in srgb, var(--vehicle-halo-base) 34%, transparent);
-    animation: vehicle-stop-halo-breathe 1.65s ease-in-out infinite;
+    /* Duration is injected from JS via --vehicle-halo-duration so the
+       VEHICLE_HALO_BREATHE_MS constant in app.js stays the single source of
+       truth. The fallback matches the JS default in case the variable is
+       missing. */
+    animation: vehicle-stop-halo-breathe var(--vehicle-halo-duration, 1.65s) ease-in-out infinite;
     animation-delay: var(--vehicle-halo-delay, 0s);
 }
 

@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260510-11">
+    <!-- Single source of truth for cache-busting both style.css and app.js.
+         Bump this once when shipping changes; the inline scripts below
+         inject the version into both <link> and <script> tags so they can
+         never drift apart. -->
+    <script>window.__APP_VERSION__ = "20260511-01";</script>
+    <script>document.write('<link rel="stylesheet" href="style.css?v=' + window.__APP_VERSION__ + '">');</script>
 </head>
 <body>
 <div id="map"></div>
@@ -70,6 +75,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260510-04"></script>
+<script>document.write('<script src="app.js?v=' + window.__APP_VERSION__ + '"><\/script>');</script>
 </body>
 </html>

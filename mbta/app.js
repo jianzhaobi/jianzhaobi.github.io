@@ -137,12 +137,17 @@ const state = {
     routeSearchQuery: "",
     activeRouteId: null,
     currentBasemap: DEFAULT_BASEMAP,
-    vehicleRecords: [],
+    // Keyed by vehicle.id so refreshVehicles can diff-update existing markers
+    // (preserve open popups, avoid DOM churn) instead of clearing the whole layer.
+    vehicleRecords: new Map(),
     // Cached rendered route segments let vehicle circles align to the road geometry, not just MBTA bearing.
     routeShapeSegments: [],
     // Segments grouped by shapeId for polyline traversal (used by smoothedTangent).
     routeShapeIndex: new Map(),
-    vehicleLayoutTimer: null
+    vehicleLayoutTimer: null,
+    // Aborts in-flight route-load fetches (shapes/stops/alerts/initial vehicles)
+    // when the user switches to a different route. Polling refresh does not use this.
+    routeAbortController: null
 };
 
 /* ====================== */
@@ -381,18 +386,40 @@ function buildMbtaUrl(path, params = {}) {
     return url;
 }
 
-async function fetchMbta(path, params = {}) {
-    const options = MBTA_API_KEY ? { headers: { "x-api-key": MBTA_API_KEY } } : {};
-    let response = await fetch(buildMbtaUrl(path, params), options);
-    if (response.status === 429 || response.status >= 500) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        response = await fetch(buildMbtaUrl(path, params), options);
+async function fetchMbta(path, params = {}, signal) {
+    const options = {};
+    if (MBTA_API_KEY) options.headers = { "x-api-key": MBTA_API_KEY };
+    if (signal) options.signal = signal;
+
+    const url = buildMbtaUrl(path, params);
+    const maxAttempts = 3;
+    let lastError = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+            const response = await fetch(url, options);
+            if (response.ok) return response.json();
+
+            // 4xx (other than 429) is a client error — don't bother retrying.
+            if (response.status !== 429 && response.status < 500) {
+                throw new Error(`MBTA request failed: ${response.status} ${response.statusText}`);
+            }
+            lastError = new Error(`MBTA request failed: ${response.status} ${response.statusText}`);
+        } catch (error) {
+            // Don't retry user-initiated aborts.
+            if (error.name === "AbortError") throw error;
+            lastError = error;
+        }
+
+        if (attempt < maxAttempts - 1) {
+            // Exponential backoff with ±25% jitter: ~400ms, ~800ms before the final attempt.
+            const baseMs = 400 * Math.pow(2, attempt);
+            const jitterMs = baseMs * (0.75 + Math.random() * 0.5);
+            await new Promise(resolve => setTimeout(resolve, jitterMs));
+        }
     }
 
-    if (!response.ok) {
-        throw new Error(`MBTA request failed: ${response.status} ${response.statusText}`);
-    }
-    return response.json();
+    throw lastError || new Error("MBTA request failed after retries");
 }
 
 function buildMapboxDirectionsUrl(profile, origin, destination) {
@@ -850,7 +877,10 @@ function sortRoutes(routes) {
 function updateURLWithRoute(routeId) {
     const currentURL = new URL(window.location);
     currentURL.searchParams.set("route", routeId);
-    window.history.pushState({}, "", currentURL);
+    // Use replaceState so flipping between routes does not flood browser history;
+    // the back button should return to whatever page the user came from, not to
+    // each previous route they viewed in this session.
+    window.history.replaceState({}, "", currentURL);
 }
 
 function getRouteFromURL() {
@@ -957,11 +987,11 @@ function vehicleStopInfo(vehicle, stopLookup = new Map()) {
     return { kind: "at", stop: nearest.stop, distance: nearest.distance };
 }
 
-async function getRepresentativeShapeIds(routeId) {
+async function getRepresentativeShapeIds(routeId, signal) {
     const json = await fetchMbta("/route_patterns", {
         "filter[route]": routeId,
         include: "representative_trip"
-    });
+    }, signal);
 
     const trips = new Map((json.included || [])
         .filter(item => item.type === "trip")
@@ -1053,22 +1083,42 @@ function rotateOffsetOnSameSide(baseOffset, degrees) {
     return rotated.x * baseOffset.x + rotated.y * baseOffset.y > 0 ? rotated : null;
 }
 
+// Memoize per-segment screen-pixel coordinates so a single layout pass over N
+// vehicles doesn't re-project every segment N times. Invalidated whenever the
+// map view changes (zoom/pan), since latLngToLayerPoint depends on view state.
+// WeakMap so old segment objects can be GC'd when a route is unloaded.
+let segmentLayerPointCache = new WeakMap();
+
+function getSegmentLayerPoints(segment) {
+    let cached = segmentLayerPointCache.get(segment);
+    if (cached) return cached;
+    cached = {
+        startPx: map.latLngToLayerPoint(segment.start),
+        endPx: map.latLngToLayerPoint(segment.end)
+    };
+    segmentLayerPointCache.set(segment, cached);
+    return cached;
+}
+
+map.on("zoom move", () => {
+    segmentLayerPointCache = new WeakMap();
+});
+
 function findNearestRouteSegment(anchor, predicate) {
     let nearest = null;
 
     state.routeShapeSegments.forEach(segment => {
         if (predicate && !predicate(segment)) return;
 
-        const start = map.latLngToLayerPoint(segment.start);
-        const end = map.latLngToLayerPoint(segment.end);
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
+        const { startPx, endPx } = getSegmentLayerPoints(segment);
+        const dx = endPx.x - startPx.x;
+        const dy = endPx.y - startPx.y;
         const lengthSq = dx * dx + dy * dy;
         if (!lengthSq) return;
 
-        const t = Math.max(0, Math.min(1, ((anchor.x - start.x) * dx + (anchor.y - start.y) * dy) / lengthSq));
-        const projectedX = start.x + dx * t;
-        const projectedY = start.y + dy * t;
+        const t = Math.max(0, Math.min(1, ((anchor.x - startPx.x) * dx + (anchor.y - startPx.y) * dy) / lengthSq));
+        const projectedX = startPx.x + dx * t;
+        const projectedY = startPx.y + dy * t;
         const distanceSq = (anchor.x - projectedX) ** 2 + (anchor.y - projectedY) ** 2;
 
         if (!nearest || distanceSq < nearest.distanceSq) {
@@ -1127,8 +1177,7 @@ function smoothedTangent(segResult, radiusPx) {
     const seg = shapeSegments[idx];
     if (!seg) return segResult.vector;
 
-    const startPx = map.latLngToLayerPoint(seg.start);
-    const endPx = map.latLngToLayerPoint(seg.end);
+    const { startPx, endPx } = getSegmentLayerPoints(seg);
     const projX = startPx.x + (endPx.x - startPx.x) * t;
     const projY = startPx.y + (endPx.y - startPx.y) * t;
 
@@ -1154,8 +1203,7 @@ function smoothedTangent(segResult, radiusPx) {
     }
     for (let i = idx + 1; remaining > 0 && i < shapeSegments.length; i += 1) {
         const s = shapeSegments[i];
-        const sStart = map.latLngToLayerPoint(s.start);
-        const sEnd = map.latLngToLayerPoint(s.end);
+        const { startPx: sStart, endPx: sEnd } = getSegmentLayerPoints(s);
         const dx = sEnd.x - sStart.x;
         const dy = sEnd.y - sStart.y;
         const len = Math.hypot(dx, dy);
@@ -1193,8 +1241,7 @@ function smoothedTangent(segResult, radiusPx) {
     }
     for (let i = idx - 1; remaining > 0 && i >= 0; i -= 1) {
         const s = shapeSegments[i];
-        const sStart = map.latLngToLayerPoint(s.start);
-        const sEnd = map.latLngToLayerPoint(s.end);
+        const { startPx: sStart, endPx: sEnd } = getSegmentLayerPoints(s);
         // Walk from end toward start (backward along polyline).
         const dx = sStart.x - sEnd.x;
         const dy = sStart.y - sEnd.y;
@@ -1474,7 +1521,7 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
         className: "",
         html: `
             <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
-                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-halo-delay: ${vehicleHaloAnimationDelay()}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
+                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-halo-duration: ${(VEHICLE_HALO_BREATHE_MS / 1000).toFixed(3)}s; --vehicle-halo-delay: ${vehicleHaloAnimationDelay()}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
@@ -1496,10 +1543,11 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
 }
 
 function applyVehicleLayout() {
-    if (!state.vehicleRecords.length) return;
+    if (!state.vehicleRecords.size) return;
 
-    const offsets = resolveVehicleOffsets(state.vehicleRecords);
-    state.vehicleRecords.forEach((record, index) => {
+    const records = [...state.vehicleRecords.values()];
+    const offsets = resolveVehicleOffsets(records);
+    records.forEach((record, index) => {
         record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, offsets[index]));
     });
 }
@@ -1604,6 +1652,15 @@ async function selectRoute(routeId, options = {}) {
     const route = state.routes.get(routeId);
     if (!route) return;
 
+    // Cancel any in-flight fetches from a previous route load. The requestId
+    // pattern would catch stale responses anyway, but aborting frees the network
+    // immediately so the new route loads faster on slow connections.
+    if (state.routeAbortController) {
+        state.routeAbortController.abort();
+    }
+    state.routeAbortController = new AbortController();
+    const signal = state.routeAbortController.signal;
+
     stopVehiclePolling();
     state.selectedRouteId = routeId;
     routeFilter.value = routeId;
@@ -1626,15 +1683,16 @@ async function selectRoute(routeId, options = {}) {
     }
 
     try {
-        await renderRouteShape(routeId, route, requestId, options.fitRoute !== false);
-        await renderRouteStops(routeId, route, requestId);
-        await renderAlerts(routeId, requestId);
+        await renderRouteShape(routeId, route, requestId, options.fitRoute !== false, signal);
+        await renderRouteStops(routeId, route, requestId, signal);
+        await renderAlerts(routeId, requestId, signal);
 
         if (!isCurrentRoute(routeId, requestId)) return;
 
-        await refreshVehicles(routeId);
+        await refreshVehicles(routeId, signal);
         restartVehiclePolling();
     } catch (error) {
+        if (error.name === "AbortError") return;
         if (!isCurrentRoute(routeId, requestId)) return;
         console.error(error);
         setUpdated("Unable to load route data");
@@ -1649,7 +1707,7 @@ function clearMapForRouteChange() {
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
-    state.vehicleRecords = [];
+    state.vehicleRecords.clear();
     state.stops.clear();
     state.routeShapeSegments = [];
     state.routeShapeIndex.clear();
@@ -1672,10 +1730,11 @@ function fitCurrentRouteView(options = {}) {
     return true;
 }
 
-async function renderRouteShape(routeId, route, requestId, shouldFit) {
+async function renderRouteShape(routeId, route, requestId, shouldFit, signal) {
     const [json, representativeShapeInfo] = await Promise.all([
-        fetchMbta("/shapes", { "filter[route]": routeId }),
-        getRepresentativeShapeIds(routeId).catch(error => {
+        fetchMbta("/shapes", { "filter[route]": routeId }, signal),
+        getRepresentativeShapeIds(routeId, signal).catch(error => {
+            if (error.name === "AbortError") throw error;
             console.warn(`Unable to load representative route patterns for ${routeId}:`, error);
             return [];
         })
@@ -1743,8 +1802,8 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
 /* ======== STOPS ======= */
 /* ====================== */
 
-async function renderRouteStops(routeId, route, requestId) {
-    const json = await fetchMbta("/stops", { "filter[route]": routeId });
+async function renderRouteStops(routeId, route, requestId, signal) {
+    const json = await fetchMbta("/stops", { "filter[route]": routeId }, signal);
     if (!isCurrentRoute(routeId, requestId)) return;
 
     stopLayer.clearLayers();
@@ -1807,9 +1866,9 @@ function popupInfoRow(label, value, valueClass = "") {
 }
 
 function vehiclePopup({ title, direction, destination, stopInfo, status, updatedAt }) {
-    const stopLabel = stopInfo
-        ? (stopInfo.kind === "at" ? "At stop" : "Near stop")
-        : "";
+    // vehicleStopInfo() only ever returns kind: "at" — the "near-stop" concept
+    // was removed in 2026-05-09. Keep the label collapsed to a single value.
+    const stopLabel = stopInfo ? "At stop" : "";
     const stopName = stopInfo?.stop?.name || "";
 
     return `
@@ -1927,9 +1986,9 @@ async function renderPredictions(routeId, stopId, stopMarker) {
 /* ======= ALERTS ======= */
 /* ====================== */
 
-async function renderAlerts(routeId, requestId) {
+async function renderAlerts(routeId, requestId, signal) {
     try {
-        const json = await fetchMbta("/alerts", { "filter[route]": routeId });
+        const json = await fetchMbta("/alerts", { "filter[route]": routeId }, signal);
         if (!isCurrentRoute(routeId, requestId)) return;
 
         const alerts = (json.data || [])
@@ -1981,6 +2040,7 @@ async function renderAlerts(routeId, requestId) {
         alertIndicator.title = `${alerts.length} active service ${alerts.length === 1 ? "alert" : "alerts"}`;
         alertIndicator.hidden = false;
     } catch (error) {
+        if (error.name === "AbortError") return;
         if (!isCurrentRoute(routeId, requestId)) return;
 
         console.error("Error fetching alerts:", error);
@@ -2020,7 +2080,7 @@ panelToggleButton.addEventListener("click", () => {
 /* ====== VEHICLES ====== */
 /* ====================== */
 
-async function refreshVehicles(routeId = state.selectedRouteId) {
+async function refreshVehicles(routeId = state.selectedRouteId, signal) {
     if (!routeId) return;
 
     const requestId = ++state.vehicleRequestId;
@@ -2030,7 +2090,7 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
         const json = await fetchMbta("/vehicles", {
             "filter[route]": routeId,
             include: "trip,stop"
-        });
+        }, signal);
 
         if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
 
@@ -2044,16 +2104,18 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             .filter(item => item.type === "stop")
             .map(stop => [stop.id, stop]));
 
-        vehicleLayer.clearLayers();
-        state.vehicleRecords = [];
-
         const vehicles = (json.data || []).filter(vehicle => {
             const lat = vehicle.attributes?.latitude;
             const lng = vehicle.attributes?.longitude;
             return Number.isFinite(lat) && Number.isFinite(lng);
         });
         const vehicleCounts = { 0: 0, 1: 0 };
+        const seenIds = new Set();
 
+        // Diff-update markers in place rather than nuking the whole layer every poll.
+        // Reusing the L.marker instance preserves the open popup (if any), avoids
+        // DOM churn, and lets the upcoming smooth-movement work plug in by simply
+        // tweening setLatLng instead of jumping straight to the new position.
         vehicles.forEach(vehicle => {
             const attributes = vehicle.attributes;
             const position = [attributes.latitude, attributes.longitude];
@@ -2064,12 +2126,6 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
                 vehicleCounts[directionId] += 1;
             }
             const stopInfo = vehicleStopInfo(vehicle, stopLookup);
-            const marker = L.marker(position, {
-                icon: createVehicleIcon(vehicle, route, stopInfo),
-                zIndexOffset: stopInfo ? 1200 : 1000
-            }).addTo(vehicleLayer);
-            state.vehicleRecords.push({ marker, vehicle, route, stopInfo, shapeId: trip?.shapeId });
-
             const headsign = trip?.headsign
                 || route?.directionDestinations?.[directionId]
                 || "Unknown destination";
@@ -2080,21 +2136,47 @@ async function refreshVehicles(routeId = state.selectedRouteId) {
             const direction = directionId === 0 || directionId === 1
                 ? directionLabel(route, directionId)
                 : "Unknown direction";
-
-            marker.bindPopup(vehiclePopup({
+            const popupHtml = vehiclePopup({
                 title: `${routeId} - ${label}`,
                 direction,
                 destination: headsign,
                 stopInfo,
                 status,
                 updatedAt: formatTime(attributes.updated_at)
-            }), { closeButton: false });
+            });
+            const zIndexOffset = stopInfo ? 1200 : 1000;
+
+            seenIds.add(vehicle.id);
+            const existing = state.vehicleRecords.get(vehicle.id);
+            let marker;
+            if (existing) {
+                marker = existing.marker;
+                marker.setLatLng(position);
+                marker.setPopupContent(popupHtml);
+                marker.setZIndexOffset(zIndexOffset);
+            } else {
+                marker = L.marker(position, {
+                    icon: createVehicleIcon(vehicle, route, stopInfo),
+                    zIndexOffset
+                }).addTo(vehicleLayer);
+                marker.bindPopup(popupHtml, { closeButton: false });
+            }
+            state.vehicleRecords.set(vehicle.id, { marker, vehicle, route, stopInfo, shapeId: trip?.shapeId });
+        });
+
+        // Drop markers for vehicles that disappeared from the response.
+        [...state.vehicleRecords.keys()].forEach(id => {
+            if (seenIds.has(id)) return;
+            const record = state.vehicleRecords.get(id);
+            vehicleLayer.removeLayer(record.marker);
+            state.vehicleRecords.delete(id);
         });
 
         applyVehicleLayout();
         renderDirectionLegend(route, vehicleCounts);
         setUpdated(`Last updated: ${formatTimestamp()}`);
     } catch (error) {
+        if (error.name === "AbortError") return;
         if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
 
         console.error("Error fetching vehicles:", error);
@@ -2279,6 +2361,20 @@ document.addEventListener("keydown", event => {
     if (event.key === "Escape") {
         setRoutePickerExpanded(false);
         setBasemapPickerExpanded(false);
+    }
+});
+
+// Pause vehicle polling while the tab is hidden so background tabs don't keep
+// hitting the MBTA API. When the user comes back, refresh once immediately so
+// they don't see stale positions, then resume the regular interval.
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        stopVehiclePolling();
+        return;
+    }
+    if (state.selectedRouteId) {
+        refreshVehicles();
+        restartVehiclePolling();
     }
 });
 
