@@ -662,7 +662,7 @@ html, body {
 .tracker-credit {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     min-width: 0;
     margin: 8px 0 0;
     padding-top: 8px;
@@ -672,15 +672,6 @@ html, body {
     font-weight: 650;
     line-height: 1.25;
     text-align: left;
-}
-
-.tracker-credit-dot {
-    flex: 0 0 auto;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--route-color);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--route-color) 12%, transparent);
 }
 
 .tracker-credit-product {
