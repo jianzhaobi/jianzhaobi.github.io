@@ -122,6 +122,11 @@ const map = L.map("map", {
 
 L.control.zoom({ position: "topright" }).addTo(map);
 
+/* Move the locate button into the Leaflet top-right control container so both
+   controls share the same positioning context (fixes overlap on iPad landscape). */
+const topRightContainer = map.getContainer().querySelector(".leaflet-top.leaflet-right");
+if (topRightContainer) topRightContainer.appendChild(locateUserButton);
+
 let basemapLayer = createBasemapLayer(DEFAULT_BASEMAP).addTo(map);
 
 const routeLayer = L.featureGroup().addTo(map);
@@ -678,32 +683,29 @@ function stopInfoFromMbtaStop(stop) {
 
 function vehicleStopInfo(vehicle, stopLookup = new Map()) {
     const attributes = vehicle.attributes || {};
+    const status = attributes.current_status;
+
+    if (status !== "STOPPED_AT") return null;
+
     const lat = attributes.latitude;
     const lng = attributes.longitude;
-    const status = attributes.current_status;
     const relationshipStopId = vehicle.relationships?.stop?.data?.id;
     const relatedStop = relationshipStopId
         ? state.stops.get(relationshipStopId) || stopInfoFromMbtaStop(stopLookup.get(relationshipStopId))
         : null;
 
-    if (relatedStop && status === "STOPPED_AT") {
+    if (relatedStop) {
         return { kind: "at", stop: relatedStop };
     }
-    if (relatedStop) {
-        return { kind: "near", stop: relatedStop };
-    }
+
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         return null;
     }
 
-    const nearest = nearestRenderedStop(lat, lng, status === "STOPPED_AT" ? 45 : 26);
+    const nearest = nearestRenderedStop(lat, lng, 45);
     if (!nearest) return null;
 
-    return {
-        kind: status === "STOPPED_AT" || nearest.distance <= 12 ? "at" : "near",
-        stop: nearest.stop,
-        distance: nearest.distance
-    };
+    return { kind: "at", stop: nearest.stop, distance: nearest.distance };
 }
 
 async function getRepresentativeShapeIds(routeId) {
@@ -1034,11 +1036,17 @@ function vehicleGlyph(route) {
     `;
 }
 
+function vehicleHaloBase(route) {
+    const color0 = vehicleDirectionColor(route, 0);
+    const color1 = vehicleDirectionColor(route, 1);
+    return relativeLuminance(color0) <= relativeLuminance(color1) ? color0 : color1;
+}
+
 function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const directionId = vehicle.attributes.direction_id;
     const directionClass = directionId === 0 || directionId === 1 ? `direction-${directionId}` : "direction-unknown";
     const bearing = Number.isFinite(vehicle.attributes.bearing) ? vehicle.attributes.bearing : 0;
-    const stopClass = stopInfo ? (stopInfo.kind === "at" ? "at-stop" : "near-stop") : "";
+    const stopClass = vehicle.attributes.current_status === "STOPPED_AT" ? "at-stop" : "";
     const markerAccent = vehicleDirectionColor(route, directionId);
     const visualOffset = offset || vehicleOffsetForDirection(bearing, directionId);
     const center = VEHICLE_ICON_SIZE / 2;
@@ -1054,7 +1062,7 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
         className: "",
         html: `
             <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
-                 style="--vehicle-color: ${markerAccent}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
+                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
@@ -1285,7 +1293,8 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
             weight: 5,
             opacity: 0.82,
             lineCap: "round",
-            lineJoin: "round"
+            lineJoin: "round",
+            interactive: false
         }).addTo(routeLayer);
     });
 
@@ -1631,6 +1640,7 @@ function updateUserLocation(position) {
     } else {
         state.userMarker = L.marker(latLng, {
             icon: createUserLocationIcon(),
+            interactive: false,
             zIndexOffset: 500
         }).addTo(userLayer);
     }

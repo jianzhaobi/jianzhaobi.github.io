@@ -431,9 +431,13 @@ html, body {
 }
 
 .leaflet-top.leaflet-right {
-    top: calc(50% - (var(--map-control-gap) / 2));
+    top: calc(50% - var(--map-control-size) - 1px);
     right: var(--right-control-inset);
-    transform: translateY(-100%);
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--map-control-gap);
 }
 
 .leaflet-control-zoom {
@@ -446,10 +450,6 @@ html, body {
 
 .locate-user {
     --locate-icon-color: #17202a;
-    position: fixed;
-    right: var(--right-control-inset);
-    top: calc(50% + (var(--map-control-gap) / 2));
-    z-index: 1000;
     display: grid;
     width: var(--map-control-outer-size);
     height: var(--map-control-outer-size);
@@ -665,6 +665,16 @@ html, body {
     color: #65717d;
 }
 
+.leaflet-marker-icon:has(.vehicle-offset-marker) {
+    pointer-events: none !important;
+    cursor: default !important;
+}
+
+.leaflet-marker-icon:has(.user-location-marker) {
+    pointer-events: none !important;
+    cursor: default !important;
+}
+
 .vehicle-offset-marker {
     width: 116px;
     height: 116px;
@@ -672,7 +682,7 @@ html, body {
     --vehicle-color: #165c96;
     --vehicle-x: 0px;
     --vehicle-y: -26px;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .vehicle-leader,
@@ -728,7 +738,14 @@ html, body {
     border: 3px solid #ffffff;
     border-radius: 50%;
     box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y)));
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(1);
+    pointer-events: auto;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.vehicle-marker:hover {
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(1.15);
 }
 
 .vehicle-marker::after {
@@ -783,25 +800,14 @@ html, body {
     background: #6b7280;
 }
 
-.vehicle-offset-marker.near-stop .vehicle-marker {
-    box-shadow:
-        0 1.5px 4px rgba(20, 31, 43, 0.24),
-        0 0 0 1px rgba(20, 31, 43, 0.14);
-}
-
 .vehicle-offset-marker.at-stop .vehicle-marker {
     box-shadow:
         0 1.5px 4px rgba(20, 31, 43, 0.24),
         0 0 0 1px rgba(20, 31, 43, 0.14);
 }
 
-.vehicle-offset-marker.near-stop .vehicle-marker::after {
-    --vehicle-halo-color: color-mix(in srgb, var(--vehicle-color) 24%, transparent);
-    animation: vehicle-stop-halo-breathe 1.9s ease-in-out infinite;
-}
-
 .vehicle-offset-marker.at-stop .vehicle-marker::after {
-    --vehicle-halo-color: color-mix(in srgb, var(--vehicle-color) 34%, transparent);
+    --vehicle-halo-color: color-mix(in srgb, var(--vehicle-halo-base) 34%, transparent);
     animation: vehicle-stop-halo-breathe 1.65s ease-in-out infinite;
 }
 
@@ -858,7 +864,6 @@ html, body {
         animation: none;
     }
 
-    .vehicle-offset-marker.near-stop .vehicle-marker::after,
     .vehicle-offset-marker.at-stop .vehicle-marker::after {
         animation: none;
         opacity: 0.42;
@@ -875,6 +880,12 @@ html, body {
     border: 2px solid var(--route-color);
     border-radius: 50%;
     box-shadow: 0 1px 6px rgba(20, 31, 43, 0.25);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.stop-marker:hover {
+    transform: scale(1.15);
 }
 
 body * {
