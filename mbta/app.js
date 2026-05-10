@@ -11,6 +11,8 @@ const MAPBOX_ACCESS_TOKEN = [
 ].join("");
 const VEHICLE_REFRESH_MS = 5000;
 const VEHICLE_HALO_BREATHE_MS = 1650;
+const VEHICLE_MOVE_MAX_JUMP_METERS = 1200;
+const VEHICLE_MOVE_DURATION_MS = Math.min(VEHICLE_REFRESH_MS * 0.85, 4200);
 
 const DEFAULT_VIEW = {
     center: [42.3601, -71.0889],
@@ -183,6 +185,7 @@ const vehicleLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
+map.on("zoomstart movestart", cancelVehicleMoveAnimations);
 map.on("zoomend moveend", scheduleVehicleLayout);
 
 /* ====================== */
@@ -1308,7 +1311,7 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
     };
 }
 
-function resolveVehicleOffsets(records) {
+function resolveVehicleOffsets(records, anchorResolver = null) {
     const offsetPx = effectiveOffsetPx();
     const minDistance = VEHICLE_MARKER_RADIUS_PX * 2 + VEHICLE_COLLISION_PADDING_PX;
     const visibleBounds = map.getPixelBounds().pad(0.15);
@@ -1322,7 +1325,9 @@ function resolveVehicleOffsets(records) {
     const layoutItems = records
         .map((record, index) => {
             const attributes = record.vehicle.attributes || {};
-            const anchor = map.latLngToLayerPoint([attributes.latitude, attributes.longitude]);
+            const currentLatLng = anchorResolver ? anchorResolver(record) : record.marker.getLatLng();
+            const anchorLatLng = currentLatLng || [attributes.latitude, attributes.longitude];
+            const anchor = map.latLngToLayerPoint(anchorLatLng);
             const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
 
             return {
@@ -1542,6 +1547,57 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     });
 }
 
+function vehicleLeaderGeometry(offset) {
+    const center = VEHICLE_ICON_SIZE / 2;
+    const offsetDistance = Math.hypot(offset.x, offset.y);
+    const leaderLength = Math.max(0, offsetDistance - VEHICLE_MARKER_RADIUS_PX + 1);
+    const leaderScale = offsetDistance ? leaderLength / offsetDistance : 0;
+
+    return {
+        leaderEndX: center + offset.x * leaderScale,
+        leaderEndY: center + offset.y * leaderScale,
+        markerCenterX: center + offset.x,
+        markerCenterY: center + offset.y
+    };
+}
+
+function applyVehicleVisualOffset(record, offset) {
+    const visualOffset = {
+        x: Number.isFinite(offset?.x) ? offset.x : 0,
+        y: Number.isFinite(offset?.y) ? offset.y : 0
+    };
+    record.visualOffset = visualOffset;
+    const popupAnchor = [visualOffset.x, visualOffset.y - 22];
+    if (record.marker.options.icon?.options) {
+        record.marker.options.icon.options.popupAnchor = popupAnchor;
+    }
+
+    const element = record.marker.getElement();
+    const root = element?.querySelector(".vehicle-offset-marker");
+    if (!root) {
+        record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, visualOffset));
+        return;
+    }
+
+    const { leaderEndX, leaderEndY, markerCenterX, markerCenterY } = vehicleLeaderGeometry(visualOffset);
+    root.style.setProperty("--vehicle-x", `${visualOffset.x}px`);
+    root.style.setProperty("--vehicle-y", `${visualOffset.y}px`);
+    root.querySelector(".vehicle-leader line")?.setAttribute("x2", leaderEndX);
+    root.querySelector(".vehicle-leader line")?.setAttribute("y2", leaderEndY);
+    root.querySelector(".vehicle-hit-target circle")?.setAttribute("cx", markerCenterX);
+    root.querySelector(".vehicle-hit-target circle")?.setAttribute("cy", markerCenterY);
+    if (record.marker._popup?.isOpen()) {
+        record.marker._popup.options.offset = L.point(popupAnchor);
+        record.marker._popup.update();
+    }
+}
+
+function setVehicleMoving(record, isMoving) {
+    record.marker.getElement()
+        ?.querySelector(".vehicle-offset-marker")
+        ?.classList.toggle("is-moving", isMoving);
+}
+
 function applyVehicleLayout() {
     if (!state.vehicleRecords.size) return;
 
@@ -1549,6 +1605,7 @@ function applyVehicleLayout() {
     const offsets = resolveVehicleOffsets(records);
     records.forEach((record, index) => {
         record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, offsets[index]));
+        record.visualOffset = offsets[index];
     });
 }
 
@@ -1704,6 +1761,7 @@ function isCurrentRoute(routeId, requestId = state.routeRequestId) {
 }
 
 function clearMapForRouteChange() {
+    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker));
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
@@ -2080,6 +2138,95 @@ panelToggleButton.addEventListener("click", () => {
 /* ====== VEHICLES ====== */
 /* ====================== */
 
+function cancelVehicleMoveAnimation(marker) {
+    if (!marker) return;
+
+    if (marker?._vehicleMoveAnimationFrame) {
+        cancelAnimationFrame(marker._vehicleMoveAnimationFrame);
+        marker._vehicleMoveAnimationFrame = null;
+    }
+    marker.getElement()
+        ?.querySelector(".vehicle-offset-marker")
+        ?.classList.remove("is-moving");
+}
+
+function cancelVehicleMoveAnimations() {
+    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker));
+}
+
+function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
+    const marker = record.marker;
+    const duration = options.duration ?? VEHICLE_MOVE_DURATION_MS;
+    const maxJumpMeters = options.maxJumpMeters ?? VEHICLE_MOVE_MAX_JUMP_METERS;
+    const from = marker.getLatLng();
+    const to = L.latLng(targetLatLng);
+    const fromOffset = record.visualOffset || targetOffset || { x: 0, y: 0 };
+    const toOffset = targetOffset || fromOffset;
+
+    if (!from || !Number.isFinite(to.lat) || !Number.isFinite(to.lng)) {
+        cancelVehicleMoveAnimation(marker);
+        marker.setLatLng(to);
+        applyVehicleVisualOffset(record, toOffset);
+        setVehicleMoving(record, false);
+        return;
+    }
+
+    const distance = from.distanceTo(to);
+    if (!Number.isFinite(distance) || distance < 0.5 || distance > maxJumpMeters || duration <= 0) {
+        cancelVehicleMoveAnimation(marker);
+        marker.setLatLng(to);
+        applyVehicleVisualOffset(record, toOffset);
+        setVehicleMoving(record, false);
+        return;
+    }
+
+    cancelVehicleMoveAnimation(marker);
+    setVehicleMoving(record, true);
+
+    const start = performance.now();
+    const startPoint = map.latLngToLayerPoint(from);
+    const endPoint = map.latLngToLayerPoint(to);
+    const deltaX = endPoint.x - startPoint.x;
+    const deltaY = endPoint.y - startPoint.y;
+    const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+    const step = now => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = easeOutCubic(t);
+        const point = L.point(
+            startPoint.x + deltaX * eased,
+            startPoint.y + deltaY * eased
+        );
+        const currentLatLng = map.layerPointToLatLng(point);
+        const offset = {
+            x: fromOffset.x + (toOffset.x - fromOffset.x) * eased,
+            y: fromOffset.y + (toOffset.y - fromOffset.y) * eased
+        };
+
+        // Move the marker in layer-pixel space so browser transforms can use
+        // fractional pixels. Calling setLatLng every frame goes through
+        // Leaflet's rounded latLngToLayerPoint path, which creates visible
+        // one-pixel stepping on slow vehicle movements.
+        marker._latlng = currentLatLng;
+        marker._setPos(point);
+        if (marker._popup?.isOpen()) {
+            marker._popup.setLatLng(currentLatLng);
+        }
+        applyVehicleVisualOffset(record, offset);
+
+        if (t < 1) {
+            marker._vehicleMoveAnimationFrame = requestAnimationFrame(step);
+        } else {
+            marker._vehicleMoveAnimationFrame = null;
+            marker.setLatLng(to);
+            applyVehicleVisualOffset(record, toOffset);
+            setVehicleMoving(record, false);
+        }
+    };
+
+    marker._vehicleMoveAnimationFrame = requestAnimationFrame(step);
+}
+
 async function refreshVehicles(routeId = state.selectedRouteId, signal) {
     if (!routeId) return;
 
@@ -2114,8 +2261,7 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
 
         // Diff-update markers in place rather than nuking the whole layer every poll.
         // Reusing the L.marker instance preserves the open popup (if any), avoids
-        // DOM churn, and lets the upcoming smooth-movement work plug in by simply
-        // tweening setLatLng instead of jumping straight to the new position.
+        // DOM churn, and lets repeated MBTA updates animate between coordinates.
         vehicles.forEach(vehicle => {
             const attributes = vehicle.attributes;
             const position = [attributes.latitude, attributes.longitude];
@@ -2149,30 +2295,60 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
             seenIds.add(vehicle.id);
             const existing = state.vehicleRecords.get(vehicle.id);
             let marker;
+            let record;
             if (existing) {
                 marker = existing.marker;
-                marker.setLatLng(position);
                 marker.setPopupContent(popupHtml);
                 marker.setZIndexOffset(zIndexOffset);
+                record = existing;
+                Object.assign(record, {
+                    vehicle,
+                    route,
+                    stopInfo,
+                    shapeId: trip?.shapeId,
+                    targetLatLng: L.latLng(position),
+                    shouldAnimate: true
+                });
+                marker.setIcon(createVehicleIcon(vehicle, route, stopInfo, record.visualOffset));
             } else {
                 marker = L.marker(position, {
                     icon: createVehicleIcon(vehicle, route, stopInfo),
                     zIndexOffset
                 }).addTo(vehicleLayer);
                 marker.bindPopup(popupHtml, { closeButton: false });
+                record = {
+                    marker,
+                    vehicle,
+                    route,
+                    stopInfo,
+                    shapeId: trip?.shapeId,
+                    targetLatLng: L.latLng(position),
+                    shouldAnimate: false
+                };
             }
-            state.vehicleRecords.set(vehicle.id, { marker, vehicle, route, stopInfo, shapeId: trip?.shapeId });
+            state.vehicleRecords.set(vehicle.id, record);
         });
 
         // Drop markers for vehicles that disappeared from the response.
         [...state.vehicleRecords.keys()].forEach(id => {
             if (seenIds.has(id)) return;
             const record = state.vehicleRecords.get(id);
+            cancelVehicleMoveAnimation(record.marker);
             vehicleLayer.removeLayer(record.marker);
             state.vehicleRecords.delete(id);
         });
 
-        applyVehicleLayout();
+        const records = [...state.vehicleRecords.values()];
+        const targetOffsets = resolveVehicleOffsets(records, record => record.targetLatLng || record.marker.getLatLng());
+        records.forEach((record, index) => {
+            const targetOffset = targetOffsets[index];
+            if (record.shouldAnimate) {
+                animateVehicleTo(record, record.targetLatLng, targetOffset);
+            } else {
+                applyVehicleVisualOffset(record, targetOffset);
+            }
+            record.shouldAnimate = false;
+        });
         renderDirectionLegend(route, vehicleCounts);
         setUpdated(`Last updated: ${formatTimestamp()}`);
     } catch (error) {

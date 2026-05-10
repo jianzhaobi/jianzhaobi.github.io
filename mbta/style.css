@@ -917,6 +917,10 @@ html, body {
     transition: transform 0.15s ease;
 }
 
+.vehicle-offset-marker.is-moving .vehicle-marker {
+    transition: none;
+}
+
 .vehicle-marker:hover {
     transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(1.15);
 }
