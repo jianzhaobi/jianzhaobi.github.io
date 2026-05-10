@@ -112,6 +112,7 @@ const basemapOptionButtons = [...document.querySelectorAll(".basemap-option")];
 const fetchTime = document.getElementById("fetchTime");
 const directionLegend = document.getElementById("directionLegend");
 const locateUserButton = document.getElementById("locateUser");
+const resetRouteViewButton = document.getElementById("resetRouteView");
 const alertBox = document.getElementById("routeAlert");
 const toggleAlertButton = document.getElementById("toggleAlert");
 const panelToggleButton = document.getElementById("panelToggle");
@@ -155,15 +156,18 @@ const map = L.map("map", {
 
 L.control.zoom({ position: "topright" }).addTo(map);
 
-/* Move the locate button into the Leaflet top-right control container so both
+/* Move custom buttons into the Leaflet top-right control container so all
    controls share the same positioning context (fixes overlap on iPad landscape). */
 const topRightContainer = map.getContainer().querySelector(".leaflet-top.leaflet-right");
 if (topRightContainer) {
     topRightContainer.appendChild(locateUserButton);
+    topRightContainer.appendChild(resetRouteViewButton);
     /* Prevent Leaflet's Draggable from calling preventDefault() on mousedown for
        this <button> element — without this, Leaflet swallows the mousedown and
        the click event never fires (Leaflet only exempts <a> and <input> tags). */
-    locateUserButton.addEventListener("mousedown", e => e.stopPropagation());
+    [locateUserButton, resetRouteViewButton].forEach(button => {
+        button.addEventListener("mousedown", e => e.stopPropagation());
+    });
 }
 
 let basemapLayer = createBasemapLayer(DEFAULT_BASEMAP).addTo(map);
@@ -1649,11 +1653,24 @@ function clearMapForRouteChange() {
     state.stops.clear();
     state.routeShapeSegments = [];
     state.routeShapeIndex.clear();
+    resetRouteViewButton.hidden = true;
 }
 
 /* ====================== */
 /* ======== SHAPES ====== */
 /* ====================== */
+
+function fitCurrentRouteView(options = {}) {
+    if (!routeLayer.getLayers().length) return false;
+
+    map.fitBounds(routeLayer.getBounds(), {
+        paddingTopLeft: [24, 155],
+        paddingBottomRight: [24, 24],
+        maxZoom: 15,
+        ...options
+    });
+    return true;
+}
 
 async function renderRouteShape(routeId, route, requestId, shouldFit) {
     const [json, representativeShapeInfo] = await Promise.all([
@@ -1715,12 +1732,9 @@ async function renderRouteShape(routeId, route, requestId, shouldFit) {
         }).addTo(routeLayer);
     });
 
-    if (shouldFit && routeLayer.getLayers().length) {
-        map.fitBounds(routeLayer.getBounds(), {
-            paddingTopLeft: [24, 155],
-            paddingBottomRight: [24, 24],
-            maxZoom: 15
-        });
+    resetRouteViewButton.hidden = !routeLayer.getLayers().length;
+
+    if (shouldFit && fitCurrentRouteView()) {
         state.hasFitRoute = true;
     }
 }
@@ -2164,6 +2178,11 @@ locateUserButton.addEventListener("click", () => {
         setFollowUserLocation(true);
         centerMapOnUser(state.userLocation, Math.max(map.getZoom(), 15));
     }
+});
+
+resetRouteViewButton.addEventListener("click", () => {
+    setFollowUserLocation(false);
+    fitCurrentRouteView({ animate: true });
 });
 
 map.on("dragstart zoomstart", () => {

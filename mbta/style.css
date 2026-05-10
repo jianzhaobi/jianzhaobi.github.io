@@ -519,7 +519,8 @@ html, body {
     box-shadow: 0 8px 22px rgba(20, 31, 43, 0.18);
 }
 
-.locate-user {
+.locate-user,
+.reset-route-view {
     --locate-icon-color: #17202a;
     position: relative;
     pointer-events: auto;
@@ -539,6 +540,10 @@ html, body {
     backdrop-filter: blur(8px);
 }
 
+.reset-route-view {
+    --reset-route-icon-color: #17202a;
+}
+
 .locate-user.is-following {
     --locate-icon-color: #1677ff;
 }
@@ -547,7 +552,8 @@ html, body {
     --locate-icon-color: #a7b0ba;
 }
 
-.locate-user[hidden] {
+.locate-user[hidden],
+.reset-route-view[hidden] {
     display: none;
 }
 
@@ -657,6 +663,17 @@ html, body {
         linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) center bottom / 2px 5px no-repeat,
         linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) left center / 5px 2px no-repeat,
         linear-gradient(var(--locate-icon-color), var(--locate-icon-color)) right center / 5px 2px no-repeat;
+}
+
+.reset-route-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: var(--reset-route-icon-color);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .tracker-credit {

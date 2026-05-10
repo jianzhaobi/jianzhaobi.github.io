@@ -5,12 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="style.css?v=20260510-07">
+    <link rel="stylesheet" href="style.css?v=20260510-11">
 </head>
 <body>
 <div id="map"></div>
 <button id="locateUser" class="locate-user" type="button" aria-label="My location" title="My location" hidden>
     <span class="locate-dot" aria-hidden="true"></span>
+</button>
+<button id="resetRouteView" class="reset-route-view" type="button" aria-label="Show full route" title="Show full route" hidden>
+    <svg class="reset-route-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M8 4H4v4"></path>
+        <path d="M16 4h4v4"></path>
+        <path d="M8 20H4v-4"></path>
+        <path d="M16 20h4v-4"></path>
+    </svg>
 </button>
 <div id="basemapPicker" class="basemap-picker">
     <div id="basemapOptions" class="basemap-options" hidden>
@@ -62,6 +70,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=20260510-03"></script>
+<script src="app.js?v=20260510-04"></script>
 </body>
 </html>
