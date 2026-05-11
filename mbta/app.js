@@ -548,7 +548,12 @@ function renderWalkRoute(encodedPolyline, stopId) {
 }
 
 async function fetchTravelTimeSummary(stop) {
-    if (!state.userLocation) return "Unavailable";
+    if (!state.userLocation) {
+        return {
+            summary: "Unavailable",
+            encodedPolyline: ""
+        };
+    }
 
     const [walkResult, driveResult] = await Promise.allSettled([
         GOOGLE_MAPS_API_KEY
