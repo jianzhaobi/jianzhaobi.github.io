@@ -761,11 +761,32 @@ html, body {
 }
 
 .leaflet-popup-content-wrapper {
+    position: relative;
+    overflow: hidden;
     border-radius: 8px;
+    background: transparent;
     box-shadow: 0 12px 32px rgba(20, 31, 43, 0.2);
 }
 
+.leaflet-popup-content-wrapper::before {
+    background: rgba(255, 255, 255, 0.28);
+    -webkit-backdrop-filter: blur(10px) saturate(1.16);
+    backdrop-filter: blur(10px) saturate(1.16);
+    content: "";
+    inset: 0;
+    position: absolute;
+    z-index: 0;
+}
+
+.leaflet-popup-tip {
+    background: rgba(255, 255, 255, 0.28);
+    -webkit-backdrop-filter: blur(10px) saturate(1.16);
+    backdrop-filter: blur(10px) saturate(1.16);
+}
+
 .leaflet-popup-content {
+    position: relative;
+    z-index: 1;
     margin: 11px 13px;
     color: #17202a;
     font-size: 12px;

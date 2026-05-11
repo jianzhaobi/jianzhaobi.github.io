@@ -1691,7 +1691,6 @@ function applyVehicleVisualOffset(record, offset) {
     root.querySelector(".vehicle-hit-target circle")?.setAttribute("cx", markerCenterX);
     root.querySelector(".vehicle-hit-target circle")?.setAttribute("cy", markerCenterY);
     if (record.marker._popup?.isOpen()) {
-        record.marker._popup.options.offset = L.point(popupAnchor);
         record.marker._popup.update();
     }
 }
@@ -2462,8 +2461,9 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
                 });
                 marker.setIcon(createVehicleIcon(vehicle, route, stopInfo, record.visualOffset));
             } else {
+                const initialOffset = vehicleOffsetForDirection(attributes.bearing, directionId);
                 marker = L.marker(position, {
-                    icon: createVehicleIcon(vehicle, route, stopInfo),
+                    icon: createVehicleIcon(vehicle, route, stopInfo, initialOffset),
                     zIndexOffset
                 }).addTo(vehicleLayer);
                 marker.bindPopup(popupHtml, { closeButton: false });
@@ -2474,6 +2474,7 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
                     stopInfo,
                     shapeId: trip?.shapeId,
                     targetLatLng: L.latLng(position),
+                    visualOffset: initialOffset,
                     shouldAnimate: false
                 };
             }
