@@ -996,6 +996,28 @@ html, body {
     pointer-events: none;
 }
 
+.vehicle-heading-arrow {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 1;
+    width: 14px;
+    height: 11px;
+    overflow: visible;
+    filter: drop-shadow(0 1px 1px rgba(20, 31, 43, 0.24));
+    pointer-events: none;
+    transform: translate(-50%, -18px) rotate(var(--vehicle-heading, 0deg));
+    transform-origin: 50% 18px;
+}
+
+.vehicle-heading-arrow-outline {
+    fill: #ffffff;
+}
+
+.vehicle-heading-arrow-fill {
+    fill: var(--vehicle-color);
+}
+
 .vehicle-symbol {
     position: relative;
     z-index: 1;

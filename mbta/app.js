@@ -1190,6 +1190,17 @@ function rotateOffsetOnSameSide(baseOffset, degrees) {
     return rotated.x * baseOffset.x + rotated.y * baseOffset.y > 0 ? rotated : null;
 }
 
+function bearingToTravelVector(bearing) {
+    const radians = bearing * Math.PI / 180;
+    return { x: Math.sin(radians), y: -Math.cos(radians) };
+}
+
+function headingDegreesFromVector(vector) {
+    const normalized = normalizeVector(vector);
+    if (!normalized) return 0;
+    return Math.round(Math.atan2(normalized.x, -normalized.y) * 180 / Math.PI);
+}
+
 // Memoize per-segment screen-pixel coordinates so a single layout pass over N
 // vehicles doesn't re-project every segment N times. Invalidated whenever the
 // map view changes (zoom/pan), since latLngToLayerPoint depends on view state.
@@ -1369,14 +1380,50 @@ function smoothedTangent(segResult, radiusPx) {
     return chord || segResult.vector;
 }
 
-function vehicleBaseOffset(record, anchor, offsetPx) {
+function vehicleTravelVector(record, anchor) {
     const attributes = record.vehicle.attributes || {};
     const directionId = attributes.direction_id;
     const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
     const segmentResult = nearestRouteSegment(anchor, record.shapeId, directionId);
 
     if (!segmentResult || !segmentResult.vector) {
-        // Fallback: no route geometry available — use bearing or default
+        // Fallback: no route geometry available — use bearing or default.
+        return {
+            vector: bearingToTravelVector(bearing ?? 0),
+            hasRouteGeometry: false
+        };
+    }
+
+    let travelVector = smoothedTangent(segmentResult, VEHICLE_TANGENT_SMOOTH_PX);
+    const segDirId = segmentResult.segmentDirectionId;
+
+    if (segDirId === 0 || segDirId === 1) {
+        // Segment has a known directionId — use it to align the travel vector
+        if (directionId !== segDirId) {
+            travelVector = { x: -travelVector.x, y: -travelVector.y };
+        }
+    } else {
+        // Segment has no directionId — fall back to bearing for alignment
+        if (bearing !== null) {
+            const bearingVector = bearingToTravelVector(bearing);
+            if (travelVector.x * bearingVector.x + travelVector.y * bearingVector.y < 0) {
+                travelVector = { x: -travelVector.x, y: -travelVector.y };
+            }
+        }
+    }
+
+    return {
+        vector: travelVector,
+        hasRouteGeometry: true
+    };
+}
+
+function vehicleBaseOffset(record, anchor, offsetPx) {
+    const attributes = record.vehicle.attributes || {};
+    const directionId = attributes.direction_id;
+    const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
+    const travel = vehicleTravelVector(record, anchor);
+    if (!travel.hasRouteGeometry) {
         return vehicleOffsetForDirection(bearing ?? 0, directionId, offsetPx);
     }
 
@@ -1389,25 +1436,7 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
     // 3. Take the right-side perpendicular of the travel direction.
     //    Since opposite directions have opposite travel vectors, their right-side
     //    normals naturally point to opposite sides of the route.
-    let travelVector = smoothedTangent(segmentResult, VEHICLE_TANGENT_SMOOTH_PX);
-    const segDirId = segmentResult.segmentDirectionId;
-
-    if (segDirId === 0 || segDirId === 1) {
-        // Segment has a known directionId — use it to align the travel vector
-        if (directionId !== segDirId) {
-            travelVector = { x: -travelVector.x, y: -travelVector.y };
-        }
-    } else {
-        // Segment has no directionId — fall back to bearing for alignment
-        if (bearing !== null) {
-            const bearingRad = bearing * Math.PI / 180;
-            const bearingVector = { x: Math.sin(bearingRad), y: -Math.cos(bearingRad) };
-            if (travelVector.x * bearingVector.x + travelVector.y * bearingVector.y < 0) {
-                travelVector = { x: -travelVector.x, y: -travelVector.y };
-            }
-        }
-    }
-
+    const travelVector = travel.vector;
     const rightNormal = { x: -travelVector.y, y: travelVector.x };
     return {
         x: rightNormal.x * offsetPx,
@@ -1433,12 +1462,14 @@ function resolveVehicleOffsets(records, anchorResolver = null) {
             const anchorLatLng = currentLatLng || [attributes.latitude, attributes.longitude];
             const anchor = map.latLngToLayerPoint(anchorLatLng);
             const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
+            const headingDeg = headingDegreesFromVector(vehicleTravelVector(record, anchor).vector);
 
             return {
                 index,
                 anchor,
                 baseOffset,
                 offset: { ...baseOffset },
+                headingDeg,
                 rotation: 0,
                 pushOut: 0,
                 directionId: attributes.direction_id,
@@ -1564,7 +1595,8 @@ function resolveVehicleOffsets(records, anchorResolver = null) {
 
     return layoutItems.map(item => ({
         x: Math.round(item.offset.x),
-        y: Math.round(item.offset.y)
+        y: Math.round(item.offset.y),
+        headingDeg: item.headingDeg
     }));
 }
 
@@ -1617,6 +1649,7 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const stopClass = vehicle.attributes.current_status === "STOPPED_AT" ? "at-stop" : "";
     const markerAccent = vehicleDirectionColor(route, directionId);
     const visualOffset = offset || vehicleOffsetForDirection(bearing, directionId);
+    const headingDeg = Number.isFinite(visualOffset.headingDeg) ? visualOffset.headingDeg : bearing;
     const center = VEHICLE_ICON_SIZE / 2;
     const offsetDistance = Math.hypot(visualOffset.x, visualOffset.y);
     const leaderLength = Math.max(0, offsetDistance - VEHICLE_MARKER_RADIUS_PX + 1);
@@ -1630,12 +1663,16 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
         className: "",
         html: `
             <div class="vehicle-offset-marker ${directionClass} ${stopClass} ${vehicleModeClass(route)}"
-                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-halo-duration: ${(VEHICLE_HALO_BREATHE_MS / 1000).toFixed(3)}s; --vehicle-halo-delay: ${vehicleHaloAnimationDelay()}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px;">
+                 style="--vehicle-color: ${markerAccent}; --vehicle-halo-base: ${vehicleHaloBase(route)}; --vehicle-halo-duration: ${(VEHICLE_HALO_BREATHE_MS / 1000).toFixed(3)}s; --vehicle-halo-delay: ${vehicleHaloAnimationDelay()}; --vehicle-x: ${visualOffset.x}px; --vehicle-y: ${visualOffset.y}px; --vehicle-heading: ${headingDeg}deg;">
                 <svg class="vehicle-leader" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
                     <line x1="${center}" y1="${center}" x2="${leaderEndX}" y2="${leaderEndY}"></line>
                     <circle cx="${center}" cy="${center}" r="3"></circle>
                 </svg>
                 <span class="vehicle-marker">
+                    <svg class="vehicle-heading-arrow" viewBox="0 0 16 12" aria-hidden="true" focusable="false">
+                        <path class="vehicle-heading-arrow-outline" d="M8 0C11 3.4 14 7.2 16 12C11.1 9.9 4.9 9.9 0 12C2 7.2 5 3.4 8 0Z"></path>
+                        <path class="vehicle-heading-arrow-fill" d="M8 3.1C9.65 5 11.15 6.85 12.4 9.05C9.55 8.25 6.45 8.25 3.6 9.05C4.85 6.85 6.35 5 8 3.1Z"></path>
+                    </svg>
                     <svg class="vehicle-symbol" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
                         ${vehicleGlyph(route)}
                     </svg>
@@ -1668,7 +1705,8 @@ function vehicleLeaderGeometry(offset) {
 function applyVehicleVisualOffset(record, offset) {
     const visualOffset = {
         x: Number.isFinite(offset?.x) ? offset.x : 0,
-        y: Number.isFinite(offset?.y) ? offset.y : 0
+        y: Number.isFinite(offset?.y) ? offset.y : 0,
+        headingDeg: Number.isFinite(offset?.headingDeg) ? offset.headingDeg : record.visualOffset?.headingDeg
     };
     record.visualOffset = visualOffset;
     const popupAnchor = [visualOffset.x, visualOffset.y - 22];
@@ -1686,6 +1724,9 @@ function applyVehicleVisualOffset(record, offset) {
     const { leaderEndX, leaderEndY, markerCenterX, markerCenterY } = vehicleLeaderGeometry(visualOffset);
     root.style.setProperty("--vehicle-x", `${visualOffset.x}px`);
     root.style.setProperty("--vehicle-y", `${visualOffset.y}px`);
+    if (Number.isFinite(visualOffset.headingDeg)) {
+        root.style.setProperty("--vehicle-heading", `${visualOffset.headingDeg}deg`);
+    }
     root.querySelector(".vehicle-leader line")?.setAttribute("x2", leaderEndX);
     root.querySelector(".vehicle-leader line")?.setAttribute("y2", leaderEndY);
     root.querySelector(".vehicle-hit-target circle")?.setAttribute("cx", markerCenterX);
