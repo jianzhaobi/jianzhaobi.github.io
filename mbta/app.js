@@ -159,7 +159,10 @@ const state = {
 
 const map = L.map("map", {
     zoomControl: false,
-    doubleClickZoom: false
+    doubleClickZoom: false,
+    zoomSnap: 0.5,
+    zoomDelta: 1,
+    wheelPxPerZoomLevel: 60
 }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
 
 L.control.zoom({ position: "topright" }).addTo(map);
