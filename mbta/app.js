@@ -149,6 +149,9 @@ const state = {
     // Segments grouped by shapeId for polyline traversal (used by smoothedTangent).
     routeShapeIndex: new Map(),
     vehicleLayoutTimer: null,
+    vehicleMapInteractionTimer: null,
+    isVehicleMapInteracting: false,
+    hasActiveVehicleTouchGesture: false,
     // Aborts in-flight route-load fetches (shapes/stops/alerts/initial vehicles)
     // when the user switches to a different route. Polling refresh does not use this.
     routeAbortController: null
@@ -191,8 +194,28 @@ const userLayer = L.layerGroup().addTo(map);
 const walkRouteLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
-map.on("zoomstart movestart", () => cancelVehicleMoveAnimations({ snapToTarget: true }));
-map.on("zoomend moveend", scheduleVehicleLayout);
+map.on("zoomstart movestart", beginVehicleMapInteraction);
+map.on("zoomend moveend", endVehicleMapInteraction);
+map.getContainer().addEventListener("touchstart", event => {
+    if (event.touches.length > 1) {
+        state.hasActiveVehicleTouchGesture = true;
+        beginVehicleMapInteraction();
+    }
+}, { passive: true });
+map.getContainer().addEventListener("touchmove", event => {
+    if (event.touches.length > 1) {
+        state.hasActiveVehicleTouchGesture = true;
+        beginVehicleMapInteraction();
+    }
+}, { passive: true });
+["touchend", "touchcancel"].forEach(eventName => {
+    map.getContainer().addEventListener(eventName, event => {
+        if (event.touches.length === 0) {
+            state.hasActiveVehicleTouchGesture = false;
+            endVehicleMapInteraction();
+        }
+    }, { passive: true });
+});
 
 /* ====================== */
 /* ===== UTILITIES ====== */
@@ -2355,8 +2378,50 @@ panelToggleButton.addEventListener("click", () => {
 /* ====== VEHICLES ====== */
 /* ====================== */
 
+function beginVehicleMapInteraction() {
+    const wasInteracting = state.isVehicleMapInteracting;
+    state.isVehicleMapInteracting = true;
+    if (state.vehicleMapInteractionTimer) {
+        clearTimeout(state.vehicleMapInteractionTimer);
+        state.vehicleMapInteractionTimer = null;
+    }
+    if (!wasInteracting) {
+        cancelVehicleMoveAnimations({ snapToTarget: true });
+    }
+}
+
+function endVehicleMapInteraction() {
+    if (state.hasActiveVehicleTouchGesture) return;
+
+    if (state.vehicleMapInteractionTimer) {
+        clearTimeout(state.vehicleMapInteractionTimer);
+    }
+    state.vehicleMapInteractionTimer = setTimeout(() => {
+        state.vehicleMapInteractionTimer = null;
+        state.isVehicleMapInteracting = false;
+        applyPendingVehicleTargets();
+        scheduleVehicleLayout();
+    }, VEHICLE_LAYOUT_DEBOUNCE_MS);
+}
+
+function applyPendingVehicleTargets() {
+    state.vehicleRecords.forEach(record => {
+        const marker = record.marker;
+        const targetLatLng = record.targetLatLng || marker._vehicleMoveTargetLatLng;
+        const targetOffset = marker._vehicleMoveTargetOffset;
+        if (targetLatLng) {
+            marker.setLatLng(targetLatLng);
+        }
+        if (targetOffset) {
+            applyVehicleVisualOffset(record, targetOffset);
+        }
+        setVehicleMoving(record, false);
+    });
+}
+
 function cancelVehicleMoveAnimation(marker, options = {}) {
     if (!marker) return;
+    marker._vehicleMoveAnimationToken = (marker._vehicleMoveAnimationToken || 0) + 1;
 
     if (marker?._vehicleMoveAnimationFrame) {
         cancelAnimationFrame(marker._vehicleMoveAnimationFrame);
@@ -2393,6 +2458,12 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
     marker._vehicleMoveTargetLatLng = to;
     marker._vehicleMoveTargetOffset = toOffset;
 
+    if (state.isVehicleMapInteracting) {
+        cancelVehicleMoveAnimation(marker);
+        setVehicleMoving(record, false);
+        return;
+    }
+
     if (!from || !Number.isFinite(to.lat) || !Number.isFinite(to.lng)) {
         cancelVehicleMoveAnimation(marker);
         marker.setLatLng(to);
@@ -2414,6 +2485,8 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
     setVehicleMoving(record, true);
 
     const start = performance.now();
+    const animationToken = (marker._vehicleMoveAnimationToken || 0) + 1;
+    marker._vehicleMoveAnimationToken = animationToken;
     const startPoint = map.latLngToLayerPoint(from);
     const endPoint = map.latLngToLayerPoint(to);
     const deltaX = endPoint.x - startPoint.x;
@@ -2421,6 +2494,13 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
     const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
 
     const step = now => {
+        if (marker._vehicleMoveAnimationToken !== animationToken) return;
+        if (state.isVehicleMapInteracting) {
+            marker._vehicleMoveAnimationFrame = null;
+            setVehicleMoving(record, false);
+            return;
+        }
+
         const t = Math.min(1, (now - start) / duration);
         const eased = easeOutCubic(t);
         const point = L.point(
