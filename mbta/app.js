@@ -4,6 +4,7 @@
 
 const MBTA_API_BASE = "https://api-v3.mbta.com";
 const MBTA_API_KEY = "5fb2a20d05094524a0b35961a20cf9e4"; // Set to "" to use keyless MBTA requests.
+const GOOGLE_MAPS_API_KEY = "AIzaSyAT9k7rBKZRtbpytiVVrO0xILnnbdEjh2k";
 const MAPBOX_ACCESS_TOKEN = [
     "pk.eyJ1IjoiaGl0b3JpMzgiLCJhIjoi",
     "Y21wMDdhaXQ3MHplbTJxcGtrYzZpNWZzdyJ9",
@@ -452,13 +453,66 @@ async function fetchMapboxDuration(profile, origin, destination) {
     return Math.max(1, Math.round(durationSeconds / 60));
 }
 
+function buildGoogleRoutesRequest(origin, destination) {
+    return {
+        origin: {
+            location: {
+                latLng: {
+                    latitude: origin[0],
+                    longitude: origin[1]
+                }
+            }
+        },
+        destination: {
+            location: {
+                latLng: {
+                    latitude: destination.lat,
+                    longitude: destination.lng
+                }
+            }
+        },
+        travelMode: "WALK"
+    };
+}
+
+async function fetchGoogleWalkDuration(origin, destination) {
+    const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+            "X-Goog-FieldMask": "routes.duration"
+        },
+        body: JSON.stringify(buildGoogleRoutesRequest(origin, destination))
+    });
+
+    if (!response.ok) {
+        throw new Error(`Google Routes request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const json = await response.json();
+    const duration = json.routes?.[0]?.duration;
+    const durationSeconds = typeof duration === "string" && duration.endsWith("s")
+        ? Number(duration.slice(0, -1))
+        : NaN;
+
+    if (!Number.isFinite(durationSeconds)) {
+        throw new Error("Google Routes response did not include a duration.");
+    }
+
+    return Math.max(1, Math.round(durationSeconds / 60));
+}
+
 async function fetchTravelTimeSummary(stop) {
     if (!state.userLocation) return "Unavailable";
-    if (!MAPBOX_ACCESS_TOKEN) return "Unavailable";
 
     const [walkResult, driveResult] = await Promise.allSettled([
-        fetchMapboxDuration("mapbox/walking", state.userLocation, stop),
-        fetchMapboxDuration("mapbox/driving-traffic", state.userLocation, stop)
+        GOOGLE_MAPS_API_KEY
+            ? fetchGoogleWalkDuration(state.userLocation, stop)
+            : Promise.reject(new Error("Google Maps API key is not configured.")),
+        MAPBOX_ACCESS_TOKEN
+            ? fetchMapboxDuration("mapbox/driving-traffic", state.userLocation, stop)
+            : Promise.reject(new Error("Mapbox access token is not configured."))
     ]);
 
     const walk = walkResult.status === "fulfilled" ? `${walkResult.value} min` : "unavailable";
