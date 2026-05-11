@@ -191,7 +191,7 @@ const userLayer = L.layerGroup().addTo(map);
 const walkRouteLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
-map.on("zoomstart movestart", cancelVehicleMoveAnimations);
+map.on("zoomstart movestart", () => cancelVehicleMoveAnimations({ snapToTarget: true }));
 map.on("zoomend moveend", scheduleVehicleLayout);
 
 /* ====================== */
@@ -2355,7 +2355,7 @@ panelToggleButton.addEventListener("click", () => {
 /* ====== VEHICLES ====== */
 /* ====================== */
 
-function cancelVehicleMoveAnimation(marker) {
+function cancelVehicleMoveAnimation(marker, options = {}) {
     if (!marker) return;
 
     if (marker?._vehicleMoveAnimationFrame) {
@@ -2365,10 +2365,21 @@ function cancelVehicleMoveAnimation(marker) {
     marker.getElement()
         ?.querySelector(".vehicle-offset-marker")
         ?.classList.remove("is-moving");
+
+    if (options.snapToTarget) {
+        const targetLatLng = marker._vehicleMoveTargetLatLng;
+        const targetOffset = marker._vehicleMoveTargetOffset;
+        if (targetLatLng) {
+            marker.setLatLng(targetLatLng);
+        }
+        if (options.record && targetOffset) {
+            applyVehicleVisualOffset(options.record, targetOffset);
+        }
+    }
 }
 
-function cancelVehicleMoveAnimations() {
-    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker));
+function cancelVehicleMoveAnimations(options = {}) {
+    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker, { ...options, record }));
 }
 
 function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
@@ -2379,6 +2390,8 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
     const to = L.latLng(targetLatLng);
     const fromOffset = record.visualOffset || targetOffset || { x: 0, y: 0 };
     const toOffset = targetOffset || fromOffset;
+    marker._vehicleMoveTargetLatLng = to;
+    marker._vehicleMoveTargetOffset = toOffset;
 
     if (!from || !Number.isFinite(to.lat) || !Number.isFinite(to.lng)) {
         cancelVehicleMoveAnimation(marker);
