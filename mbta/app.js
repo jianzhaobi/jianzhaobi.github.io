@@ -1428,8 +1428,12 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
     const directionId = attributes.direction_id;
     const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
     const travel = vehicleTravelVector(record, anchor);
+    const headingDeg = headingDegreesFromVector(travel.vector);
     if (!travel.hasRouteGeometry) {
-        return vehicleOffsetForDirection(bearing ?? 0, directionId, offsetPx);
+        return {
+            ...vehicleOffsetForDirection(bearing ?? 0, directionId, offsetPx),
+            headingDeg
+        };
     }
 
     // Vehicle-circle layout rule:
@@ -1445,7 +1449,8 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
     const rightNormal = { x: -travelVector.y, y: travelVector.x };
     return {
         x: rightNormal.x * offsetPx,
-        y: rightNormal.y * offsetPx
+        y: rightNormal.y * offsetPx,
+        headingDeg
     };
 }
 
@@ -1467,7 +1472,7 @@ function resolveVehicleOffsets(records, anchorResolver = null) {
             const anchorLatLng = currentLatLng || [attributes.latitude, attributes.longitude];
             const anchor = map.latLngToLayerPoint(anchorLatLng);
             const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
-            const headingDeg = headingDegreesFromVector(vehicleTravelVector(record, anchor).vector);
+            const headingDeg = baseOffset.headingDeg;
 
             return {
                 index,
@@ -1707,6 +1712,21 @@ function vehicleLeaderGeometry(offset) {
     };
 }
 
+function vehicleDomRefs(record) {
+    const element = record.marker.getElement();
+    const root = element?.querySelector(".vehicle-offset-marker");
+    if (!root) return null;
+
+    if (record.dom?.root === root) return record.dom;
+
+    record.dom = {
+        root,
+        leaderLine: root.querySelector(".vehicle-leader line"),
+        hitCircle: root.querySelector(".vehicle-hit-target circle")
+    };
+    return record.dom;
+}
+
 function applyVehicleVisualOffset(record, offset) {
     const visualOffset = {
         x: Number.isFinite(offset?.x) ? offset.x : 0,
@@ -1719,23 +1739,23 @@ function applyVehicleVisualOffset(record, offset) {
         record.marker.options.icon.options.popupAnchor = popupAnchor;
     }
 
-    const element = record.marker.getElement();
-    const root = element?.querySelector(".vehicle-offset-marker");
-    if (!root) {
+    const dom = vehicleDomRefs(record);
+    if (!dom) {
         record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, visualOffset));
+        record.dom = null;
         return;
     }
 
     const { leaderEndX, leaderEndY, markerCenterX, markerCenterY } = vehicleLeaderGeometry(visualOffset);
-    root.style.setProperty("--vehicle-x", `${visualOffset.x}px`);
-    root.style.setProperty("--vehicle-y", `${visualOffset.y}px`);
+    dom.root.style.setProperty("--vehicle-x", `${visualOffset.x}px`);
+    dom.root.style.setProperty("--vehicle-y", `${visualOffset.y}px`);
     if (Number.isFinite(visualOffset.headingDeg)) {
-        root.style.setProperty("--vehicle-heading", `${visualOffset.headingDeg}deg`);
+        dom.root.style.setProperty("--vehicle-heading", `${visualOffset.headingDeg}deg`);
     }
-    root.querySelector(".vehicle-leader line")?.setAttribute("x2", leaderEndX);
-    root.querySelector(".vehicle-leader line")?.setAttribute("y2", leaderEndY);
-    root.querySelector(".vehicle-hit-target circle")?.setAttribute("cx", markerCenterX);
-    root.querySelector(".vehicle-hit-target circle")?.setAttribute("cy", markerCenterY);
+    dom.leaderLine?.setAttribute("x2", leaderEndX);
+    dom.leaderLine?.setAttribute("y2", leaderEndY);
+    dom.hitCircle?.setAttribute("cx", markerCenterX);
+    dom.hitCircle?.setAttribute("cy", markerCenterY);
     if (record.marker._popup?.isOpen()) {
         record.marker._popup.update();
     }
@@ -1754,6 +1774,7 @@ function applyVehicleLayout() {
     const offsets = resolveVehicleOffsets(records);
     records.forEach((record, index) => {
         record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, offsets[index]));
+        record.dom = null;
         record.visualOffset = offsets[index];
     });
 }
@@ -2432,7 +2453,10 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
     try {
         const json = await fetchMbta("/vehicles", {
             "filter[route]": routeId,
-            include: "trip,stop"
+            include: "trip,stop",
+            "fields[vehicle]": "latitude,longitude,bearing,direction_id,current_status,label,updated_at,trip,stop",
+            "fields[trip]": "headsign,shape",
+            "fields[stop]": "name,latitude,longitude"
         }, signal);
 
         if (requestId !== state.vehicleRequestId || state.selectedRouteId !== routeId) return;
@@ -2506,6 +2530,7 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
                     shouldAnimate: true
                 });
                 marker.setIcon(createVehicleIcon(vehicle, route, stopInfo, record.visualOffset));
+                record.dom = null;
             } else {
                 const initialOffset = vehicleOffsetForDirection(attributes.bearing, directionId);
                 marker = L.marker(position, {
