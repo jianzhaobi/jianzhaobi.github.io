@@ -135,6 +135,7 @@ const state = {
     followUserLocation: false,
     isProgrammaticMapMove: false,
     stops: new Map(),
+    activeWalkRouteStopId: null,
     panelExpanded: false,
     routePickerExpanded: false,
     routeSearchQuery: "",
@@ -187,6 +188,7 @@ const routeLayer = L.featureGroup().addTo(map);
 const stopLayer = L.layerGroup().addTo(map);
 const vehicleLayer = L.layerGroup().addTo(map);
 const userLayer = L.layerGroup().addTo(map);
+const walkRouteLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
 map.on("zoomstart movestart", cancelVehicleMoveAnimations);
@@ -484,7 +486,7 @@ async function fetchGoogleWalkDuration(origin, destination) {
         headers: {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-            "X-Goog-FieldMask": "routes.duration"
+            "X-Goog-FieldMask": "routes.duration,routes.polyline.encodedPolyline"
         },
         body: JSON.stringify(buildGoogleRoutesRequest(origin, destination))
     });
@@ -494,7 +496,8 @@ async function fetchGoogleWalkDuration(origin, destination) {
     }
 
     const json = await response.json();
-    const duration = json.routes?.[0]?.duration;
+    const route = json.routes?.[0];
+    const duration = route?.duration;
     const durationSeconds = typeof duration === "string" && duration.endsWith("s")
         ? Number(duration.slice(0, -1))
         : NaN;
@@ -503,7 +506,45 @@ async function fetchGoogleWalkDuration(origin, destination) {
         throw new Error("Google Routes response did not include a duration.");
     }
 
-    return Math.max(1, Math.round(durationSeconds / 60));
+    return {
+        minutes: Math.max(1, Math.round(durationSeconds / 60)),
+        encodedPolyline: route?.polyline?.encodedPolyline || ""
+    };
+}
+
+function clearWalkRoute(stopId = null) {
+    if (stopId && state.activeWalkRouteStopId !== stopId) return;
+    walkRouteLayer.clearLayers();
+    if (!stopId || state.activeWalkRouteStopId === stopId) {
+        state.activeWalkRouteStopId = null;
+    }
+}
+
+function renderWalkRoute(encodedPolyline, stopId) {
+    if (!encodedPolyline || state.activeWalkRouteStopId !== stopId) return;
+
+    const points = decodePolyline(encodedPolyline);
+    if (points.length < 2) return;
+
+    walkRouteLayer.clearLayers();
+    const line = L.polyline(points, {
+        color: "#1a73e8",
+        weight: 9,
+        opacity: 1,
+        dashArray: "0 18",
+        lineCap: "round",
+        lineJoin: "round"
+    }).addTo(walkRouteLayer);
+
+    L.polyline(points, {
+        color: "#0b2f8f",
+        weight: 13,
+        opacity: 0.95,
+        dashArray: "0 18",
+        lineCap: "round",
+        lineJoin: "round"
+    }).addTo(walkRouteLayer).bringToBack();
+    line.bringToFront();
 }
 
 async function fetchTravelTimeSummary(stop) {
@@ -518,14 +559,20 @@ async function fetchTravelTimeSummary(stop) {
             : Promise.reject(new Error("Mapbox access token is not configured."))
     ]);
 
-    const walk = walkResult.status === "fulfilled" ? `${walkResult.value} min` : "unavailable";
+    const walk = walkResult.status === "fulfilled" ? `${walkResult.value.minutes} min` : "unavailable";
     const drive = driveResult.status === "fulfilled" ? `${driveResult.value} min` : "unavailable";
 
     if (walk === "unavailable" && drive === "unavailable") {
-        return "Unavailable";
+        return {
+            summary: "Unavailable",
+            encodedPolyline: ""
+        };
     }
 
-    return `Walk ${walk} · Drive ${drive}`;
+    return {
+        summary: `Walk ${walk} · Drive ${drive}`,
+        encodedPolyline: walkResult.status === "fulfilled" ? walkResult.value.encodedPolyline : ""
+    };
 }
 
 function displayRouteName(route) {
@@ -1822,8 +1869,10 @@ function clearMapForRouteChange() {
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
+    walkRouteLayer.clearLayers();
     state.vehicleRecords.clear();
     state.stops.clear();
+    state.activeWalkRouteStopId = null;
     state.routeShapeSegments = [];
     state.routeShapeIndex.clear();
     resetRouteViewButton.hidden = true;
@@ -1953,18 +2002,33 @@ async function renderRouteStops(routeId, route, requestId, signal) {
             arrivals: '<span class="popup-muted">Loading arrivals...</span>'
         }), { closeButton: false });
         marker.on("click", () => {
+            clearWalkRoute();
+            state.activeWalkRouteStopId = stop.id;
             renderPredictions(routeId, stop.id, marker);
+        });
+        marker.on("popupclose", () => {
+            clearWalkRoute(stop.id);
         });
     });
 }
 
-function stopPopup(stopName, { travel = "", arrivals = "" } = {}) {
+function stopPopup(stopName, { travel = "", arrivals = "", walkRouteToggle = "" } = {}) {
     return `
         <div class="popup-card popup-card-stop">
             <span class="popup-title">${escapeHtml(stopName)}</span>
             ${travel ? popupInfoRow("Travel time", travel, "popup-time-value") : ""}
+            ${walkRouteToggle}
             <div class="popup-section popup-arrivals">${arrivals}</div>
         </div>
+    `;
+}
+
+function walkRouteToggleButton({ visible = false, disabled = false } = {}) {
+    return `
+        <button class="walk-route-toggle${visible ? " is-active" : ""}" type="button" data-action="toggle-walk-route" ${disabled ? "disabled" : ""} aria-pressed="${visible}">
+            <span class="walk-route-toggle-dot" aria-hidden="true"></span>
+            <span>${visible ? "Hide walk route" : "Show walk route"}</span>
+        </button>
     `;
 }
 
@@ -2005,17 +2069,47 @@ async function renderPredictions(routeId, stopId, stopMarker) {
     const stop = state.stops.get(stopId);
     let travel = "Travel time loading...";
     let arrivals = '<span class="popup-muted">Loading arrivals...</span>';
+    let walkRoutePolyline = "";
+    let walkRouteVisible = false;
+    const bindWalkRouteToggle = () => {
+        const popup = stopMarker.getPopup();
+        const button = popup?.getElement()?.querySelector('[data-action="toggle-walk-route"]');
+        if (!button) return;
+
+        button.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!walkRoutePolyline) return;
+            walkRouteVisible = !walkRouteVisible;
+            if (walkRouteVisible) {
+                state.activeWalkRouteStopId = stopId;
+                renderWalkRoute(walkRoutePolyline, stopId);
+            } else {
+                clearWalkRoute(stopId);
+            }
+            updatePopup();
+        });
+    };
     const updatePopup = () => {
-        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, { travel, arrivals })).openPopup();
+        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, {
+            travel,
+            arrivals,
+            walkRouteToggle: walkRoutePolyline
+                ? walkRouteToggleButton({ visible: walkRouteVisible })
+                : ""
+        })).openPopup();
+        bindWalkRouteToggle();
     };
 
     updatePopup();
 
     if (stop) {
         fetchTravelTimeSummary(stop)
-            .then(summary => {
+            .then(result => {
                 if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
-                travel = summary;
+                travel = result.summary;
+                walkRoutePolyline = result.encodedPolyline;
                 updatePopup();
             })
             .catch(error => {

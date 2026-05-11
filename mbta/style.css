@@ -838,6 +838,46 @@ html, body {
     font-weight: 780;
 }
 
+.walk-route-toggle {
+    align-items: center;
+    background: #f4f8ff;
+    border: 1px solid #c6d8ff;
+    border-radius: 999px;
+    color: #183a7a;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 10px;
+    font-weight: 760;
+    gap: 6px;
+    line-height: 1;
+    margin: 0 0 9px;
+    padding: 6px 9px;
+}
+
+.walk-route-toggle:hover,
+.walk-route-toggle.is-active {
+    background: #e7f0ff;
+    border-color: #8fb4ff;
+}
+
+.walk-route-toggle:focus-visible {
+    outline: 3px solid rgba(26, 115, 232, 0.22);
+    outline-offset: 2px;
+}
+
+.walk-route-toggle-dot {
+    background: #1a73e8;
+    border: 2px solid #0b2f8f;
+    border-radius: 50%;
+    box-sizing: border-box;
+    height: 11px;
+    width: 11px;
+}
+
+.walk-route-toggle.is-active .walk-route-toggle-dot {
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.18);
+}
+
 .leaflet-marker-icon:has(.vehicle-offset-marker) {
     pointer-events: none !important;
     cursor: default !important;
