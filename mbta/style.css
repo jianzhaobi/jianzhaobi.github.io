@@ -969,7 +969,7 @@ html, body {
     border: 3px solid #ffffff;
     border-radius: 50%;
     box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(1);
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(var(--vehicle-marker-scale, 1));
     pointer-events: auto;
     cursor: pointer;
     transition: transform 0.15s ease;
@@ -980,7 +980,7 @@ html, body {
 }
 
 .vehicle-marker:hover {
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(1.15);
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * 1.15));
 }
 
 .vehicle-marker::after {
@@ -1143,11 +1143,12 @@ html, body {
     border-radius: 50%;
     box-shadow: 0 1px 6px rgba(20, 31, 43, 0.25);
     cursor: pointer;
+    transform: scale(var(--stop-marker-scale, 1));
     transition: transform 0.15s ease;
 }
 
 .stop-marker:hover {
-    transform: scale(1.15);
+    transform: scale(calc(var(--stop-marker-scale, 1) * 1.15));
 }
 
 body * {

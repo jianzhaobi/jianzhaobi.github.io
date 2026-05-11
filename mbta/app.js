@@ -66,6 +66,12 @@ const VEHICLE_OFFSET_REFERENCE_ZOOM = 14;
 const VEHICLE_OFFSET_ZOOM_SCALE = 4;
 const VEHICLE_ICON_SIZE = 116;
 const VEHICLE_MARKER_RADIUS_PX = 12;
+const MARKER_SCALE_START_ZOOM = 14;
+const MARKER_SCALE_END_ZOOM = 17;
+const VEHICLE_MARKER_MAX_SCALE = 1.5;
+const STOP_MARKER_MAX_SCALE = 2;
+const VEHICLE_LEADER_MIN_VISIBLE_PX = 8;
+const VEHICLE_LEADER_GAP_PX = 2;
 const VEHICLE_COLLISION_PADDING_PX = 6;
 const VEHICLE_COLLISION_ITERATIONS = 9;
 const VEHICLE_COLLISION_ROTATION_STEP_DEG = 9;
@@ -137,6 +143,7 @@ const state = {
     isProgrammaticMapMove: false,
     stops: new Map(),
     activeWalkRouteStopId: null,
+    stopPredictionRequestId: 0,
     panelExpanded: false,
     routePickerExpanded: false,
     routeSearchQuery: "",
@@ -150,6 +157,8 @@ const state = {
     // Segments grouped by shapeId for polyline traversal (used by smoothedTangent).
     routeShapeIndex: new Map(),
     vehicleLayoutTimer: null,
+    vehicleZoomLayoutFrame: null,
+    vehicleZoomLayoutZoom: null,
     vehicleMapInteractionTimer: null,
     isVehicleMapInteracting: false,
     hasActiveVehicleTouchGesture: false,
@@ -195,8 +204,15 @@ const userLayer = L.layerGroup().addTo(map);
 const walkRouteLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
+updateMarkerZoomScales();
+
 map.on("zoomstart movestart", beginVehicleMapInteraction);
 map.on("zoomend moveend", endVehicleMapInteraction);
+map.on("zoom zoomanim", event => updateMarkerZoomScales(event.zoom));
+map.on("zoomend", () => {
+    updateMarkerZoomScales();
+    updateStopPopupAnchors();
+});
 map.getContainer().addEventListener("touchstart", event => {
     if (event.touches.length > 1) {
         state.hasActiveVehicleTouchGesture = true;
@@ -1169,20 +1185,72 @@ function shapeIdMatches(segmentShapeId, vehicleShapeId) {
 /* ======= ICONS ======== */
 /* ====================== */
 
+function markerZoomProgress(zoom = map.getZoom()) {
+    const progress = (zoom - MARKER_SCALE_START_ZOOM) / (MARKER_SCALE_END_ZOOM - MARKER_SCALE_START_ZOOM);
+    return Math.max(0, Math.min(1, progress));
+}
+
+function scaledMarkerValue(baseValue, maxScale, zoom = map.getZoom()) {
+    return baseValue * (1 + markerZoomProgress(zoom) * (maxScale - 1));
+}
+
+function vehicleMarkerScale(zoom = map.getZoom()) {
+    return scaledMarkerValue(1, VEHICLE_MARKER_MAX_SCALE, zoom);
+}
+
+function stopMarkerScale(zoom = map.getZoom()) {
+    return scaledMarkerValue(1, STOP_MARKER_MAX_SCALE, zoom);
+}
+
+function vehicleMarkerRadiusPx(zoom = map.getZoom()) {
+    return VEHICLE_MARKER_RADIUS_PX * vehicleMarkerScale(zoom);
+}
+
+function stopAvoidRadiusPx(zoom = map.getZoom()) {
+    return STOP_AVOID_RADIUS_PX * stopMarkerScale(zoom);
+}
+
+function vehiclePopupAnchorY(zoom = map.getZoom()) {
+    return -(vehicleMarkerRadiusPx(zoom) + 10);
+}
+
+function stopPopupAnchorY() {
+    return -7 * stopMarkerScale();
+}
+
+function updateMarkerZoomScales(zoom = map.getZoom()) {
+    const container = map.getContainer();
+    container.style.setProperty("--vehicle-marker-scale", vehicleMarkerScale(zoom).toFixed(3));
+    container.style.setProperty("--stop-marker-scale", stopMarkerScale(zoom).toFixed(3));
+    scheduleVehicleZoomLayout(zoom);
+}
+
+function updateStopPopupAnchors() {
+    state.stops.forEach(stop => {
+        if (stop.marker?.options.icon?.options) {
+            stop.marker.options.icon.options.popupAnchor = [0, stopPopupAnchorY()];
+        }
+        if (stop.marker?._popup?.isOpen()) {
+            stop.marker._popup.update();
+        }
+    });
+}
+
 function createStopIcon(route) {
     return L.divIcon({
         className: "",
         html: `<span class="stop-marker" style="border-color: ${routeColor(route)}"></span>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
-        popupAnchor: [0, -7]
+        popupAnchor: [0, stopPopupAnchorY()]
     });
 }
 
-function effectiveOffsetPx() {
-    const delta = VEHICLE_OFFSET_REFERENCE_ZOOM - map.getZoom();
+function effectiveOffsetPx(zoom = map.getZoom()) {
+    const delta = VEHICLE_OFFSET_REFERENCE_ZOOM - zoom;
     const raw = VEHICLE_OFFSET_PX + delta * VEHICLE_OFFSET_ZOOM_SCALE;
-    return Math.max(VEHICLE_OFFSET_MIN_PX, Math.min(VEHICLE_OFFSET_MAX_PX, raw));
+    const minVisibleLeaderOffset = vehicleMarkerRadiusPx(zoom) + VEHICLE_LEADER_GAP_PX + VEHICLE_LEADER_MIN_VISIBLE_PX;
+    return Math.max(minVisibleLeaderOffset, VEHICLE_OFFSET_MIN_PX, Math.min(VEHICLE_OFFSET_MAX_PX, raw));
 }
 
 function vehicleOffsetForDirection(bearing, directionId, offsetPx) {
@@ -1478,9 +1546,10 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
     };
 }
 
-function resolveVehicleOffsets(records, anchorResolver = null) {
-    const offsetPx = effectiveOffsetPx();
-    const minDistance = VEHICLE_MARKER_RADIUS_PX * 2 + VEHICLE_COLLISION_PADDING_PX;
+function resolveVehicleOffsets(records, anchorResolver = null, zoom = map.getZoom()) {
+    const offsetPx = effectiveOffsetPx(zoom);
+    const markerRadius = vehicleMarkerRadiusPx(zoom);
+    const minDistance = markerRadius * 2 + VEHICLE_COLLISION_PADDING_PX;
     const visibleBounds = map.getPixelBounds().pad(0.15);
     const visibleStops = [];
     state.stops.forEach(stop => {
@@ -1596,7 +1665,7 @@ function resolveVehicleOffsets(records, anchorResolver = null) {
                 let dx = markerX - stopPoint.x;
                 let dy = markerY - stopPoint.y;
                 let distance = Math.hypot(dx, dy);
-                const stopMinDistance = VEHICLE_MARKER_RADIUS_PX + STOP_AVOID_RADIUS_PX;
+                const stopMinDistance = markerRadius + stopAvoidRadiusPx(zoom);
 
                 if (distance >= stopMinDistance) return;
 
@@ -1686,7 +1755,8 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
     const headingDeg = Number.isFinite(visualOffset.headingDeg) ? visualOffset.headingDeg : bearing;
     const center = VEHICLE_ICON_SIZE / 2;
     const offsetDistance = Math.hypot(visualOffset.x, visualOffset.y);
-    const leaderLength = Math.max(0, offsetDistance - VEHICLE_MARKER_RADIUS_PX + 1);
+    const markerRadius = vehicleMarkerRadiusPx();
+    const leaderLength = Math.max(0, offsetDistance - markerRadius - VEHICLE_LEADER_GAP_PX);
     const leaderScale = offsetDistance ? leaderLength / offsetDistance : 0;
     const leaderEndX = center + Math.round(visualOffset.x * leaderScale);
     const leaderEndY = center + Math.round(visualOffset.y * leaderScale);
@@ -1712,27 +1782,29 @@ function createVehicleIcon(vehicle, route, stopInfo, offset = null) {
                     </svg>
                 </span>
                 <svg class="vehicle-hit-target" viewBox="0 0 ${VEHICLE_ICON_SIZE} ${VEHICLE_ICON_SIZE}" aria-hidden="true" focusable="false">
-                    <circle cx="${markerCenterX}" cy="${markerCenterY}" r="${VEHICLE_MARKER_RADIUS_PX + 4}"></circle>
+                    <circle cx="${markerCenterX}" cy="${markerCenterY}" r="${markerRadius + 4}"></circle>
                 </svg>
             </div>
         `,
         iconSize: [VEHICLE_ICON_SIZE, VEHICLE_ICON_SIZE],
         iconAnchor: [center, center],
-        popupAnchor: [visualOffset.x, visualOffset.y - 22]
+        popupAnchor: [visualOffset.x, visualOffset.y + vehiclePopupAnchorY()]
     });
 }
 
-function vehicleLeaderGeometry(offset) {
+function vehicleLeaderGeometry(offset, zoom = map.getZoom()) {
     const center = VEHICLE_ICON_SIZE / 2;
     const offsetDistance = Math.hypot(offset.x, offset.y);
-    const leaderLength = Math.max(0, offsetDistance - VEHICLE_MARKER_RADIUS_PX + 1);
+    const markerRadius = vehicleMarkerRadiusPx(zoom);
+    const leaderLength = Math.max(0, offsetDistance - markerRadius - VEHICLE_LEADER_GAP_PX);
     const leaderScale = offsetDistance ? leaderLength / offsetDistance : 0;
 
     return {
         leaderEndX: center + offset.x * leaderScale,
         leaderEndY: center + offset.y * leaderScale,
         markerCenterX: center + offset.x,
-        markerCenterY: center + offset.y
+        markerCenterY: center + offset.y,
+        markerRadius
     };
 }
 
@@ -1751,14 +1823,14 @@ function vehicleDomRefs(record) {
     return record.dom;
 }
 
-function applyVehicleVisualOffset(record, offset) {
+function applyVehicleVisualOffset(record, offset, zoom = map.getZoom()) {
     const visualOffset = {
         x: Number.isFinite(offset?.x) ? offset.x : 0,
         y: Number.isFinite(offset?.y) ? offset.y : 0,
         headingDeg: Number.isFinite(offset?.headingDeg) ? offset.headingDeg : record.visualOffset?.headingDeg
     };
     record.visualOffset = visualOffset;
-    const popupAnchor = [visualOffset.x, visualOffset.y - 22];
+    const popupAnchor = [visualOffset.x, visualOffset.y + vehiclePopupAnchorY(zoom)];
     if (record.marker.options.icon?.options) {
         record.marker.options.icon.options.popupAnchor = popupAnchor;
     }
@@ -1770,7 +1842,7 @@ function applyVehicleVisualOffset(record, offset) {
         return;
     }
 
-    const { leaderEndX, leaderEndY, markerCenterX, markerCenterY } = vehicleLeaderGeometry(visualOffset);
+    const { leaderEndX, leaderEndY, markerCenterX, markerCenterY, markerRadius } = vehicleLeaderGeometry(visualOffset, zoom);
     dom.root.style.setProperty("--vehicle-x", `${visualOffset.x}px`);
     dom.root.style.setProperty("--vehicle-y", `${visualOffset.y}px`);
     if (Number.isFinite(visualOffset.headingDeg)) {
@@ -1780,6 +1852,7 @@ function applyVehicleVisualOffset(record, offset) {
     dom.leaderLine?.setAttribute("y2", leaderEndY);
     dom.hitCircle?.setAttribute("cx", markerCenterX);
     dom.hitCircle?.setAttribute("cy", markerCenterY);
+    dom.hitCircle?.setAttribute("r", markerRadius + 4);
     if (record.marker._popup?.isOpen()) {
         record.marker._popup.update();
     }
@@ -1811,13 +1884,27 @@ function setVehicleMoving(record, isMoving) {
         ?.classList.toggle("is-moving", isMoving);
 }
 
-function applyVehicleLayout() {
+function applyVehicleLayout(zoom = map.getZoom()) {
     if (!state.vehicleRecords.size) return;
 
     const records = [...state.vehicleRecords.values()];
-    const offsets = resolveVehicleOffsets(records);
+    const offsets = resolveVehicleOffsets(records, null, zoom);
     records.forEach((record, index) => {
-        applyVehicleVisualOffset(record, offsets[index]);
+        applyVehicleVisualOffset(record, offsets[index], zoom);
+    });
+}
+
+function scheduleVehicleZoomLayout(zoom = map.getZoom()) {
+    if (!state.vehicleRecords.size) return;
+
+    state.vehicleZoomLayoutZoom = zoom;
+    if (state.vehicleZoomLayoutFrame) return;
+
+    state.vehicleZoomLayoutFrame = requestAnimationFrame(() => {
+        const layoutZoom = state.vehicleZoomLayoutZoom ?? map.getZoom();
+        state.vehicleZoomLayoutFrame = null;
+        state.vehicleZoomLayoutZoom = null;
+        applyVehicleLayout(layoutZoom);
     });
 }
 
@@ -1981,6 +2068,21 @@ function isCurrentRoute(routeId, requestId = state.routeRequestId) {
 
 function clearMapForRouteChange() {
     state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker));
+    if (state.vehicleLayoutTimer) {
+        clearTimeout(state.vehicleLayoutTimer);
+        state.vehicleLayoutTimer = null;
+    }
+    if (state.vehicleMapInteractionTimer) {
+        clearTimeout(state.vehicleMapInteractionTimer);
+        state.vehicleMapInteractionTimer = null;
+    }
+    state.isVehicleMapInteracting = false;
+    state.hasActiveVehicleTouchGesture = false;
+    if (state.vehicleZoomLayoutFrame) {
+        cancelAnimationFrame(state.vehicleZoomLayoutFrame);
+        state.vehicleZoomLayoutFrame = null;
+        state.vehicleZoomLayoutZoom = null;
+    }
     routeLayer.clearLayers();
     stopLayer.clearLayers();
     vehicleLayer.clearLayers();
@@ -1988,6 +2090,7 @@ function clearMapForRouteChange() {
     state.vehicleRecords.clear();
     state.stops.clear();
     state.activeWalkRouteStopId = null;
+    state.stopPredictionRequestId += 1;
     state.routeShapeSegments = [];
     state.routeShapeIndex.clear();
     resetRouteViewButton.hidden = true;
@@ -2116,6 +2219,7 @@ async function renderRouteStops(routeId, route, requestId, signal) {
             title: stopName,
             zIndexOffset: 300
         }).addTo(stopLayer);
+        state.stops.get(stop.id).marker = marker;
 
         marker.bindPopup(stopPopup(stopName, {
             travel: "Travel time loading...",
@@ -2185,12 +2289,17 @@ function vehiclePopup({ title, direction, destination, stopInfo, status, updated
 }
 
 async function renderPredictions(routeId, stopId, stopMarker) {
+    const requestId = ++state.stopPredictionRequestId;
     const route = state.routes.get(routeId);
     const stop = state.stops.get(stopId);
     let travel = "Travel time loading...";
     let arrivals = '<span class="popup-muted">Loading arrivals...</span>';
     let walkRoutePolyline = "";
     let walkRouteVisible = false;
+    const isCurrentRequest = () =>
+        state.stopPredictionRequestId === requestId
+        && state.selectedRouteId === routeId
+        && map.hasLayer(stopMarker);
     const bindWalkRouteToggle = () => {
         const popup = stopMarker.getPopup();
         const button = popup?.getElement()?.querySelector('[data-action="toggle-walk-route"]');
@@ -2227,13 +2336,13 @@ async function renderPredictions(routeId, stopId, stopMarker) {
     if (stop) {
         fetchTravelTimeSummary(stop)
             .then(result => {
-                if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+                if (!isCurrentRequest()) return;
                 travel = result.summary;
                 walkRoutePolyline = result.encodedPolyline;
                 updatePopup();
             })
             .catch(error => {
-                if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+                if (!isCurrentRequest()) return;
                 console.error("Error fetching travel times:", error);
                 travel = "Unavailable";
                 updatePopup();
@@ -2250,7 +2359,7 @@ async function renderPredictions(routeId, stopId, stopMarker) {
             include: "trip"
         });
 
-        if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+        if (!isCurrentRequest()) return;
 
         const tripLookup = new Map((json.included || [])
             .filter(item => item.type === "trip")
@@ -2303,7 +2412,7 @@ async function renderPredictions(routeId, stopId, stopMarker) {
 
         updatePopup();
     } catch (error) {
-        if (state.selectedRouteId !== routeId || !map.hasLayer(stopMarker)) return;
+        if (!isCurrentRequest()) return;
 
         console.error("Error fetching predictions:", error);
         arrivals = '<span class="popup-muted">Unable to load arrivals.</span>';
