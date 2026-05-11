@@ -128,7 +128,8 @@ const state = {
     routeRequestId: 0,
     vehicleRequestId: 0,
     vehicleTimer: null,
-    hasFitRoute: false,
+    hasAppliedInitialLocationView: false,
+    allowInitialLocationView: true,
     userLocation: null,
     userMarker: null,
     userWatchId: null,
@@ -930,7 +931,7 @@ function chooseActiveRoute() {
 
     routeFilter.value = routeId;
     setRoutePickerExpanded(false);
-    selectRoute(routeId, { updateUrl: true, fitRoute: true });
+    selectRoute(routeId, { updateUrl: true, fitRoute: false });
 }
 
 function directionSortValue(directionId) {
@@ -1913,12 +1914,20 @@ async function initializeRoutes() {
 
     routeFilter.value = initialRoute;
     renderRoutePickerSelection(state.routes.get(initialRoute));
-    await selectRoute(initialRoute, { updateUrl: false, fitRoute: true });
+    await selectRoute(initialRoute, {
+        updateUrl: false,
+        fitRoute: !state.hasAppliedInitialLocationView,
+        initialLoad: true
+    });
 }
 
 async function selectRoute(routeId, options = {}) {
     const route = state.routes.get(routeId);
     if (!route) return;
+
+    if (!options.initialLoad) {
+        state.allowInitialLocationView = false;
+    }
 
     // Cancel any in-flight fetches from a previous route load. The requestId
     // pattern would catch stale responses anyway, but aborting frees the network
@@ -1933,7 +1942,6 @@ async function selectRoute(routeId, options = {}) {
     state.selectedRouteId = routeId;
     routeFilter.value = routeId;
     state.routeRequestId += 1;
-    state.hasFitRoute = false;
     const requestId = state.routeRequestId;
 
     setRouteTheme(route);
@@ -1992,12 +2000,19 @@ function clearMapForRouteChange() {
 function fitCurrentRouteView(options = {}) {
     if (!routeLayer.getLayers().length) return false;
 
+    state.isProgrammaticMapMove = true;
     map.fitBounds(routeLayer.getBounds(), {
         paddingTopLeft: [24, 155],
         paddingBottomRight: [24, 24],
         maxZoom: 15,
         ...options
     });
+    map.once("moveend", () => {
+        state.isProgrammaticMapMove = false;
+    });
+    window.setTimeout(() => {
+        state.isProgrammaticMapMove = false;
+    }, 500);
     return true;
 }
 
@@ -2064,9 +2079,7 @@ async function renderRouteShape(routeId, route, requestId, shouldFit, signal) {
 
     resetRouteViewButton.hidden = !routeLayer.getLayers().length;
 
-    if (shouldFit && fitCurrentRouteView()) {
-        state.hasFitRoute = true;
-    }
+    if (shouldFit) fitCurrentRouteView();
 }
 
 /* ====================== */
@@ -2733,6 +2746,8 @@ function initializeGeolocation() {
 
 function updateUserLocation(position) {
     const latLng = [position.coords.latitude, position.coords.longitude];
+    if (!latLng.every(Number.isFinite)) return;
+
     const isFirstLocation = !state.userLocation;
 
     state.userLocation = latLng;
@@ -2750,8 +2765,10 @@ function updateUserLocation(position) {
 
     if (state.followUserLocation) {
         centerMapOnUser(latLng);
-    } else if (isFirstLocation && !state.hasFitRoute) {
-        centerMapOnUser(latLng, 13);
+    } else if (isFirstLocation && state.allowInitialLocationView && !state.hasAppliedInitialLocationView) {
+        state.hasAppliedInitialLocationView = true;
+        state.allowInitialLocationView = false;
+        centerMapOnUser(latLng, 14);
     }
 }
 
@@ -2770,12 +2787,14 @@ locateUserButton.addEventListener("click", () => {
 });
 
 resetRouteViewButton.addEventListener("click", () => {
+    state.allowInitialLocationView = false;
     setFollowUserLocation(false);
     fitCurrentRouteView({ animate: true });
 });
 
 map.on("dragstart zoomstart", () => {
     if (!state.isProgrammaticMapMove) {
+        state.allowInitialLocationView = false;
         setFollowUserLocation(false);
     }
 });
@@ -2785,7 +2804,7 @@ map.on("dragstart zoomstart", () => {
 /* ====================== */
 
 routeFilter.addEventListener("change", () => {
-    selectRoute(routeFilter.value, { updateUrl: true, fitRoute: true });
+    selectRoute(routeFilter.value, { updateUrl: true, fitRoute: false });
 });
 
 routePickerButton.addEventListener("click", event => {
