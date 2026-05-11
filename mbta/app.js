@@ -1784,6 +1784,26 @@ function applyVehicleVisualOffset(record, offset) {
     }
 }
 
+function updateVehicleIconPresentation(record) {
+    const dom = vehicleDomRefs(record);
+    if (!dom) {
+        record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, record.visualOffset));
+        record.dom = null;
+        return;
+    }
+
+    const directionId = record.vehicle.attributes.direction_id;
+    dom.root.classList.toggle("direction-0", directionId === 0);
+    dom.root.classList.toggle("direction-1", directionId === 1);
+    dom.root.classList.toggle("direction-unknown", directionId !== 0 && directionId !== 1);
+    dom.root.classList.toggle("at-stop", record.vehicle.attributes.current_status === "STOPPED_AT");
+    dom.root.classList.toggle("vehicle-bus", record.route?.type === 3);
+    dom.root.classList.toggle("vehicle-ferry", record.route?.type === 4);
+    dom.root.classList.toggle("vehicle-train", record.route?.type !== 3 && record.route?.type !== 4);
+    dom.root.style.setProperty("--vehicle-color", vehicleDirectionColor(record.route, directionId));
+    dom.root.style.setProperty("--vehicle-halo-base", vehicleHaloBase(record.route));
+}
+
 function setVehicleMoving(record, isMoving) {
     record.marker.getElement()
         ?.querySelector(".vehicle-offset-marker")
@@ -1796,9 +1816,7 @@ function applyVehicleLayout() {
     const records = [...state.vehicleRecords.values()];
     const offsets = resolveVehicleOffsets(records);
     records.forEach((record, index) => {
-        record.marker.setIcon(createVehicleIcon(record.vehicle, record.route, record.stopInfo, offsets[index]));
-        record.dom = null;
-        record.visualOffset = offsets[index];
+        applyVehicleVisualOffset(record, offsets[index]);
     });
 }
 
@@ -2386,12 +2404,16 @@ function beginVehicleMapInteraction() {
         state.vehicleMapInteractionTimer = null;
     }
     if (!wasInteracting) {
-        cancelVehicleMoveAnimations({ snapToTarget: true });
+        cancelVehicleMoveAnimations();
     }
 }
 
 function endVehicleMapInteraction() {
     if (state.hasActiveVehicleTouchGesture) return;
+    if (!state.isVehicleMapInteracting && !state.vehicleMapInteractionTimer) {
+        scheduleVehicleLayout();
+        return;
+    }
 
     if (state.vehicleMapInteractionTimer) {
         clearTimeout(state.vehicleMapInteractionTimer);
@@ -2399,27 +2421,32 @@ function endVehicleMapInteraction() {
     state.vehicleMapInteractionTimer = setTimeout(() => {
         state.vehicleMapInteractionTimer = null;
         state.isVehicleMapInteracting = false;
-        applyPendingVehicleTargets();
-        scheduleVehicleLayout();
+        if (state.vehicleLayoutTimer) {
+            clearTimeout(state.vehicleLayoutTimer);
+            state.vehicleLayoutTimer = null;
+        }
+        settleVehicleTargetsAfterInteraction();
     }, VEHICLE_LAYOUT_DEBOUNCE_MS);
 }
 
-function applyPendingVehicleTargets() {
-    state.vehicleRecords.forEach(record => {
-        const marker = record.marker;
-        const targetLatLng = record.targetLatLng || marker._vehicleMoveTargetLatLng;
-        const targetOffset = marker._vehicleMoveTargetOffset;
+function settleVehicleTargetsAfterInteraction() {
+    if (!state.vehicleRecords.size) return;
+
+    const records = [...state.vehicleRecords.values()];
+    const targetOffsets = resolveVehicleOffsets(records, record => record.targetLatLng || record.marker.getLatLng());
+    records.forEach((record, index) => {
+        const targetLatLng = record.targetLatLng || record.marker._vehicleMoveTargetLatLng;
+        const targetOffset = targetOffsets[index];
         if (targetLatLng) {
-            marker.setLatLng(targetLatLng);
-        }
-        if (targetOffset) {
+            animateVehicleTo(record, targetLatLng, targetOffset);
+        } else {
             applyVehicleVisualOffset(record, targetOffset);
+            setVehicleMoving(record, false);
         }
-        setVehicleMoving(record, false);
     });
 }
 
-function cancelVehicleMoveAnimation(marker, options = {}) {
+function cancelVehicleMoveAnimation(marker) {
     if (!marker) return;
     marker._vehicleMoveAnimationToken = (marker._vehicleMoveAnimationToken || 0) + 1;
 
@@ -2430,21 +2457,10 @@ function cancelVehicleMoveAnimation(marker, options = {}) {
     marker.getElement()
         ?.querySelector(".vehicle-offset-marker")
         ?.classList.remove("is-moving");
-
-    if (options.snapToTarget) {
-        const targetLatLng = marker._vehicleMoveTargetLatLng;
-        const targetOffset = marker._vehicleMoveTargetOffset;
-        if (targetLatLng) {
-            marker.setLatLng(targetLatLng);
-        }
-        if (options.record && targetOffset) {
-            applyVehicleVisualOffset(options.record, targetOffset);
-        }
-    }
 }
 
-function cancelVehicleMoveAnimations(options = {}) {
-    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker, { ...options, record }));
+function cancelVehicleMoveAnimations() {
+    state.vehicleRecords.forEach(record => cancelVehicleMoveAnimation(record.marker));
 }
 
 function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
@@ -2622,8 +2638,7 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
                     targetLatLng: L.latLng(position),
                     shouldAnimate: true
                 });
-                marker.setIcon(createVehicleIcon(vehicle, route, stopInfo, record.visualOffset));
-                record.dom = null;
+                updateVehicleIconPresentation(record);
             } else {
                 const initialOffset = vehicleOffsetForDirection(attributes.bearing, directionId);
                 marker = L.marker(position, {
