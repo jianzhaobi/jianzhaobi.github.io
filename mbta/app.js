@@ -19,6 +19,9 @@ const DEFAULT_VIEW = {
     center: [42.3601, -71.0889],
     zoom: 12
 };
+const HAS_FINE_POINTER = window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches ?? false;
+const FINE_POINTER_WHEEL_ZOOM_SENSITIVITY = 320;
+const FINE_POINTER_WHEEL_SETTLE_MS = 90;
 
 const ROUTE_PRIORITY = [
     "Blue",
@@ -155,6 +158,8 @@ const state = {
     vehicleMapInteractionTimer: null,
     isVehicleMapInteracting: false,
     hasActiveVehicleTouchGesture: false,
+    isFinePointerWheelZooming: false,
+    finePointerWheelZoomTimer: null,
     // Aborts in-flight route-load fetches (shapes/stops/alerts/initial vehicles)
     // when the user switches to a different route. Polling refresh does not use this.
     routeAbortController: null
@@ -167,12 +172,15 @@ const state = {
 const map = L.map("map", {
     zoomControl: false,
     doubleClickZoom: false,
-    zoomSnap: 0.5,
+    scrollWheelZoom: !HAS_FINE_POINTER,
+    zoomSnap: HAS_FINE_POINTER ? 0 : 0.5,
     zoomDelta: 1,
-    wheelPxPerZoomLevel: 60
+    wheelDebounceTime: HAS_FINE_POINTER ? 0 : 40,
+    wheelPxPerZoomLevel: HAS_FINE_POINTER ? 36 : 60
 }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
 
 L.control.zoom({ position: "topright" }).addTo(map);
+preserveSteppedZoomControl();
 
 /* Move custom buttons into the Leaflet top-right control container so all
    controls share the same positioning context (fixes overlap on iPad landscape). */
@@ -198,13 +206,16 @@ const walkRouteLayer = L.layerGroup().addTo(map);
 const vehicleHaloClockStartMs = performance.now();
 
 updateMarkerZoomScales();
+enableFinePointerWheelZoom();
 
 map.on("zoomstart movestart", beginVehicleMapInteraction);
 map.on("zoomend moveend", endVehicleMapInteraction);
-map.on("zoom zoomanim", event => updateMarkerZoomScales(event.zoom));
+map.on("zoom zoomanim", event => updateMarkerZoomScales(event.zoom, { layoutVehicles: false }));
 map.on("zoomend", () => {
-    updateMarkerZoomScales();
+    if (state.isFinePointerWheelZooming) return;
+    updateMarkerZoomScales(map.getZoom(), { layoutVehicles: false });
     updateStopPopupAnchors();
+    applyVehicleLayout();
 });
 map.getContainer().addEventListener("touchstart", event => {
     if (event.touches.length > 1) {
@@ -237,6 +248,82 @@ function createBasemapLayer(basemapId) {
         maxZoom: 19,
         attribution: basemap.attribution
     });
+}
+
+function enableFinePointerWheelZoom() {
+    if (!HAS_FINE_POINTER) return;
+
+    const container = map.getContainer();
+    let wheelFrame = null;
+    let pendingZoomDelta = 0;
+    let pendingWheelEvent = null;
+
+    const normalizeWheelDelta = event => {
+        const lineHeightPx = 16;
+        const pageHeightPx = Math.max(window.innerHeight, 1);
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * lineHeightPx;
+        if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * pageHeightPx;
+        return event.deltaY;
+    };
+
+    const clampZoom = zoom => {
+        const minZoom = map.getMinZoom();
+        const maxZoom = map.getMaxZoom();
+        return Math.max(
+            Number.isFinite(minZoom) ? minZoom : -Infinity,
+            Math.min(Number.isFinite(maxZoom) ? maxZoom : Infinity, zoom)
+        );
+    };
+
+    container.addEventListener("wheel", event => {
+        event.preventDefault();
+        state.isFinePointerWheelZooming = true;
+        if (state.finePointerWheelZoomTimer) {
+            clearTimeout(state.finePointerWheelZoomTimer);
+        }
+        state.finePointerWheelZoomTimer = window.setTimeout(() => {
+            state.isFinePointerWheelZooming = false;
+            state.finePointerWheelZoomTimer = null;
+            updateMarkerZoomScales(map.getZoom(), { layoutVehicles: false });
+            updateStopPopupAnchors();
+            applyVehicleLayout();
+        }, FINE_POINTER_WHEEL_SETTLE_MS);
+
+        pendingWheelEvent = event;
+        pendingZoomDelta += -normalizeWheelDelta(event) / FINE_POINTER_WHEEL_ZOOM_SENSITIVITY;
+
+        if (wheelFrame) return;
+        wheelFrame = requestAnimationFrame(() => {
+            wheelFrame = null;
+            if (!pendingWheelEvent || !pendingZoomDelta) return;
+
+            const containerPoint = map.mouseEventToContainerPoint(pendingWheelEvent);
+            const nextZoom = clampZoom(map.getZoom() + pendingZoomDelta);
+            pendingZoomDelta = 0;
+            pendingWheelEvent = null;
+            map.setZoomAround(containerPoint, nextZoom, { animate: false });
+        });
+    }, { passive: false });
+}
+
+function preserveSteppedZoomControl() {
+    if (!HAS_FINE_POINTER) return;
+
+    const container = map.getContainer();
+    const bindButton = (selector, direction) => {
+        const button = container.querySelector(selector);
+        if (!button) return;
+
+        button.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const nextZoom = Math.round(map.getZoom()) + direction * map.options.zoomDelta;
+            map.setZoom(nextZoom);
+        }, true);
+    };
+
+    bindButton(".leaflet-control-zoom-in", 1);
+    bindButton(".leaflet-control-zoom-out", -1);
 }
 
 function setBasemap(basemapId) {
@@ -1208,11 +1295,13 @@ function stopPopupAnchorY() {
     return -7 * stopMarkerScale();
 }
 
-function updateMarkerZoomScales(zoom = map.getZoom()) {
+function updateMarkerZoomScales(zoom = map.getZoom(), { layoutVehicles = true } = {}) {
     const container = map.getContainer();
     container.style.setProperty("--vehicle-marker-scale", vehicleMarkerScale(zoom).toFixed(3));
     container.style.setProperty("--stop-marker-scale", stopMarkerScale(zoom).toFixed(3));
-    scheduleVehicleZoomLayout(zoom);
+    if (layoutVehicles) {
+        scheduleVehicleZoomLayout(zoom);
+    }
 }
 
 function updateStopPopupAnchors() {
@@ -1932,8 +2021,13 @@ function clearMapForRouteChange() {
         clearTimeout(state.vehicleMapInteractionTimer);
         state.vehicleMapInteractionTimer = null;
     }
+    if (state.finePointerWheelZoomTimer) {
+        clearTimeout(state.finePointerWheelZoomTimer);
+        state.finePointerWheelZoomTimer = null;
+    }
     state.isVehicleMapInteracting = false;
     state.hasActiveVehicleTouchGesture = false;
+    state.isFinePointerWheelZooming = false;
     if (state.vehicleZoomLayoutFrame) {
         cancelAnimationFrame(state.vehicleZoomLayoutFrame);
         state.vehicleZoomLayoutFrame = null;
