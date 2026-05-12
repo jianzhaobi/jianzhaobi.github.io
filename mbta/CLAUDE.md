@@ -12,7 +12,7 @@ A web-based real-time MBTA vehicle tracker built with Leaflet.js and the MBTA v3
 ## Key Architecture Decisions
 
 - **Single-file JS**: No bundler, no framework. Pure vanilla JS with Leaflet.
-- **Vehicle offset/collision system**: Vehicle circles are rendered offset from the true GPS position along a leader line perpendicular to the nearest route segment. A multi-iteration collision resolver rotates overlapping same-direction vehicles apart.
+- **Vehicle offset system**: Vehicle circles are rendered offset from the true GPS position along a leader line perpendicular to the nearest route segment. No collision avoidance — vehicles may overlap at terminals or dense areas in exchange for stable, smooth positioning during zoom.
 - **Route shape segments**: Decoded polylines are cached in `state.routeShapeSegments` so vehicle circles can align to rendered road geometry.
 - **Direction coloring**: Each direction (0/1) gets a distinct shade derived from the route color. Silver Line is special-cased.
 - **Polling**: Vehicles refresh every 5 seconds (`VEHICLE_REFRESH_MS`).

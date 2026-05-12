@@ -72,15 +72,8 @@ const VEHICLE_MARKER_MAX_SCALE = 1.5;
 const STOP_MARKER_MAX_SCALE = 2;
 const VEHICLE_LEADER_MIN_VISIBLE_PX = 8;
 const VEHICLE_LEADER_GAP_PX = 2;
-const VEHICLE_COLLISION_PADDING_PX = 6;
-const VEHICLE_COLLISION_ITERATIONS = 9;
-const VEHICLE_COLLISION_ROTATION_STEP_DEG = 9;
-const VEHICLE_MAX_COLLISION_ROTATION_DEG = 120;
-const VEHICLE_CROSS_DIRECTION_PUSH_PX = 8;
-const VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX = 24;
 const VEHICLE_TANGENT_SMOOTH_PX = 60;
 const VEHICLE_LAYOUT_DEBOUNCE_MS = 80;
-const STOP_AVOID_RADIUS_PX = 13;
 
 const BASEMAPS = {
     light: {
@@ -1206,9 +1199,6 @@ function vehicleMarkerRadiusPx(zoom = map.getZoom()) {
     return VEHICLE_MARKER_RADIUS_PX * vehicleMarkerScale(zoom);
 }
 
-function stopAvoidRadiusPx(zoom = map.getZoom()) {
-    return STOP_AVOID_RADIUS_PX * stopMarkerScale(zoom);
-}
 
 function vehiclePopupAnchorY(zoom = map.getZoom()) {
     return -(vehicleMarkerRadiusPx(zoom) + 10);
@@ -1272,20 +1262,6 @@ function normalizeVector(vector) {
     return { x: vector.x / length, y: vector.y / length };
 }
 
-function rotateVector(vector, degrees) {
-    const radians = degrees * Math.PI / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    return {
-        x: vector.x * cos - vector.y * sin,
-        y: vector.x * sin + vector.y * cos
-    };
-}
-
-function rotateOffsetOnSameSide(baseOffset, degrees) {
-    const rotated = rotateVector(baseOffset, degrees);
-    return rotated.x * baseOffset.x + rotated.y * baseOffset.y > 0 ? rotated : null;
-}
 
 function bearingToTravelVector(bearing) {
     const radians = bearing * Math.PI / 180;
@@ -1351,10 +1327,29 @@ function findNearestRouteSegment(anchor, predicate) {
     return nearest;
 }
 
-function nearestRouteSegment(anchor, shapeId = null, directionId = null) {
+function nearestRouteSegment(anchor, shapeId = null, directionId = null, bearing = null) {
     const hasDirection = directionId === 0 || directionId === 1;
     const sameShape = segment => shapeIdMatches(segment.shapeId, shapeId);
     const sameDirection = segment => segment.directionId === directionId;
+
+    // On loop routes two segments of the same shape+direction can be
+    // equidistant from the vehicle on opposite sides of the loop.  When
+    // bearing is available, prefer the segment whose polyline direction
+    // aligns with the vehicle's travel bearing (dot product > 0 means
+    // the angle between them is less than 90°).  This eliminates the
+    // ambiguity that causes vehicle icons to jump sides during zoom.
+    if (shapeId && hasDirection && bearing !== null) {
+        const bv = bearingToTravelVector(bearing);
+        const nearest = findNearestRouteSegment(anchor, segment => {
+            if (!sameShape(segment) || !sameDirection(segment)) return false;
+            const { startPx, endPx } = getSegmentLayerPoints(segment);
+            const dx = endPx.x - startPx.x;
+            const dy = endPx.y - startPx.y;
+            const len = Math.hypot(dx, dy);
+            return len > 0 && (dx * bv.x + dy * bv.y) / len > 0;
+        });
+        if (nearest) return nearest;
+    }
 
     if (shapeId && hasDirection) {
         const nearest = findNearestRouteSegment(anchor, segment => sameShape(segment) && sameDirection(segment));
@@ -1481,7 +1476,7 @@ function vehicleTravelVector(record, anchor) {
     const attributes = record.vehicle.attributes || {};
     const directionId = attributes.direction_id;
     const bearing = Number.isFinite(attributes.bearing) ? attributes.bearing : null;
-    const segmentResult = nearestRouteSegment(anchor, record.shapeId, directionId);
+    const segmentResult = nearestRouteSegment(anchor, record.shapeId, directionId, bearing);
 
     if (!segmentResult || !segmentResult.vector) {
         // Fallback: no route geometry available — use bearing or default.
@@ -1548,159 +1543,20 @@ function vehicleBaseOffset(record, anchor, offsetPx) {
 
 function resolveVehicleOffsets(records, anchorResolver = null, zoom = map.getZoom()) {
     const offsetPx = effectiveOffsetPx(zoom);
-    const markerRadius = vehicleMarkerRadiusPx(zoom);
-    const minDistance = markerRadius * 2 + VEHICLE_COLLISION_PADDING_PX;
-    const visibleBounds = map.getPixelBounds().pad(0.15);
-    const visibleStops = [];
-    state.stops.forEach(stop => {
-        const point = map.latLngToLayerPoint([stop.lat, stop.lng]);
-        if (visibleBounds.contains(point)) {
-            visibleStops.push(point);
-        }
+
+    return records.map(record => {
+        const attributes = record.vehicle.attributes || {};
+        const currentLatLng = anchorResolver ? anchorResolver(record) : record.marker.getLatLng();
+        const anchorLatLng = currentLatLng || [attributes.latitude, attributes.longitude];
+        const anchor = map.latLngToLayerPoint(anchorLatLng);
+        const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
+
+        return {
+            x: Math.round(baseOffset.x),
+            y: Math.round(baseOffset.y),
+            headingDeg: baseOffset.headingDeg
+        };
     });
-    const layoutItems = records
-        .map((record, index) => {
-            const attributes = record.vehicle.attributes || {};
-            const currentLatLng = anchorResolver ? anchorResolver(record) : record.marker.getLatLng();
-            const anchorLatLng = currentLatLng || [attributes.latitude, attributes.longitude];
-            const anchor = map.latLngToLayerPoint(anchorLatLng);
-            const baseOffset = vehicleBaseOffset(record, anchor, offsetPx);
-            const headingDeg = baseOffset.headingDeg;
-
-            return {
-                index,
-                anchor,
-                baseOffset,
-                offset: { ...baseOffset },
-                headingDeg,
-                rotation: 0,
-                pushOut: 0,
-                directionId: attributes.direction_id,
-                participates: visibleBounds.contains(anchor)
-            };
-        });
-
-    const activeItems = layoutItems.filter(item => item.participates);
-
-    for (let iteration = 0; iteration < VEHICLE_COLLISION_ITERATIONS; iteration += 1) {
-        let moved = false;
-
-        for (let i = 0; i < activeItems.length; i += 1) {
-            for (let j = i + 1; j < activeItems.length; j += 1) {
-                const a = activeItems[i];
-                const b = activeItems[j];
-
-                const ax = a.anchor.x + a.offset.x;
-                const ay = a.anchor.y + a.offset.y;
-                const bx = b.anchor.x + b.offset.x;
-                const by = b.anchor.y + b.offset.y;
-                const distance = Math.hypot(bx - ax, by - ay);
-
-                if (distance >= minDistance) continue;
-
-                const sameDirection = (a.directionId === 0 || a.directionId === 1)
-                    && a.directionId === b.directionId;
-
-                if (sameDirection) {
-                    // Same-direction overlap rule:
-                    // Keep each circle on its own fixed-radius path around the true vehicle point.
-                    // When two same-direction circles collide, rotate them in opposite directions.
-                    // This intentionally allows the leader line to deviate from perpendicular only while avoiding overlap.
-                    const aSign = a.index <= b.index ? -1 : 1;
-                    const bSign = -aSign;
-                    const nextARotation = Math.max(
-                        -VEHICLE_MAX_COLLISION_ROTATION_DEG,
-                        Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, a.rotation + aSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
-                    );
-                    const nextBRotation = Math.max(
-                        -VEHICLE_MAX_COLLISION_ROTATION_DEG,
-                        Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, b.rotation + bSign * VEHICLE_COLLISION_ROTATION_STEP_DEG)
-                    );
-
-                    const nextAOffset = rotateOffsetOnSameSide(a.baseOffset, nextARotation);
-                    const nextBOffset = rotateOffsetOnSameSide(b.baseOffset, nextBRotation);
-
-                    if (nextARotation !== a.rotation && nextAOffset) {
-                        a.rotation = nextARotation;
-                        a.offset = nextAOffset;
-                        moved = true;
-                    }
-                    if (nextBRotation !== b.rotation && nextBOffset) {
-                        b.rotation = nextBRotation;
-                        b.offset = nextBOffset;
-                        moved = true;
-                    }
-                } else {
-                    // Cross-direction overlap rule:
-                    // Push each circle outward along its own base-offset direction (the normal),
-                    // preserving perpendicularity and keeping each direction on its own side.
-                    // The leader line gets longer but the geometric relationship stays correct.
-                    const pushItems = [a, b];
-                    pushItems.forEach(item => {
-                        if (item.pushOut >= VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX) return;
-
-                        item.pushOut = Math.min(item.pushOut + VEHICLE_CROSS_DIRECTION_PUSH_PX, VEHICLE_CROSS_DIRECTION_MAX_PUSH_PX);
-                        const baseNorm = normalizeVector(item.baseOffset);
-                        if (baseNorm) {
-                            const totalRadius = offsetPx + item.pushOut;
-                            const pushed = { x: baseNorm.x * totalRadius, y: baseNorm.y * totalRadius };
-                            // Re-apply any existing rotation on top of the new radius
-                            const rotated = item.rotation ? rotateOffsetOnSameSide(pushed, item.rotation) : pushed;
-                            if (rotated) {
-                                item.offset = rotated;
-                                // Update baseOffset to reflect new radius so future rotation stays consistent
-                                item.baseOffset = pushed;
-                                moved = true;
-                            }
-                        }
-                    });
-                }
-            }
-        }
-
-        activeItems.forEach(item => {
-            visibleStops.forEach(stopPoint => {
-                const markerX = item.anchor.x + item.offset.x;
-                const markerY = item.anchor.y + item.offset.y;
-                let dx = markerX - stopPoint.x;
-                let dy = markerY - stopPoint.y;
-                let distance = Math.hypot(dx, dy);
-                const stopMinDistance = markerRadius + stopAvoidRadiusPx(zoom);
-
-                if (distance >= stopMinDistance) return;
-
-                if (distance < 0.1) {
-                    dx = item.offset.x || item.baseOffset.x || 1;
-                    dy = item.offset.y || item.baseOffset.y || 0;
-                    distance = Math.hypot(dx, dy) || 1;
-                }
-
-                const push = stopMinDistance - distance;
-                const direction = item.index % 2 === 0 ? 1 : -1;
-                const rotationStep = Math.max(VEHICLE_COLLISION_ROTATION_STEP_DEG, push / 2);
-                const nextRotation = Math.max(
-                    -VEHICLE_MAX_COLLISION_ROTATION_DEG,
-                    Math.min(VEHICLE_MAX_COLLISION_ROTATION_DEG, item.rotation + direction * rotationStep)
-                );
-
-                const nextOffset = rotateOffsetOnSameSide(item.baseOffset, nextRotation);
-
-                if (nextRotation !== item.rotation && nextOffset) {
-                    item.rotation = nextRotation;
-                    item.offset = nextOffset;
-                    moved = true;
-                }
-            });
-        });
-
-        if (!moved) break;
-    }
-
-    return layoutItems.map(item => ({
-        x: Math.round(item.offset.x),
-        y: Math.round(item.offset.y),
-        headingDeg: item.headingDeg
-    }));
 }
 
 function vehicleModeClass(route) {
