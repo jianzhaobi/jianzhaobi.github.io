@@ -2085,9 +2085,7 @@ async function renderRouteStops(routeId, route, requestId, signal) {
             clearWalkRoute();
             state.activeWalkRouteStopId = stop.id;
             renderPredictions(routeId, stop.id, marker);
-        });
-        marker.on("popupopen", () => {
-            marker._popup?._adjustPan();
+            setTimeout(() => marker._popup?.isOpen() && marker._popup._adjustPan(), 50);
         });
         marker.on("popupclose", () => {
             clearWalkRoute(stop.id);
@@ -2627,8 +2625,8 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
                     zIndexOffset
                 }).addTo(vehicleLayer);
                 marker.bindPopup(popupHtml, { closeButton: false, autoPan: false });
-                marker.on("popupopen", () => {
-                    marker._popup?._adjustPan();
+                marker.on("click", () => {
+                    setTimeout(() => marker._popup?.isOpen() && marker._popup._adjustPan(), 50);
                 });
                 record = {
                     marker,
