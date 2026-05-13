@@ -1178,3 +1178,26 @@ body * {
         min-width: 62px;
     }
 }
+
+/* Custom Leaflet pane that holds the fine-pointer wheel-zoom basemap ghost.
+   z-index is set inline from JS (250, between tilePane=200 and overlayPane=400)
+   so vehicles, routes, and stops paint above it. */
+.basemap-preview-pane {
+    pointer-events: none;
+}
+
+/* Snapshot canvas of the basemap captured at the start of a wheel-zoom
+   session and scaled via JS to mask tile loading. The fade duration is
+   driven from the parent pane's --basemap-wheel-ghost-fade-ms variable
+   (set in JS so FINE_POINTER_WHEEL_GHOST_FADE_MS is the single source of
+   truth). transform/transform-origin/opacity are written inline per frame. */
+.leaflet-basemap-wheel-ghost {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity var(--basemap-wheel-ghost-fade-ms, 90ms) linear;
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+}

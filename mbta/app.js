@@ -22,6 +22,12 @@ const DEFAULT_VIEW = {
 const HAS_FINE_POINTER = window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches ?? false;
 const FINE_POINTER_WHEEL_ZOOM_SENSITIVITY = 320;
 const FINE_POINTER_WHEEL_SETTLE_MS = 90;
+const FINE_POINTER_WHEEL_GHOST_FADE_MS = 90;
+const BASEMAP_WHEEL_GHOST_MAX_WAIT_MS = 1200;
+// Beyond these multiplicative scale ratios the rasterized snapshot is too
+// blurry/pixelated to be useful — hide it instead of showing a smeared frame.
+const BASEMAP_WHEEL_GHOST_MAX_SCALE = 4;
+const BASEMAP_WHEEL_GHOST_MIN_SCALE = 0.25;
 
 const ROUTE_PRIORITY = [
     "Blue",
@@ -160,6 +166,25 @@ const state = {
     hasActiveVehicleTouchGesture: false,
     isFinePointerWheelZooming: false,
     finePointerWheelZoomTimer: null,
+    finePointerWheelFrame: null,
+    finePointerWheelPendingZoomDelta: 0,
+    finePointerWheelPendingEvent: null,
+    finePointerWheelAnchorPoint: null,
+    basemapWheelGhost: null,
+    // Bumped each time we kick off a fade so the trailing setTimeout cleanup
+    // can detect "a newer ghost replaced me" and bail out.
+    basemapWheelGhostReleaseToken: 0,
+    basemapWheelGhostZoom: null,
+    // mapPane's CSS translation at snapshot capture time. Leaflet does NOT
+    // immediately reset mapPane to (0, 0) after a pan — it only normalizes
+    // on the next setView/_resetView (e.g., the first setZoomAround in our
+    // wheel rAF). Without remembering the capture-time offset, the ghost
+    // visibly snaps back by the pan distance the moment we zoom.
+    basemapWheelGhostCaptureOffset: null,
+    basemapWheelGhostFadeTimer: null,
+    basemapWheelGhostReleaseTimer: null,
+    basemapWheelGhostLoadListener: null,
+    basemapWheelGhostLoadLayer: null,
     // Aborts in-flight route-load fetches (shapes/stops/alerts/initial vehicles)
     // when the user switches to a different route. Polling refresh does not use this.
     routeAbortController: null
@@ -178,6 +203,16 @@ const map = L.map("map", {
     wheelDebounceTime: HAS_FINE_POINTER ? 0 : 40,
     wheelPxPerZoomLevel: HAS_FINE_POINTER ? 36 : 60
 }).setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+
+// Custom Leaflet pane sitting INSIDE .leaflet-map-pane, between the tile
+// pane (z-index 200) and the overlay pane (z-index 400). Putting it in a
+// sibling container of .leaflet-map-pane fails because mapPane has a
+// transform applied (forming a stacking context with implicit z-index: 0),
+// so any positive z-index outside it would paint over markers/routes.
+const basemapPreviewPane = map.createPane("basemapPreview");
+basemapPreviewPane.classList.add("basemap-preview-pane");
+basemapPreviewPane.style.zIndex = "250";
+basemapPreviewPane.style.setProperty("--basemap-wheel-ghost-fade-ms", `${FINE_POINTER_WHEEL_GHOST_FADE_MS}ms`);
 
 L.control.zoom({ position: "topright" }).addTo(map);
 preserveSteppedZoomControl();
@@ -250,13 +285,223 @@ function createBasemapLayer(basemapId) {
     });
 }
 
+function currentBasemapLevel() {
+    return basemapLayer?._level || null;
+}
+
+// Returns mapPane's current CSS translation. mapPane is reset to (0, 0) by
+// Leaflet on every _resetView (which non-animated zooms go through), but it
+// can be non-zero immediately after a pan, so we read it at capture time and
+// at every sync to keep the snapshot aligned.
+function getMapPaneOffset() {
+    const pane = map.getPane?.("mapPane") || map._mapPane;
+    if (!pane) return { x: 0, y: 0 };
+    const pos = L.DomUtil.getPosition(pane);
+    return pos ? { x: pos.x || 0, y: pos.y || 0 } : { x: 0, y: 0 };
+}
+
+function buildBasemapSnapshotElement(sourceElement, captureOffset) {
+    const mapRect = map.getContainer().getBoundingClientRect();
+    const width = Math.round(mapRect.width || map.getSize().x);
+    const height = Math.round(mapRect.height || map.getSize().y);
+    if (!width || !height) return null;
+
+    const deviceScale = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * deviceScale);
+    canvas.height = Math.round(height * deviceScale);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.scale(deviceScale, deviceScale);
+
+    // Tile positions are expressed relative to mapPane's origin AT CAPTURE
+    // TIME (passed in so the same value drives the syncBasemapWheelGhost
+    // compensation). The ghost lives inside basemapPreviewPane, which is a
+    // child of mapPane, so this keeps the snapshot aligned with the live
+    // basemap regardless of how mapPane gets re-translated later.
+    const tiles = sourceElement.querySelectorAll("img, canvas");
+    tiles.forEach(tile => {
+        const rect = tile.getBoundingClientRect();
+        const x = rect.left - mapRect.left - captureOffset.x;
+        const y = rect.top - mapRect.top - captureOffset.y;
+        const w = rect.width;
+        const h = rect.height;
+        if (!w || !h) return;
+
+        try {
+            context.drawImage(tile, x, y, w, h);
+        } catch (error) {
+            // Ignore tiles that cannot be drawn into the snapshot; the live
+            // layer underneath will continue loading and replace the snapshot.
+        }
+    });
+
+    return canvas;
+}
+
+function detachBasemapWheelGhostLoadListener() {
+    const listener = state.basemapWheelGhostLoadListener;
+    if (!listener) return;
+    const layer = state.basemapWheelGhostLoadLayer || basemapLayer;
+    state.basemapWheelGhostLoadListener = null;
+    state.basemapWheelGhostLoadLayer = null;
+    // basemapLayer may have been swapped out (setBasemap) since we attached,
+    // so remember the exact layer that owns the one-shot listener.
+    try { layer?.off?.("load", listener); } catch (_) { /* noop */ }
+}
+
+function clearBasemapWheelGhostReleaseWait() {
+    detachBasemapWheelGhostLoadListener();
+    if (state.basemapWheelGhostReleaseTimer) {
+        clearTimeout(state.basemapWheelGhostReleaseTimer);
+        state.basemapWheelGhostReleaseTimer = null;
+    }
+}
+
+function removeBasemapWheelGhost() {
+    const ghost = state.basemapWheelGhost;
+    if (state.basemapWheelGhostFadeTimer) {
+        clearTimeout(state.basemapWheelGhostFadeTimer);
+        state.basemapWheelGhostFadeTimer = null;
+    }
+    clearBasemapWheelGhostReleaseWait();
+    if (!ghost) return;
+    ghost.remove();
+    state.basemapWheelGhost = null;
+    state.basemapWheelGhostZoom = null;
+    state.basemapWheelGhostCaptureOffset = null;
+}
+
+function syncBasemapWheelGhost() {
+    const ghost = state.basemapWheelGhost;
+    if (!ghost) return;
+
+    const anchorPoint = state.finePointerWheelAnchorPoint;
+    const ghostZoom = state.basemapWheelGhostZoom;
+    const captureOffset = state.basemapWheelGhostCaptureOffset;
+    if (!anchorPoint || !Number.isFinite(ghostZoom) || !captureOffset) return;
+
+    const scale = map.getZoomScale(map.getZoom(), ghostZoom);
+
+    // After a few zoom levels of upscaling/downscaling the rasterized snapshot
+    // looks worse than the partially-loaded live tiles underneath, so hide it.
+    if (scale > BASEMAP_WHEEL_GHOST_MAX_SCALE || scale < BASEMAP_WHEEL_GHOST_MIN_SCALE) {
+        ghost.style.opacity = "0";
+        return;
+    }
+    if (ghost.dataset.fading !== "true") {
+        ghost.style.opacity = "1";
+    }
+
+    // The snapshot was drawn relative to mapPane's origin AT CAPTURE TIME,
+    // but mapPane gets re-positioned by Leaflet's _resetView on every
+    // setZoomAround (and is left non-zero after a pan). Apply two transforms:
+    //
+    //   1. translate(P_cap - P_now): re-anchors the canvas to the viewport
+    //      region it occupied at capture time, even if mapPane has since
+    //      snapped from a panned offset back to (0, 0).
+    //   2. transform-origin (anchor - P_cap): keeps scale centered on the
+    //      cursor in viewport coords. Note we subtract P_cap (not P_now)
+    //      because the canvas's local origin is conceptually pinned to where
+    //      mapPane was when we drew the tiles.
+    const paneOffset = getMapPaneOffset();
+    const dx = captureOffset.x - paneOffset.x;
+    const dy = captureOffset.y - paneOffset.y;
+    const localX = anchorPoint.x - captureOffset.x;
+    const localY = anchorPoint.y - captureOffset.y;
+    ghost.style.transformOrigin = `${localX}px ${localY}px`;
+    ghost.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+}
+
+function ensureBasemapWheelGhost() {
+    if (state.basemapWheelGhost) return;
+
+    const sourceLevel = currentBasemapLevel();
+    const sourceElement = sourceLevel?.el;
+    if (!sourceLevel || !sourceElement) return;
+
+    // Capture mapPane's current translation BEFORE building the snapshot so
+    // both the pixel layout and the later transform compensation use the
+    // same baseline.
+    const captureOffset = getMapPaneOffset();
+    const ghost = buildBasemapSnapshotElement(sourceElement, captureOffset);
+    if (!ghost) return;
+    ghost.classList.add("leaflet-basemap-wheel-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    basemapPreviewPane.appendChild(ghost);
+
+    state.basemapWheelGhost = ghost;
+    state.basemapWheelGhostZoom = map.getZoom();
+    state.basemapWheelGhostCaptureOffset = captureOffset;
+    syncBasemapWheelGhost();
+}
+
+function fadeOutBasemapWheelGhost() {
+    const ghost = state.basemapWheelGhost;
+    if (!ghost || ghost.dataset.fading === "true") return;
+
+    clearBasemapWheelGhostReleaseWait();
+    const releaseToken = ++state.basemapWheelGhostReleaseToken;
+    ghost.dataset.fading = "true";
+    ghost.style.opacity = "0";
+    state.basemapWheelGhostFadeTimer = window.setTimeout(() => {
+        state.basemapWheelGhostFadeTimer = null;
+        // Bail out if a newer ghost has replaced this one in the meantime.
+        if (releaseToken !== state.basemapWheelGhostReleaseToken) return;
+        removeBasemapWheelGhost();
+    }, FINE_POINTER_WHEEL_GHOST_FADE_MS + 20);
+}
+
+function scheduleBasemapWheelGhostRelease() {
+    if (!state.basemapWheelGhost) return;
+
+    clearBasemapWheelGhostReleaseWait();
+
+    if (basemapLayer?.isLoading?.()) {
+        // `load` fires once all tiles in the current viewport are loaded —
+        // preferable to `tileload` (any single tile) because we want the
+        // live basemap to be visually complete before we fade out. The
+        // fallback prevents a stale snapshot from lingering indefinitely on
+        // slow or failed tile requests.
+        const listener = () => {
+            clearBasemapWheelGhostReleaseWait();
+            fadeOutBasemapWheelGhost();
+        };
+        state.basemapWheelGhostLoadListener = listener;
+        state.basemapWheelGhostLoadLayer = basemapLayer;
+        state.basemapWheelGhostReleaseTimer = window.setTimeout(fadeOutBasemapWheelGhost, BASEMAP_WHEEL_GHOST_MAX_WAIT_MS);
+        basemapLayer.once("load", listener);
+        return;
+    }
+
+    requestAnimationFrame(fadeOutBasemapWheelGhost);
+}
+
+// Sole place that resets isFinePointerWheelZooming for the wheel-zoom path
+// (clearMapForRouteChange also resets it during route teardown). The zoomend
+// handler on line ~225 uses that flag as a guard, so changing the timing here
+// affects when the post-wheel layout pass runs.
+function settleFinePointerWheelZoom() {
+    state.isFinePointerWheelZooming = false;
+    state.finePointerWheelZoomTimer = null;
+    state.finePointerWheelAnchorPoint = null;
+    updateMarkerZoomScales(map.getZoom(), { layoutVehicles: false });
+    updateStopPopupAnchors();
+    applyVehicleLayout();
+    // Defensive: the debounced `zoomend → endVehicleMapInteraction` chain has
+    // normally already settled by now (debounce 80 ms vs settle 90 ms), but
+    // call it explicitly so the wheel session has a guaranteed end signal.
+    endVehicleMapInteraction();
+    scheduleBasemapWheelGhostRelease();
+}
+
 function enableFinePointerWheelZoom() {
     if (!HAS_FINE_POINTER) return;
 
     const container = map.getContainer();
-    let wheelFrame = null;
-    let pendingZoomDelta = 0;
-    let pendingWheelEvent = null;
 
     const normalizeWheelDelta = event => {
         const lineHeightPx = 16;
@@ -276,32 +521,47 @@ function enableFinePointerWheelZoom() {
     };
 
     container.addEventListener("wheel", event => {
+        const zoomDelta = -normalizeWheelDelta(event) / FINE_POINTER_WHEEL_ZOOM_SENSITIVITY;
+        if (!zoomDelta) return;
+
         event.preventDefault();
+        // Begin a vehicle-interaction window on the LEADING edge of the
+        // wheel session only — not on every wheel event — so we don't churn
+        // through cancelVehicleMoveAnimations on each tick. Also drop any
+        // leftover ghost from a previous session so we capture a fresh
+        // snapshot at the *current* zoom (the prior ghost may be mid-fade,
+        // pending tile-load, or simply many zoom levels stale).
+        if (!state.isFinePointerWheelZooming) {
+            beginVehicleMapInteraction();
+            removeBasemapWheelGhost();
+        }
         state.isFinePointerWheelZooming = true;
+        ensureBasemapWheelGhost();
         if (state.finePointerWheelZoomTimer) {
             clearTimeout(state.finePointerWheelZoomTimer);
         }
-        state.finePointerWheelZoomTimer = window.setTimeout(() => {
-            state.isFinePointerWheelZooming = false;
-            state.finePointerWheelZoomTimer = null;
-            updateMarkerZoomScales(map.getZoom(), { layoutVehicles: false });
-            updateStopPopupAnchors();
-            applyVehicleLayout();
-        }, FINE_POINTER_WHEEL_SETTLE_MS);
+        state.finePointerWheelZoomTimer = window.setTimeout(settleFinePointerWheelZoom, FINE_POINTER_WHEEL_SETTLE_MS);
 
-        pendingWheelEvent = event;
-        pendingZoomDelta += -normalizeWheelDelta(event) / FINE_POINTER_WHEEL_ZOOM_SENSITIVITY;
+        state.finePointerWheelPendingEvent = event;
+        state.finePointerWheelPendingZoomDelta += zoomDelta;
 
-        if (wheelFrame) return;
-        wheelFrame = requestAnimationFrame(() => {
-            wheelFrame = null;
-            if (!pendingWheelEvent || !pendingZoomDelta) return;
+        if (state.finePointerWheelFrame) return;
+        state.finePointerWheelFrame = requestAnimationFrame(() => {
+            state.finePointerWheelFrame = null;
+            if (!state.finePointerWheelPendingEvent || !state.finePointerWheelPendingZoomDelta) return;
 
-            const containerPoint = map.mouseEventToContainerPoint(pendingWheelEvent);
-            const nextZoom = clampZoom(map.getZoom() + pendingZoomDelta);
-            pendingZoomDelta = 0;
-            pendingWheelEvent = null;
+            // Lock the zoom anchor at the FIRST event of the session and reuse
+            // it for the rest of the gesture, so a continuous trackpad scroll
+            // doesn't drift its center as the cursor moves slightly.
+            if (!state.finePointerWheelAnchorPoint) {
+                state.finePointerWheelAnchorPoint = map.mouseEventToContainerPoint(state.finePointerWheelPendingEvent);
+            }
+            const containerPoint = state.finePointerWheelAnchorPoint;
+            const nextZoom = clampZoom(map.getZoom() + state.finePointerWheelPendingZoomDelta);
+            state.finePointerWheelPendingZoomDelta = 0;
+            state.finePointerWheelPendingEvent = null;
             map.setZoomAround(containerPoint, nextZoom, { animate: false });
+            syncBasemapWheelGhost();
         });
     }, { passive: false });
 }
@@ -329,6 +589,10 @@ function preserveSteppedZoomControl() {
 function setBasemap(basemapId) {
     if (!BASEMAPS[basemapId]) return;
 
+    // removeBasemapWheelGhost clears the fade timer and detaches the load
+    // listener from the (about-to-be-removed) basemapLayer, so no extra
+    // releaseToken bookkeeping is needed here.
+    removeBasemapWheelGhost();
     if (basemapLayer) {
         map.removeLayer(basemapLayer);
     }
@@ -2025,6 +2289,14 @@ function clearMapForRouteChange() {
         clearTimeout(state.finePointerWheelZoomTimer);
         state.finePointerWheelZoomTimer = null;
     }
+    if (state.finePointerWheelFrame) {
+        cancelAnimationFrame(state.finePointerWheelFrame);
+        state.finePointerWheelFrame = null;
+    }
+    state.finePointerWheelPendingZoomDelta = 0;
+    state.finePointerWheelPendingEvent = null;
+    state.finePointerWheelAnchorPoint = null;
+    removeBasemapWheelGhost();
     state.isVehicleMapInteracting = false;
     state.hasActiveVehicleTouchGesture = false;
     state.isFinePointerWheelZooming = false;
