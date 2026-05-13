@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MBTA Tracker icon</title>
+  <desc id="desc">A minimal white T inside a circle on a blue gradient background.</desc>
+  <defs>
+    <linearGradient id="background" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38a6e8"/>
+      <stop offset="0.55" stop-color="#1f78b4"/>
+      <stop offset="1" stop-color="#124f83"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <circle cx="256" cy="256" r="166" fill="none" stroke="#ffffff" stroke-width="34"/>
+  <path
+    d="M166 192H346M256 192V344"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="48"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

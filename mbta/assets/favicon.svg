@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MBTA Tracker">
+  <defs>
+    <linearGradient id="background" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38a6e8"/>
+      <stop offset="0.55" stop-color="#1f78b4"/>
+      <stop offset="1" stop-color="#124f83"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#background)"/>
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#ffffff" stroke-width="4.5"/>
+  <path
+    d="M21 24H43M32 24V43"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
