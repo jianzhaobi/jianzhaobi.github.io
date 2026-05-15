@@ -7,25 +7,25 @@
   role="img"
   aria-label="MBTA Tracker Blue Line app icon"
 >
-  <rect width="512" height="512" rx="112" fill="#12385A"/>
+  <rect width="512" height="512" rx="112" fill="#04235D"/>
 
-  <!-- subtle city-map background, slightly expanded -->
-  <path d="M72 112H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.38"/>
-  <path d="M72 256H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
-  <path d="M72 400H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.38"/>
-  <path d="M112 72V440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
-  <path d="M400 72V440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
+  <!-- subtle city-map background, harmonized with Blue Line palette -->
+  <path d="M72 112H440" stroke="#2E68D8" stroke-width="12" stroke-linecap="round" opacity="0.34"/>
+  <path d="M72 256H440" stroke="#2E68D8" stroke-width="12" stroke-linecap="round" opacity="0.24"/>
+  <path d="M72 400H440" stroke="#2E68D8" stroke-width="12" stroke-linecap="round" opacity="0.34"/>
+  <path d="M112 72V440" stroke="#2E68D8" stroke-width="12" stroke-linecap="round" opacity="0.24"/>
+  <path d="M400 72V440" stroke="#2E68D8" stroke-width="12" stroke-linecap="round" opacity="0.24"/>
 
-  <!-- single north-south Blue Line, thickened -->
-  <path d="M256 24V488" stroke="#65B5F6" stroke-width="78" stroke-linecap="round"/>
+  <!-- single north-south Blue Line -->
+  <path d="M256 24V488" stroke="#6FB7FF" stroke-width="78" stroke-linecap="round"/>
   <path d="M256 24V488" stroke="#003DA5" stroke-width="54" stroke-linecap="round"/>
 
-  <!-- endpoint stations, moved outward -->
+  <!-- endpoint stations -->
   <circle cx="256" cy="54" r="24" fill="#F8FAFC"/>
   <circle cx="256" cy="458" r="24" fill="#F8FAFC"/>
 
-  <!-- enlarged tracker marker on the line -->
-  <circle cx="256" cy="256" r="164" fill="#12385A"/>
+  <!-- tracker marker -->
+  <circle cx="256" cy="256" r="164" fill="#04235D"/>
   <circle cx="256" cy="256" r="146" fill="#F8FAFC"/>
   <circle cx="256" cy="256" r="110" fill="#003DA5"/>
 
