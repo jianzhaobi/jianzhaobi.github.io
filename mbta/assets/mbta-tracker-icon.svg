@@ -5,34 +5,31 @@
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
   role="img"
-  aria-labelledby="title desc"
+  aria-label="MBTA Tracker Blue Line app icon"
 >
-  <title id="title">MBTA Tracker Blue Line icon</title>
-  <desc id="desc">A Blue Line route with a large live train tracker marker.</desc>
-
   <rect width="512" height="512" rx="112" fill="#12385A"/>
 
-  <!-- subtle city-map background -->
+  <!-- subtle city-map background, slightly expanded -->
   <path d="M72 112H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.38"/>
   <path d="M72 256H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
   <path d="M72 400H440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.38"/>
   <path d="M112 72V440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
   <path d="M400 72V440" stroke="#2A5C86" stroke-width="12" stroke-linecap="round" opacity="0.28"/>
 
-  <!-- single north-south Blue Line -->
+  <!-- single north-south Blue Line, thickened -->
   <path d="M256 24V488" stroke="#65B5F6" stroke-width="78" stroke-linecap="round"/>
   <path d="M256 24V488" stroke="#003DA5" stroke-width="54" stroke-linecap="round"/>
 
-  <!-- endpoint stations -->
+  <!-- endpoint stations, moved outward -->
   <circle cx="256" cy="54" r="24" fill="#F8FAFC"/>
   <circle cx="256" cy="458" r="24" fill="#F8FAFC"/>
 
-  <!-- tracker marker -->
+  <!-- enlarged tracker marker on the line -->
   <circle cx="256" cy="256" r="164" fill="#12385A"/>
   <circle cx="256" cy="256" r="146" fill="#F8FAFC"/>
   <circle cx="256" cy="256" r="110" fill="#003DA5"/>
 
-  <!-- train mark -->
+  <!-- train mark inside circle -->
   <g transform="translate(256 266)">
     <rect x="-54" y="-70" width="108" height="122" rx="32" fill="#F8FAFC"/>
     <rect x="-36" y="-50" width="72" height="40" rx="11" fill="#003DA5"/>
