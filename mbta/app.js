@@ -2652,15 +2652,16 @@ async function renderAlerts(routeId, requestId, signal) {
         const json = await fetchMbta("/alerts", { "filter[route]": routeId }, signal);
         if (!isCurrentRoute(routeId, requestId)) return;
 
+        const lifecycleRank = {
+            NEW: 0,
+            ONGOING: 1,
+            ONGOING_UPCOMING: 2,
+            UPCOMING: 3
+        };
+
         const alerts = (json.data || [])
             .filter(alert => alert.attributes?.header)
             .sort((a, b) => {
-                const lifecycleRank = {
-                    NEW: 0,
-                    ONGOING: 1,
-                    ONGOING_UPCOMING: 2,
-                    UPCOMING: 3
-                };
                 const aLifecycle = lifecycleRank[a.attributes.lifecycle] ?? 99;
                 const bLifecycle = lifecycleRank[b.attributes.lifecycle] ?? 99;
                 const lifecycle = aLifecycle - bLifecycle;
@@ -2679,18 +2680,33 @@ async function renderAlerts(routeId, requestId, signal) {
             return;
         }
 
+        const topLifecycle = lifecycleRank[alerts[0].attributes.lifecycle] !== undefined
+            ? alerts[0].attributes.lifecycle
+            : "";
+
         alertBox.innerHTML = alerts.map(alert => {
             const severity = alert.attributes.severity ?? "n/a";
             const lifecycle = alert.attributes.lifecycle || "Alert";
             const effect = alert.attributes.effect || "Service alert";
             const header = alert.attributes.header;
+            const lifecycleAttr = lifecycleRank[alert.attributes.lifecycle] !== undefined
+                ? ` data-lifecycle="${escapeHtml(alert.attributes.lifecycle)}"`
+                : "";
             return `
-                <div class="alert-item">
+                <div class="alert-item"${lifecycleAttr}>
                     <span class="alert-meta">${escapeHtml(lifecycle)} - ${escapeHtml(effect)} - severity ${escapeHtml(severity)}</span>
                     ${escapeHtml(header)}
                 </div>
             `;
         }).join("");
+
+        [alertBox, toggleAlertButton, alertIndicator].forEach(element => {
+            if (topLifecycle) {
+                element.dataset.lifecycle = topLifecycle;
+            } else {
+                delete element.dataset.lifecycle;
+            }
+        });
 
         alertBox.style.display = "none";
         toggleAlertButton.hidden = false;
@@ -2710,6 +2726,11 @@ async function renderAlerts(routeId, requestId, signal) {
         toggleAlertButton.hidden = false;
         toggleAlertButton.textContent = "Show alerts";
         toggleAlertButton.dataset.count = "";
+        alertIndicator.textContent = "";
+        alertIndicator.hidden = true;
+        [alertBox, toggleAlertButton, alertIndicator].forEach(element => {
+            delete element.dataset.lifecycle;
+        });
     }
 }
 
@@ -2721,6 +2742,9 @@ function hideAlerts() {
     toggleAlertButton.dataset.count = "";
     alertIndicator.textContent = "";
     alertIndicator.hidden = true;
+    [alertBox, toggleAlertButton, alertIndicator].forEach(element => {
+        delete element.dataset.lifecycle;
+    });
 }
 
 toggleAlertButton.addEventListener("click", () => {
@@ -2900,7 +2924,6 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
 
 async function refreshVehicles(routeId = state.selectedRouteId, signal) {
     if (!routeId) return;
-
     const requestId = ++state.vehicleRequestId;
     const route = state.routes.get(routeId);
 
