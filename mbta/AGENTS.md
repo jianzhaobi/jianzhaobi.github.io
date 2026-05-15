@@ -188,6 +188,10 @@ Stop popup travel time is independent from MBTA predictions:
 - If Google returns a polyline, the popup shows a walk-route toggle.
 - `renderWalkRoute()` decodes the Google polyline and draws a dotted route in `walkRouteLayer`.
 
+### Alert Model
+
+`renderAlerts()` fetches MBTA `/alerts?filter[route]=<route-id>` once per route change. Alerts with headers are sorted lifecycle-first (`NEW`, `ONGOING`, `ONGOING_UPCOMING`, `UPCOMING`), then by severity descending, then by first active-period start time. The first lifecycle-prioritized alert sets `data-lifecycle` on the alert panel, indicator, and toggle; individual alert rows also receive their own lifecycle state for color styling. `hideAlerts()` and alert fetch errors clear lifecycle data so stale colors do not remain.
+
 ### Vehicle Model
 
 `refreshVehicles()` polls MBTA vehicles every `VEHICLE_REFRESH_MS` (5 seconds). The model is diff-based:

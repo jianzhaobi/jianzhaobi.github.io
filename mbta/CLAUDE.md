@@ -55,7 +55,7 @@ Important `state` fields in `app.js`:
 - **Predictions**: grouped by direction/headsign, past times ignored, each group limited to the next 3 arrivals.
 - **Travel time**: stop popup shows `Walk ... · Drive ...` when user location and API results are available. Google supplies the optional walk-route polyline; Mapbox supplies drive time.
 - **Walk route**: popup toggle draws/clears a dotted Google walking polyline in `walkRouteLayer`.
-- **Alerts**: loaded on route change, sorted by lifecycle, severity, then start time. Not refreshed during vehicle polling.
+- **Alerts**: loaded on route change, sorted lifecycle-first (`NEW`, `ONGOING`, `ONGOING_UPCOMING`, `UPCOMING`), then by severity and start time. The first lifecycle-prioritized alert colors the alert panel, indicator, and toggle via `data-lifecycle`; individual rows use their own lifecycle state. Not refreshed during vehicle polling.
 - **Vehicles**: `refreshVehicles()` polls every `VEHICLE_REFRESH_MS` (5 s), diff-updates `state.vehicleRecords`, preserves open popups when possible, animates normal movement, and removes vanished vehicles.
 - **Vehicle layout**: visual vehicle circles are offset from true GPS anchor along the normal of the nearest rendered route segment. A leader line connects the GPS anchor to the visual marker. Heading arrows follow smoothed route tangents when available. There is no collision-avoidance solver.
 - **Stop halo**: only `current_status === "STOPPED_AT"` creates an at-stop state. There is no near-stop model and no `.near-stop` class. Only `.at-stop` gets the breathing halo animation.
