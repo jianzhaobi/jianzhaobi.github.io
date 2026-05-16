@@ -1627,6 +1627,13 @@ function headingDegreesFromVector(vector) {
     return Math.round(Math.atan2(normalized.x, -normalized.y) * 180 / Math.PI);
 }
 
+function interpolateHeadingDegrees(fromDeg, toDeg, t) {
+    if (!Number.isFinite(fromDeg)) return Number.isFinite(toDeg) ? toDeg : undefined;
+    if (!Number.isFinite(toDeg)) return fromDeg;
+    const delta = ((toDeg - fromDeg + 540) % 360) - 180;
+    return fromDeg + delta * t;
+}
+
 // Memoize per-segment screen-pixel coordinates so a single layout pass over N
 // vehicles doesn't re-project every segment N times. Invalidated whenever the
 // map view changes (zoom/pan), since latLngToLayerPoint depends on view state.
@@ -2486,7 +2493,7 @@ function popupInfoRow(label, value, valueClass = "") {
     return `
         <div class="popup-info-row">
             <span class="popup-info-label">${escapeHtml(label)}</span>
-            <span class="${escapeHtml(className)}">${escapeHtml(value)}</span>
+            <span class="${className}">${escapeHtml(value)}</span>
         </div>
     `;
 }
@@ -2689,11 +2696,8 @@ async function renderAlerts(routeId, requestId, signal) {
             const lifecycle = alert.attributes.lifecycle || "Alert";
             const effect = alert.attributes.effect || "Service alert";
             const header = alert.attributes.header;
-            const lifecycleAttr = lifecycleRank[alert.attributes.lifecycle] !== undefined
-                ? ` data-lifecycle="${escapeHtml(alert.attributes.lifecycle)}"`
-                : "";
             return `
-                <div class="alert-item"${lifecycleAttr}>
+                <div class="alert-item">
                     <span class="alert-meta">${escapeHtml(lifecycle)} - ${escapeHtml(effect)} - severity ${escapeHtml(severity)}</span>
                     ${escapeHtml(header)}
                 </div>
@@ -2895,7 +2899,8 @@ function animateVehicleTo(record, targetLatLng, targetOffset, options = {}) {
         const currentLatLng = map.layerPointToLatLng(point);
         const offset = {
             x: fromOffset.x + (toOffset.x - fromOffset.x) * eased,
-            y: fromOffset.y + (toOffset.y - fromOffset.y) * eased
+            y: fromOffset.y + (toOffset.y - fromOffset.y) * eased,
+            headingDeg: interpolateHeadingDegrees(fromOffset.headingDeg, toOffset.headingDeg, eased)
         };
 
         // Move the marker in layer-pixel space so browser transforms can use
