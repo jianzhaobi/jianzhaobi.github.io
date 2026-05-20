@@ -1,18 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MBTA Tracker glass vehicle icon">
   <defs>
-    <linearGradient id="appShell" x1="72" y1="28" x2="438" y2="482" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1B74E8"/>
-      <stop offset="0.42" stop-color="#063D9E"/>
-      <stop offset="1" stop-color="#041B49"/>
+    <linearGradient id="appShell" x1="64" y1="32" x2="432" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3AA1FF"/>
+      <stop offset="0.46" stop-color="#1262C9"/>
+      <stop offset="1" stop-color="#0B3E92"/>
     </linearGradient>
     <radialGradient id="shellGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(168 104) rotate(52) scale(420)">
       <stop stop-color="#BDEBFF" stop-opacity="0.64"/>
       <stop offset="0.34" stop-color="#3E93FF" stop-opacity="0.16"/>
       <stop offset="1" stop-color="#001637" stop-opacity="0"/>
     </radialGradient>
+    <radialGradient id="cornerLift" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(376 396) rotate(52) scale(250)">
+      <stop stop-color="#4EA5F4" stop-opacity="0.24"/>
+      <stop offset="0.58" stop-color="#2D77D4" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#0B3E92" stop-opacity="0"/>
+    </radialGradient>
     <linearGradient id="markerGlass" x1="146" y1="114" x2="362" y2="390" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF" stop-opacity="0.78"/>
-      <stop offset="0.32" stop-color="#EAF8FF" stop-opacity="0.42"/>
+      <stop stop-color="#FFFFFF" stop-opacity="0.66"/>
+      <stop offset="0.32" stop-color="#EAF8FF" stop-opacity="0.3"/>
       <stop offset="0.66" stop-color="#8FD8FF" stop-opacity="0.24"/>
       <stop offset="1" stop-color="#0A4DB8" stop-opacity="0.38"/>
     </linearGradient>
@@ -50,7 +55,7 @@
     </filter>
     <filter id="frostTexture" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
       <feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="2" seed="7" result="noise"/>
-      <feColorMatrix in="noise" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.11 0" result="whiteNoise"/>
+      <feColorMatrix in="noise" type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.055 0" result="whiteNoise"/>
       <feComposite in="whiteNoise" in2="SourceAlpha" operator="in"/>
     </filter>
     <clipPath id="iconClip">
@@ -61,13 +66,14 @@
   <g clip-path="url(#iconClip)">
     <rect width="512" height="512" rx="112" fill="url(#appShell)"/>
     <rect width="512" height="512" rx="112" fill="url(#shellGlow)"/>
+    <rect width="512" height="512" rx="112" fill="url(#cornerLift)"/>
 
     <g filter="url(#softShadow)">
       <circle cx="256" cy="256" r="172" fill="#021838" opacity="0.34"/>
       <circle cx="256" cy="256" r="156" fill="url(#markerGlass)"/>
       <circle cx="256" cy="256" r="156" stroke="url(#glassStroke)" stroke-width="9"/>
       <circle cx="256" cy="256" r="128" fill="url(#markerCore)" filter="url(#innerGlow)"/>
-      <circle cx="256" cy="256" r="126" fill="#FFFFFF" opacity="0.1" filter="url(#frostTexture)"/>
+      <circle cx="256" cy="256" r="126" fill="#FFFFFF" opacity="0.04" filter="url(#frostTexture)"/>
       <circle cx="256" cy="256" r="128" stroke="#FFFFFF" stroke-width="4" opacity="0.34"/>
       <path d="M154 201C180 151 233 126 289 139" stroke="#FFFFFF" stroke-width="17" stroke-linecap="round" opacity="0.42"/>
       <path d="M331 350C298 378 247 388 202 365" stroke="#BEEFFF" stroke-width="10" stroke-linecap="round" opacity="0.2"/>
