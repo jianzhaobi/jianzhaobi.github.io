@@ -8,9 +8,10 @@ There is no backend, package manager, bundler, or build step in this folder. The
 
 ## Main Files
 
-- `index.html`: Page shell. Loads Leaflet from unpkg, defines `window.__APP_VERSION__` for cache busting, injects `style.css` and `app.js`, and declares the map, route picker, basemap picker, locate/reset buttons, alert controls, and panel details.
+- `index.html`: Page shell. Loads Leaflet from unpkg, defines `window.__APP_VERSION__` for cache busting, injects `style.css` and `app.js`, links favicon/apple-touch-icon/manifest assets, and declares the map, route picker, basemap picker, locate/reset buttons, alert controls, and panel details.
 - `style.css`: Full-screen map layout, responsive route panel, searchable route picker, basemap picker, stop/vehicle markers, vehicle halo animation, walking-route styling, and mobile/fine-pointer interaction styling.
 - `app.js`: All runtime logic: configuration, state, Leaflet map setup, geolocation/follow mode, basemap switching and fine-pointer wheel zoom, MBTA API fetching, route selection, shape/stops/alerts/predictions rendering, travel-time lookups, walk-route rendering, vehicle polling, vehicle marker animation, and vehicle layout along route geometry.
+- `site.webmanifest`, `assets/favicon.svg`, `assets/icon.svg`: Browser/PWA metadata and icons referenced by `index.html`.
 - `CLAUDE.md`: Shorter AI-agent context summary. Keep it synchronized with this file when model or core behavior changes.
 
 ## External Dependencies
@@ -109,10 +110,10 @@ The app fetches live JSON from these APIs:
 - `routeShapeIndex: Map<shapeId, segment[]>`: Shape-specific segment cache for smoothed tangent calculations.
 - `activeWalkRouteStopId`: Stop whose walking-route polyline is currently shown.
 - `stopPredictionRequestId`: Monotonic request guard for stop popup prediction/travel-time updates.
-- Route-picker UI state: `routePickerExpanded`, `routeSearchQuery`.
-- User-location UI state: `userLocation`, `userMarker`, `userWatchId`, `followUserLocation`, `allowInitialLocationView`.
-- Basemap/fine-pointer zoom state: `currentBasemap`, `basemapWheelGhost*`, `isFinePointerWheelZooming`, pending wheel event fields.
-- Vehicle layout/interaction state: `vehicleLayoutTimer`, `vehicleZoomLayoutFrame`, `isVehicleMapInteracting`, `hasActiveVehicleTouchGesture`.
+- Route/panel UI state: `panelExpanded`, `routePickerExpanded`, `routeSearchQuery`, `activeRouteId`.
+- User-location UI state: `userLocation`, `userMarker`, `userWatchId`, `followUserLocation`, `allowInitialLocationView`, `hasAppliedInitialLocationView`, `isProgrammaticMapMove`.
+- Basemap/fine-pointer zoom state: `currentBasemap`, `isFinePointerWheelZooming`, `finePointerWheel*`, and `basemapWheelGhost*` fields. The ghost remembers capture zoom, capture map-pane offset, tile-load listener/layer, release/fade timers, and release token.
+- Vehicle layout/interaction state: `vehicleLayoutTimer`, `vehicleZoomLayoutFrame`, `vehicleZoomLayoutZoom`, `vehicleMapInteractionTimer`, `isVehicleMapInteracting`, `hasActiveVehicleTouchGesture`.
 
 ## Data Models
 
@@ -130,11 +131,11 @@ Routes are normalized in `loadRoutes()` from MBTA `/routes` into objects with:
 - `directionDestinations`
 - `badgeLabel` assigned later by `assignRouteBadgeLabels()`
 
-Route sorting prioritizes the rapid-transit route IDs in `ROUTE_PRIORITY`, then route type via `ROUTE_TYPE_ORDER`, then display name. Badge labels are generated to avoid collisions where possible, with explicit overrides in `ROUTE_BADGE_OVERRIDES`.
+Route sorting prioritizes the rapid-transit route IDs in `ROUTE_PRIORITY`, then route type via `ROUTE_TYPE_ORDER`, then display name. Route picker options are grouped as rapid transit, commuter rail, bus, ferry, and other. Badge labels are generated to avoid collisions where possible, with explicit overrides in `ROUTE_BADGE_OVERRIDES`.
 
 ### Shape / Segment Model
 
-`renderRouteShape()` fetches `/shapes` and representative route patterns in parallel. Representative shapes are preferred when available; otherwise all shapes are rendered.
+`renderRouteShape()` fetches `/shapes` and representative route patterns in parallel. `getRepresentativeShapeIds()` prefers typical route patterns (`typicality === 1`), then canonical patterns, and falls back to all patterns. Representative shapes are preferred when available; otherwise all shapes are rendered.
 
 Decoded polyline points become:
 
@@ -201,6 +202,7 @@ Stop popup travel time is independent from MBTA predictions:
 - New vehicles create markers.
 - Vehicles missing from the latest response are removed.
 - This avoids DOM churn and preserves open vehicle popups when possible.
+- The vehicle request includes sparse fieldsets for vehicle, trip, and stop data. Included trips provide headsigns and shape IDs; included stops provide names and coordinates for at-stop display.
 
 Vehicle movement:
 
@@ -229,18 +231,19 @@ Vehicle stop status:
 
 - Map defaults: center `[42.3601, -71.0889]`, zoom `12`.
 - Basemaps: `light`, `dark`, `detail`, `satellite`; current choice is `state.currentBasemap`.
-- Fine-pointer devices use custom wheel zoom with a rasterized basemap ghost to smooth tile transitions.
+- Fine-pointer devices use custom wheel zoom with a rasterized basemap ghost to smooth tile transitions. The ghost is captured from loaded tiles, tracks the map-pane offset at capture time, fades after the live tile layer loads, and has a max-wait fallback so stale snapshots do not linger.
 - Route panel contains the custom searchable route picker, fetch/update status, alert indicator, details toggle, direction legend, alert panel, and credit.
 - Leaflet zoom, locate-user, and reset-route-view controls share the top-right control area.
 - `updateURLWithRoute()` writes route changes using `history.replaceState()`, not `pushState`.
 - `window.__APP_VERSION__` in `index.html` is the single cache-busting string for both CSS and JS.
+- Browser metadata/icons are static files: `site.webmanifest`, `assets/favicon.svg`, and `assets/icon.svg`.
 
 ## Data Flow
 
 1. Browser loads `index.html`.
 2. Leaflet, CSS, and `app.js` initialize the map and layers.
 3. Geolocation watch is initialized when available.
-4. On startup, the app fetches MBTA routes, normalizes/sorts them, assigns badge labels, populates route-picker UI, and applies a valid `?route=` parameter if present.
+4. On startup, the app fetches MBTA routes, normalizes/sorts them, assigns badge labels, populates route-picker UI, and applies a valid `?route=` parameter if present. If not, it defaults to `Green-E` when available, otherwise the first returned route.
 5. `selectRoute()`:
    - aborts prior route-load fetches
    - stops vehicle polling

@@ -4,9 +4,10 @@ A static web-based real-time MBTA tracker built with vanilla JavaScript, Leaflet
 
 ## Project Structure
 
-- `index.html` — Main HTML shell with map container, route picker, basemap picker, locate/reset controls, alert/details panel, Leaflet CDN load, and shared `window.__APP_VERSION__` cache-busting for CSS/JS.
+- `index.html` — Main HTML shell with map container, route picker, basemap picker, locate/reset controls, alert/details panel, Leaflet CDN load, favicon/icon/manifest links, and shared `window.__APP_VERSION__` cache-busting for CSS/JS.
 - `app.js` — All application logic: API fetching, state model, map rendering, route selection, vehicle polling/layout/animation, geolocation, travel-time lookup, and stop/alert popups.
 - `style.css` — Full-screen map styling, responsive route panel, route/basemap pickers, stop and vehicle markers, walk-route visuals, and vehicle halo animation.
+- `site.webmanifest`, `assets/favicon.svg`, `assets/icon.svg` — Static browser/PWA metadata and icons.
 - `AGENTS.md` — Detailed AI coding-agent documentation. Keep it synchronized with this file.
 
 ## Current Architecture
@@ -28,7 +29,9 @@ Important `state` fields in `app.js`:
 - `routeShapeIndex`: segments grouped by shape ID for smoothed tangent lookup.
 - `routeAbortController`, `routeRequestId`, `vehicleRequestId`, `stopPredictionRequestId`: abort/staleness guards.
 - `activeWalkRouteStopId`: stop whose Google walking route is currently displayed.
-- `currentBasemap` and `basemapWheelGhost*`: basemap and fine-pointer wheel-zoom ghost state.
+- `panelExpanded`, `routePickerExpanded`, `routeSearchQuery`, `activeRouteId`: panel and route-picker UI state.
+- `currentBasemap`, `finePointerWheel*`, and `basemapWheelGhost*`: basemap and fine-pointer wheel-zoom state.
+- `hasAppliedInitialLocationView`, `allowInitialLocationView`, `isProgrammaticMapMove`: initial location centering and manual-map-move guards.
 
 ## API Usage
 
@@ -49,8 +52,8 @@ Important `state` fields in `app.js`:
 
 ## Key Behavior
 
-- **Route picker**: custom searchable picker backed by hidden native `select`; route badges are collision-managed by `assignRouteBadgeLabels()` with overrides.
-- **Route shapes**: `renderRouteShape()` prefers representative shapes from `/route_patterns`, then falls back to all shapes. Decoded polylines populate both Leaflet route lines and segment caches.
+- **Route picker**: custom searchable picker backed by hidden native `select`; route options are grouped by mode, active keyboard/mouse option is tracked, and route badges are collision-managed by `assignRouteBadgeLabels()` with overrides.
+- **Route shapes**: `renderRouteShape()` prefers representative shapes from typical route patterns, then canonical patterns, then falls back to all shapes. Decoded polylines populate both Leaflet route lines and segment caches.
 - **Stops**: `renderRouteStops()` creates stop records and popups. Clicking a stop fetches predictions and travel-time info.
 - **Predictions**: grouped by direction/headsign, past times ignored, each group limited to the next 3 arrivals.
 - **Travel time**: stop popup shows `Walk ... · Drive ...` when user location and API results are available. Google supplies the optional walk-route polyline; Mapbox supplies drive time.
@@ -60,7 +63,7 @@ Important `state` fields in `app.js`:
 - **Vehicle layout**: visual vehicle circles are offset from true GPS anchor along the normal of the nearest rendered route segment. A leader line connects the GPS anchor to the visual marker. Heading arrows follow smoothed route tangents when available. There is no collision-avoidance solver.
 - **Stop halo**: only `current_status === "STOPPED_AT"` creates an at-stop state. There is no near-stop model and no `.near-stop` class. Only `.at-stop` gets the breathing halo animation.
 - **Geolocation**: user location can be shown and followed; manual map movement exits follow mode.
-- **Basemaps**: fine-pointer devices use custom wheel zoom with a rasterized basemap ghost to smooth tile transitions.
+- **Basemaps**: fine-pointer devices use custom wheel zoom with a rasterized basemap ghost to smooth tile transitions. The ghost tracks capture-time map-pane offset and fades after tile load or a max-wait fallback.
 - **URL**: route changes update `?route=<route-id>` with `history.replaceState()`.
 
 ## Network / Async Rules
