@@ -11,7 +11,7 @@ There is no backend, package manager, bundler, or build step in this folder. The
 - `index.html`: Page shell. Loads Leaflet from unpkg, defines `window.__APP_VERSION__` for cache busting, injects `style.css` and `app.js`, links favicon/apple-touch-icon/manifest assets, and declares the map, route picker, basemap picker, locate/reset buttons, alert controls, and panel details.
 - `style.css`: Full-screen map layout, responsive route panel, searchable route picker, basemap picker, stop/vehicle markers, vehicle halo animation, walking-route styling, and mobile/fine-pointer interaction styling.
 - `app.js`: All runtime logic: configuration, state, Leaflet map setup, geolocation/follow mode, basemap switching and fine-pointer wheel zoom, MBTA API fetching, route selection, shape/stops/alerts/predictions rendering, travel-time lookups, walk-route rendering, vehicle polling, vehicle marker animation, and vehicle layout along route geometry.
-- `site.webmanifest`, `assets/favicon.svg`, `assets/icon.svg`: Browser/PWA metadata and icons referenced by `index.html`.
+- `site.webmanifest`, `assets/mbta-transport-icon.png`: Browser/PWA metadata and icon referenced by `index.html`.
 - `CLAUDE.md`: Shorter AI-agent context summary. Keep it synchronized with this file when model or core behavior changes.
 
 ## External Dependencies
@@ -236,7 +236,7 @@ Vehicle stop status:
 - Leaflet zoom, locate-user, and reset-route-view controls share the top-right control area.
 - `updateURLWithRoute()` writes route changes using `history.replaceState()`, not `pushState`.
 - `window.__APP_VERSION__` in `index.html` is the single cache-busting string for both CSS and JS.
-- Browser metadata/icons are static files: `site.webmanifest`, `assets/favicon.svg`, and `assets/icon.svg`.
+- Browser metadata/icons are static files: `site.webmanifest` and `assets/mbta-transport-icon.png`.
 
 ## Data Flow
 

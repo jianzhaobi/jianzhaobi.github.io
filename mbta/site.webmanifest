@@ -9,9 +9,9 @@
   "theme_color": "#12385A",
   "icons": [
     {
-      "src": "assets/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "assets/mbta-transport-icon.png",
+      "sizes": "1107x1107",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

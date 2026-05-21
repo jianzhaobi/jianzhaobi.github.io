@@ -7,7 +7,7 @@ A static web-based real-time MBTA tracker built with vanilla JavaScript, Leaflet
 - `index.html` — Main HTML shell with map container, route picker, basemap picker, locate/reset controls, alert/details panel, Leaflet CDN load, favicon/icon/manifest links, and shared `window.__APP_VERSION__` cache-busting for CSS/JS.
 - `app.js` — All application logic: API fetching, state model, map rendering, route selection, vehicle polling/layout/animation, geolocation, travel-time lookup, and stop/alert popups.
 - `style.css` — Full-screen map styling, responsive route panel, route/basemap pickers, stop and vehicle markers, walk-route visuals, and vehicle halo animation.
-- `site.webmanifest`, `assets/favicon.svg`, `assets/icon.svg` — Static browser/PWA metadata and icons.
+- `site.webmanifest`, `assets/mbta-transport-icon.png` — Static browser/PWA metadata and icon.
 - `AGENTS.md` — Detailed AI coding-agent documentation. Keep it synchronized with this file.
 
 ## Current Architecture
