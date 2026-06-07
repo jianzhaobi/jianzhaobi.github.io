@@ -758,11 +758,7 @@ function formatTimestamp(date = new Date()) {
 function formatTime(value) {
     const date = parseMbtaDate(value);
     if (!date) return "Unknown";
-    return date.toLocaleTimeString("en-US", {
-        timeZone: "America/New_York",
-        hour: "numeric",
-        minute: "2-digit"
-    });
+    return formatTimestamp(date);
 }
 
 function parseMbtaDate(value) {
@@ -2490,9 +2486,9 @@ function stopPopup(stopName, { travel = "", arrivals = "", updatedAt = "", walkR
         <div class="popup-card popup-card-stop">
             <span class="popup-title">${escapeHtml(stopName)}</span>
             ${travel ? popupInfoRow("Travel time", travel, "popup-time-value") : ""}
-            ${updatedAt ? popupInfoRow("Updated", updatedAt) : ""}
             ${walkRouteToggle}
             <div class="popup-section popup-arrivals">${arrivals}</div>
+            ${updatedAt ? popupInfoRow("Updated", updatedAt) : ""}
         </div>
     `;
 }
