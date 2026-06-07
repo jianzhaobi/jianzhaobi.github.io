@@ -888,6 +888,12 @@ html, body {
     border-bottom: 0;
 }
 
+.popup-card-stop > .popup-info-row:last-child {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #e7ecf1;
+}
+
 .popup-info-label {
     color: #65717d;
     font-size: 9px;
