@@ -11,6 +11,9 @@ const MAPBOX_ACCESS_TOKEN = [
     ".3RBUyxTUMkYK79oxYKSD4A"
 ].join("");
 const VEHICLE_REFRESH_MS = 5000;
+const EXTERNAL_ROUTE_REFRESH_MS = 60000;
+const EXTERNAL_ROUTE_FAILURE_RETRY_MS = 120000;
+const EXTERNAL_ROUTE_FAILURE_RETRY_MAX_MS = 300000;
 const VEHICLE_HALO_BREATHE_MS = 1650;
 const VEHICLE_MOVE_MAX_JUMP_METERS = 1200;
 const VEHICLE_MOVE_DURATION_MS = Math.min(VEHICLE_REFRESH_MS * 0.85, 4200);
@@ -146,6 +149,8 @@ const state = {
     stops: new Map(),
     activeWalkRouteStopId: null,
     stopPredictionRequestId: 0,
+    stopPopupSessionId: 0,
+    activeStopPopup: null,
     panelExpanded: false,
     routePickerExpanded: false,
     routeSearchQuery: "",
@@ -935,7 +940,9 @@ async function fetchTravelTimeSummary(stop) {
     if (!state.userLocation) {
         return {
             summary: "Unavailable",
-            encodedPolyline: ""
+            encodedPolyline: "",
+            hasResult: false,
+            hadFailure: false
         };
     }
 
@@ -950,17 +957,23 @@ async function fetchTravelTimeSummary(stop) {
 
     const walk = walkResult.status === "fulfilled" ? `${walkResult.value.minutes} min` : "unavailable";
     const drive = driveResult.status === "fulfilled" ? `${driveResult.value} min` : "unavailable";
+    const hasResult = walkResult.status === "fulfilled" || driveResult.status === "fulfilled";
+    const hadFailure = walkResult.status === "rejected" || driveResult.status === "rejected";
 
     if (walk === "unavailable" && drive === "unavailable") {
         return {
             summary: "Unavailable",
-            encodedPolyline: ""
+            encodedPolyline: "",
+            hasResult,
+            hadFailure
         };
     }
 
     return {
         summary: `Walk ${walk} · Drive ${drive}`,
-        encodedPolyline: walkResult.status === "fulfilled" ? walkResult.value.encodedPolyline : ""
+        encodedPolyline: walkResult.status === "fulfilled" ? walkResult.value.encodedPolyline : "",
+        hasResult,
+        hadFailure
     };
 }
 
@@ -2268,7 +2281,7 @@ async function selectRoute(routeId, options = {}) {
 
         if (!isCurrentRoute(routeId, requestId)) return;
 
-        await refreshVehicles(routeId, signal);
+        await refreshLiveRouteData(routeId, signal);
         restartVehiclePolling();
     } catch (error) {
         if (error.name === "AbortError") return;
@@ -2319,6 +2332,8 @@ function clearMapForRouteChange() {
     state.vehicleRecords.clear();
     state.stops.clear();
     state.activeWalkRouteStopId = null;
+    state.activeStopPopup = null;
+    state.stopPopupSessionId += 1;
     state.stopPredictionRequestId += 1;
     state.routeShapeSegments = [];
     state.routeShapeIndex.clear();
@@ -2461,16 +2476,21 @@ async function renderRouteStops(routeId, route, requestId, signal) {
             setTimeout(() => marker._popup?.isOpen() && marker._popup._adjustPan(), 50);
         });
         marker.on("popupclose", () => {
+            if (state.activeStopPopup?.marker === marker) {
+                state.activeStopPopup = null;
+                state.stopPopupSessionId += 1;
+            }
             clearWalkRoute(stop.id);
         });
     });
 }
 
-function stopPopup(stopName, { travel = "", arrivals = "", walkRouteToggle = "" } = {}) {
+function stopPopup(stopName, { travel = "", arrivals = "", updatedAt = "", walkRouteToggle = "" } = {}) {
     return `
         <div class="popup-card popup-card-stop">
             <span class="popup-title">${escapeHtml(stopName)}</span>
             ${travel ? popupInfoRow("Travel time", travel, "popup-time-value") : ""}
+            ${updatedAt ? popupInfoRow("Updated", updatedAt) : ""}
             ${walkRouteToggle}
             <div class="popup-section popup-arrivals">${arrivals}</div>
         </div>
@@ -2519,77 +2539,196 @@ function vehiclePopup({ title, direction, destination, stopInfo, status, updated
 }
 
 async function renderPredictions(routeId, stopId, stopMarker) {
-    const requestId = ++state.stopPredictionRequestId;
-    const route = state.routes.get(routeId);
-    const stop = state.stops.get(stopId);
-    let travel = "Travel time loading...";
-    let arrivals = '<span class="popup-muted">Loading arrivals...</span>';
-    let walkRoutePolyline = "";
-    let walkRouteVisible = false;
-    const isCurrentRequest = () =>
-        state.stopPredictionRequestId === requestId
-        && state.selectedRouteId === routeId
-        && map.hasLayer(stopMarker);
-    const bindWalkRouteToggle = () => {
-        const popup = stopMarker.getPopup();
-        const button = popup?.getElement()?.querySelector('[data-action="toggle-walk-route"]');
-        if (!button) return;
-
-        button.addEventListener("click", event => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (!walkRoutePolyline) return;
-            walkRouteVisible = !walkRouteVisible;
-            if (walkRouteVisible) {
-                state.activeWalkRouteStopId = stopId;
-                renderWalkRoute(walkRoutePolyline, stopId);
-            } else {
-                clearWalkRoute(stopId);
-            }
-            updatePopup();
-        });
-    };
-    const updatePopup = () => {
-        stopMarker.setPopupContent(stopPopup(stopMarker.options.title, {
-            travel,
-            arrivals,
-            walkRouteToggle: walkRoutePolyline
-                ? walkRouteToggleButton({ visible: walkRouteVisible })
-                : ""
-        })).openPopup();
-        bindWalkRouteToggle();
+    const sessionId = ++state.stopPopupSessionId;
+    state.stopPredictionRequestId += 1;
+    state.activeStopPopup = {
+        sessionId,
+        routeId,
+        stopId,
+        marker: stopMarker,
+        travel: "Travel time loading...",
+        arrivals: '<span class="popup-muted">Loading arrivals...</span>',
+        predictionsUpdatedAt: null,
+        walkRoutePolyline: "",
+        walkRouteVisible: false,
+        predictionRequestId: 0,
+        travelRequestId: 0,
+        lastTravelSuccessAt: 0,
+        lastTravelAttemptAt: 0,
+        travelFailureCount: 0,
+        isTravelRefreshing: false
     };
 
-    updatePopup();
+    updateActiveStopPopup({ forceOpen: true });
+    await Promise.allSettled([
+        refreshActiveStopPopupTravel({ force: true }),
+        refreshActiveStopPopupPredictions()
+    ]);
+}
 
-    if (stop) {
-        fetchTravelTimeSummary(stop)
-            .then(result => {
-                if (!isCurrentRequest()) return;
-                travel = result.summary;
-                walkRoutePolyline = result.encodedPolyline;
-                updatePopup();
-            })
-            .catch(error => {
-                if (!isCurrentRequest()) return;
-                console.error("Error fetching travel times:", error);
-                travel = "Unavailable";
-                updatePopup();
-            });
-    } else {
-        travel = "Unavailable";
-        updatePopup();
+function isActiveStopPopupSession(popup) {
+    return Boolean(
+        popup
+        && state.activeStopPopup === popup
+        && state.activeStopPopup.sessionId === popup.sessionId
+        && state.selectedRouteId === popup.routeId
+        && map.hasLayer(popup.marker)
+    );
+}
+
+function bindActiveStopWalkRouteToggle(popup) {
+    const button = popup.marker.getPopup()?.getElement()?.querySelector('[data-action="toggle-walk-route"]');
+    if (!button) return;
+
+    button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!isActiveStopPopupSession(popup) || !popup.walkRoutePolyline) return;
+        popup.walkRouteVisible = !popup.walkRouteVisible;
+        if (popup.walkRouteVisible) {
+            state.activeWalkRouteStopId = popup.stopId;
+            renderWalkRoute(popup.walkRoutePolyline, popup.stopId);
+        } else {
+            clearWalkRoute(popup.stopId);
+        }
+        updateActiveStopPopup();
+    });
+}
+
+function updateActiveStopPopup({ forceOpen = false } = {}) {
+    const popup = state.activeStopPopup;
+    if (!isActiveStopPopupSession(popup)) return false;
+
+    const markerPopup = popup.marker.getPopup();
+    const isOpen = markerPopup?.isOpen();
+    if (!forceOpen && !isOpen) {
+        state.activeStopPopup = null;
+        state.stopPopupSessionId += 1;
+        clearWalkRoute(popup.stopId);
+        return false;
     }
+
+    popup.marker.setPopupContent(stopPopup(popup.marker.options.title, {
+        travel: popup.travel,
+        arrivals: popup.arrivals,
+        updatedAt: popup.predictionsUpdatedAt ? formatTimestamp(popup.predictionsUpdatedAt) : "",
+        walkRouteToggle: popup.walkRoutePolyline
+            ? walkRouteToggleButton({ visible: popup.walkRouteVisible })
+            : ""
+    }));
+
+    if (forceOpen) {
+        popup.marker.openPopup();
+    } else {
+        popup.marker._popup?.update();
+    }
+    bindActiveStopWalkRouteToggle(popup);
+    return true;
+}
+
+function shouldRefreshActiveStopPopupTravel(now = Date.now()) {
+    const popup = state.activeStopPopup;
+    if (!isActiveStopPopupSession(popup) || popup.isTravelRefreshing || !state.userLocation) return false;
+    if (!popup.lastTravelAttemptAt) return true;
+
+    if (popup.travelFailureCount > 0) {
+        const retryMs = Math.min(
+            EXTERNAL_ROUTE_FAILURE_RETRY_MS * Math.pow(2, popup.travelFailureCount - 1),
+            EXTERNAL_ROUTE_FAILURE_RETRY_MAX_MS
+        );
+        return now - popup.lastTravelAttemptAt >= retryMs;
+    }
+
+    return now - popup.lastTravelSuccessAt >= EXTERNAL_ROUTE_REFRESH_MS;
+}
+
+async function refreshActiveStopPopupTravel({ force = false } = {}) {
+    const popup = state.activeStopPopup;
+    if (!isActiveStopPopupSession(popup)) return;
+    const stop = state.stops.get(popup.stopId);
+    const now = Date.now();
+    if (!force && !shouldRefreshActiveStopPopupTravel(now)) return;
+
+    if (!stop || !state.userLocation) {
+        if (!popup.lastTravelSuccessAt) {
+            popup.travel = "Unavailable";
+            popup.walkRoutePolyline = "";
+            popup.walkRouteVisible = false;
+            clearWalkRoute(popup.stopId);
+            updateActiveStopPopup();
+        }
+        return;
+    }
+
+    const requestId = popup.travelRequestId + 1;
+    popup.travelRequestId = requestId;
+    popup.lastTravelAttemptAt = now;
+    popup.isTravelRefreshing = true;
+    updateActiveStopPopup();
+
+    try {
+        const result = await fetchTravelTimeSummary(stop);
+        if (!isActiveStopPopupSession(popup) || popup.travelRequestId !== requestId) return;
+
+        if (result.hasResult || !popup.lastTravelSuccessAt) {
+            popup.travel = result.summary;
+            if (result.encodedPolyline || !result.hadFailure) {
+                popup.walkRoutePolyline = result.encodedPolyline;
+            }
+            if (!popup.walkRoutePolyline && popup.walkRouteVisible) {
+                popup.walkRouteVisible = false;
+                clearWalkRoute(popup.stopId);
+            } else if (popup.walkRouteVisible) {
+                state.activeWalkRouteStopId = popup.stopId;
+                renderWalkRoute(popup.walkRoutePolyline, popup.stopId);
+            }
+        }
+        if (result.hasResult) {
+            popup.lastTravelSuccessAt = Date.now();
+        }
+        popup.travelFailureCount = result.hadFailure ? popup.travelFailureCount + 1 : 0;
+        updateActiveStopPopup();
+    } catch (error) {
+        if (!isActiveStopPopupSession(popup) || popup.travelRequestId !== requestId) return;
+
+        console.error("Error fetching travel times:", error);
+        popup.travelFailureCount += 1;
+        if (!popup.lastTravelSuccessAt) {
+            popup.travel = "Unavailable";
+            popup.walkRoutePolyline = "";
+            popup.walkRouteVisible = false;
+            clearWalkRoute(popup.stopId);
+        }
+        updateActiveStopPopup();
+    } finally {
+        if (isActiveStopPopupSession(popup) && popup.travelRequestId === requestId) {
+            popup.isTravelRefreshing = false;
+            updateActiveStopPopup();
+        }
+    }
+}
+
+async function refreshActiveStopPopupPredictions() {
+    const popup = state.activeStopPopup;
+    if (!isActiveStopPopupSession(popup)) return;
+    if (!popup.marker._popup?.isOpen()) {
+        updateActiveStopPopup();
+        return;
+    }
+
+    const requestId = popup.predictionRequestId + 1;
+    popup.predictionRequestId = requestId;
+    const route = state.routes.get(popup.routeId);
 
     try {
         const json = await fetchMbta("/predictions", {
-            "filter[route]": routeId,
-            "filter[stop]": stopId,
+            "filter[route]": popup.routeId,
+            "filter[stop]": popup.stopId,
             include: "trip"
         });
 
-        if (!isCurrentRequest()) return;
+        if (!isActiveStopPopupSession(popup) || popup.predictionRequestId !== requestId) return;
 
         const tripLookup = new Map((json.included || [])
             .filter(item => item.type === "trip")
@@ -2636,17 +2775,18 @@ async function renderPredictions(routeId, stopId, stopMarker) {
                 `;
             });
 
-        arrivals = rows.length
+        popup.arrivals = rows.length
             ? rows.join("")
             : '<span class="popup-muted">No upcoming arrivals.</span>';
+        popup.predictionsUpdatedAt = new Date();
 
-        updatePopup();
+        updateActiveStopPopup();
     } catch (error) {
-        if (!isCurrentRequest()) return;
+        if (!isActiveStopPopupSession(popup) || popup.predictionRequestId !== requestId) return;
 
         console.error("Error fetching predictions:", error);
-        arrivals = '<span class="popup-muted">Unable to load arrivals.</span>';
-        updatePopup();
+        popup.arrivals = '<span class="popup-muted">Unable to load arrivals.</span>';
+        updateActiveStopPopup();
     }
 }
 
@@ -3001,6 +3141,10 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
             if (existing) {
                 marker = existing.marker;
                 marker.setPopupContent(popupHtml);
+                if (marker._popup?.isOpen()) {
+                    marker._popup.update();
+                    setTimeout(() => marker._popup?.isOpen() && marker._popup._adjustPan(), 50);
+                }
                 marker.setZIndexOffset(zIndexOffset);
                 record = existing;
                 Object.assign(record, {
@@ -3067,6 +3211,16 @@ async function refreshVehicles(routeId = state.selectedRouteId, signal) {
     }
 }
 
+async function refreshLiveRouteData(routeId = state.selectedRouteId, signal) {
+    if (!routeId) return;
+
+    await Promise.allSettled([
+        refreshVehicles(routeId, signal),
+        refreshActiveStopPopupPredictions(),
+        refreshActiveStopPopupTravel()
+    ]);
+}
+
 function stopVehiclePolling() {
     if (!state.vehicleTimer) return;
 
@@ -3076,7 +3230,7 @@ function stopVehiclePolling() {
 
 function restartVehiclePolling() {
     stopVehiclePolling();
-    state.vehicleTimer = setInterval(() => refreshVehicles(), VEHICLE_REFRESH_MS);
+    state.vehicleTimer = setInterval(() => refreshLiveRouteData(), VEHICLE_REFRESH_MS);
 }
 
 /* ====================== */
@@ -3262,7 +3416,7 @@ document.addEventListener("visibilitychange", () => {
         return;
     }
     if (state.selectedRouteId) {
-        refreshVehicles();
+        refreshLiveRouteData();
         restartVehiclePolling();
     }
 });
