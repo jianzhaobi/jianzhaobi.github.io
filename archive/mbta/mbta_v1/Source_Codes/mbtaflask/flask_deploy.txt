@@ -1,0 +1,134 @@
+要将你的Flask应用部署到公开网络上，并使用HTTPS，你可以按照以下步骤进行操作：
+
+### 步骤 1: 选择托管平台
+
+你可以选择多个托管平台来部署你的Flask应用，例如：
+
+- **Heroku**（简单易用，免费层适合小项目）
+- **AWS EC2**（更强的定制化和控制）
+- **Google Cloud Platform（GCP）**
+- **DigitalOcean**
+- **PythonAnywhere**
+
+下面我将以Heroku为例，详细介绍如何部署Flask应用并使用HTTPS。
+
+### 步骤 2: 配置你的Flask应用
+
+确保你的Flask应用适合在生产环境中运行。你可能需要添加 `requirements.txt` 和 `Procfile`。
+
+#### requirements.txt
+
+创建一个 `requirements.txt` 文件，列出你的项目依赖项：
+
+```
+flask
+requests
+flask-cors
+gunicorn
+```
+
+#### Procfile
+
+创建一个 `Procfile` 文件，告诉Heroku如何运行你的应用：
+
+```
+web: gunicorn proxy_server:app
+```
+
+### 步骤 3: 部署到Heroku
+
+1. **安装Heroku CLI**：
+   
+   根据你的操作系统，按照[Heroku CLI安装指南](https://devcenter.heroku.com/articles/heroku-cli)进行安装。
+
+2. **登录Heroku**：
+
+   ```bash
+   heroku login
+   ```
+
+3. **创建Heroku应用**：
+
+   ```bash
+   heroku create your-app-name
+   ```
+
+4. **部署代码到Heroku**：
+
+   初始化Git仓库（如果还没有）并提交代码：
+
+   ```bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   ```
+
+   将代码推送到Heroku：
+
+   ```bash
+   git push heroku master
+   ```
+
+5. **访问你的应用**：
+
+   部署完成后，你可以通过Heroku分配的URL访问你的应用。例如：
+
+   ```
+   https://your-app-name.herokuapp.com/proxy
+   ```
+
+### 步骤 4: 配置HTTPS
+
+Heroku自动为你的应用配置免费的HTTPS证书。你可以通过以下URL访问HTTPS版本的应用：
+
+```
+https://your-app-name.herokuapp.com
+```
+
+### 步骤 5: 使用自定义域名（可选）
+
+如果你希望使用自定义域名，可以按照以下步骤进行：
+
+1. **添加自定义域名**：
+
+   ```bash
+   heroku domains:add www.yourdomain.com
+   ```
+
+2. **更新DNS记录**：
+
+   在你的域名管理平台上，添加一个CNAME记录，指向你的Heroku应用。例如，将 `www.yourdomain.com` 指向 `your-app-name.herokuapp.com`。
+
+3. **自动管理HTTPS证书**：
+
+   Heroku会自动为你的自定义域名配置和管理免费的SSL/TLS证书。
+
+### 其他托管平台
+
+如果你选择其他托管平台，如AWS、GCP、或DigitalOcean，你需要做更多的配置工作，包括设置虚拟机、安装和配置Web服务器（如Nginx）、手动获取和配置SSL证书（例如使用Let's Encrypt）。
+
+#### AWS EC2 简单示例
+
+1. **启动EC2实例**。
+2. **配置安全组**，打开HTTP（端口80）和HTTPS（端口443）。
+3. **SSH到实例**，安装必要的软件：
+
+   ```bash
+   sudo apt update
+   sudo apt install python3-pip python3-venv nginx
+   ```
+
+4. **设置虚拟环境并安装依赖**：
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install flask requests flask-cors gunicorn
+   ```
+
+5. **配置Gunicorn和Nginx**。
+6. **获取和配置SSL证书**，例如使用Certbot。
+
+详细步骤请参考各平台的官方文档。
+
+通过上述步骤，你可以将你的Flask应用部署到公开网络上，并使用HTTPS访问。

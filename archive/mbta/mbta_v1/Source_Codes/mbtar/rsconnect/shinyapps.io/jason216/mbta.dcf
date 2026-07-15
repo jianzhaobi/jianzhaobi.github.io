@@ -1,0 +1,12 @@
+name: mbta
+title: mbtar
+username: jason216
+account: jason216
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11861688
+bundleId: 9129791
+url: https://jason216.shinyapps.io/mbta/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

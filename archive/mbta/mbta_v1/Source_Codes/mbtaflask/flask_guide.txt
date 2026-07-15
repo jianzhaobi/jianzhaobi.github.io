@@ -1,0 +1,148 @@
+要在Flask代理服务器中添加 `Access-Control-Allow-Origin` 头，以允许跨域请求，你可以在返回响应时添加CORS头。你可以使用Flask-CORS库来简化这一过程，或者手动添加CORS头。
+
+### 方法 1: 使用 Flask-CORS 库
+
+首先，安装 Flask-CORS:
+
+```bash
+pip install flask-cors
+```
+
+然后，修改你的 `proxy_server.py` 文件如下：
+
+```python
+from flask import Flask, request, jsonify
+import requests
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)  # 允许所有来源的跨域请求
+
+@app.route('/proxy', methods=['GET'])
+def proxy():
+    url = 'https://cdn.mbta.com/realtime/VehiclePositions_enhanced.json'
+    
+    try:
+        # 发送请求到目标API
+        response = requests.get(url)
+        response.raise_for_status()  # 检查请求是否成功
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+    
+    # 获取JSON数据
+    data = response.json()
+    
+    # 检查是否有callback参数，用于JSONP请求
+    callback = request.args.get('callback')
+    if callback:
+        # 如果有callback参数，返回JSONP响应
+        response = app.response_class(
+            response=f"{callback}({jsonify(data).get_data(as_text=True)})",
+            status=200,
+            mimetype='application/javascript'
+        )
+    else:
+        # 否则，返回标准JSON响应
+        response = jsonify(data)
+    
+    return response
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+```
+
+### 方法 2: 手动添加 CORS 头
+
+如果你不想使用额外的库，可以手动添加CORS头。修改你的 `proxy_server.py` 文件如下：
+
+```python
+from flask import Flask, request, jsonify, make_response
+import requests
+
+app = Flask(__name__)
+
+@app.route('/proxy', methods=['GET'])
+def proxy():
+    url = 'https://cdn.mbta.com/realtime/VehiclePositions_enhanced.json'
+    
+    try:
+        # 发送请求到目标API
+        response = requests.get(url)
+        response.raise_for_status()  # 检查请求是否成功
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+    
+    # 获取JSON数据
+    data = response.json()
+    
+    # 创建响应对象
+    callback = request.args.get('callback')
+    if callback:
+        # 如果有callback参数，返回JSONP响应
+        response = make_response(f"{callback}({jsonify(data).get_data(as_text=True)})")
+        response.mimetype = 'application/javascript'
+    else:
+        # 否则，返回标准JSON响应
+        response = make_response(jsonify(data))
+    
+    # 添加CORS头
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    
+    return response
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
+```
+
+### 启动服务器
+
+在命令行中运行以下命令启动服务器：
+
+```bash
+python proxy_server.py
+```
+
+### 使用代理服务器获取数据
+
+启动服务器后，你可以通过 `http://localhost:5000/proxy` 访问代理来获取数据。此时代理服务器将允许跨域请求，并返回你需要的JSON数据。
+
+### 示例HTML代码
+
+确保你的HTML文件中包含以下内容，用于从代理服务器获取数据并处理JSONP响应：
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JSONP Example</title>
+    <script>
+        function fetchJSONP(url, callback) {
+            const script = document.createElement('script');
+            const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+            window[callbackName] = function(data) {
+                delete window[callbackName];
+                document.body.removeChild(script);
+                callback(data);
+            };
+            script.src = `${url}?callback=${callbackName}`;
+            document.body.appendChild(script);
+        }
+
+        function handleResponse(data) {
+            console.log('JSONP Data:', data);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const url = 'http://localhost:5000/proxy';
+            fetchJSONP(url, handleResponse);
+        });
+    </script>
+</head>
+<body>
+    <h1>JSONP Example</h1>
+</body>
+</html>
+```
+
+这种方法确保你的代理服务器允许跨域请求，并且能够顺利获取所需的JSON数据。
