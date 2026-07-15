@@ -4,7 +4,7 @@
 
 const MBTA_API_BASE = "https://api-v3.mbta.com";
 const MBTA_API_KEY = "5fb2a20d05094524a0b35961a20cf9e4"; // Set to "" to use keyless MBTA requests.
-const GOOGLE_MAPS_API_KEY = "AIzaSyAT9k7rBKZRtbpytiVVrO0xILnnbdEjh2k";
+const GOOGLE_MAPS_API_KEY = "AIzaSyADUEiFEnQ4pEvCDcxVNm-dOn01LnTQM-E";
 const MAPBOX_ACCESS_TOKEN = [
     "pk.eyJ1IjoiaGl0b3JpMzgiLCJhIjoi",
     "Y21wMDdhaXQ3MHplbTJxcGtrYzZpNWZzdyJ9",
