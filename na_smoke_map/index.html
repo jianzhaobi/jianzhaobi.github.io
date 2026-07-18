@@ -1168,6 +1168,10 @@
       const previewCache = new Map();
       const scrubCanvases = [document.createElement("canvas"), document.createElement("canvas")];
       let scrubGeneration = 0;
+      let scrubRenderFrame = 0;
+      let scrubTargetHour = null;
+      let scrubLoadingGeneration = -1;
+      let scrubPairKey = "";
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
       const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
         .then((response) => {
@@ -1916,21 +1920,75 @@
       }
 
       function renderScrubPreview(hour) {
-        const preview = previewCache.get(cacheDatasetName())?.value;
+        const datasetName = cacheDatasetName();
+        const preview = previewCache.get(datasetName)?.value;
         if (!preview) return false;
         const lowerHour = Math.max(minimumHour, Math.floor(hour));
         const upperHour = Math.min(maximumHour, Math.ceil(hour));
-        const fromSource = previewSource(preview, lowerHour, 0);
-        const toSource = previewSource(preview, upperHour, 1);
-        if (!fromSource || !toSource) return false;
         const progress = upperHour === lowerHour
           ? 0
           : (hour - lowerHour) / (upperHour - lowerHour);
-        renderLayer.setBlend(fromSource, toSource, progress);
+        const pairKey = `${datasetName}|${lowerHour}|${upperHour}`;
+
+        if (pairKey !== scrubPairKey) {
+          const fromSource = previewSource(preview, lowerHour, 0);
+          const toSource = previewSource(preview, upperHour, 1);
+          if (!fromSource || !toSource) return false;
+          renderLayer.setBlend(fromSource, toSource, progress);
+          scrubPairKey = pairKey;
+        } else {
+          renderLayer.setBlendProgress(progress);
+        }
+
         activeProcessed = null;
         activeKey = "";
         map.closePopup();
         return true;
+      }
+
+      function cancelScrubPreview() {
+        scrubGeneration += 1;
+        scrubTargetHour = null;
+        scrubPairKey = "";
+        if (scrubRenderFrame) {
+          window.cancelAnimationFrame(scrubRenderFrame);
+          scrubRenderFrame = 0;
+        }
+      }
+
+      function queueScrubPreview(hour) {
+        scrubTargetHour = hour;
+        if (scrubRenderFrame) return;
+        scrubRenderFrame = window.requestAnimationFrame(flushScrubPreview);
+      }
+
+      function flushScrubPreview() {
+        scrubRenderFrame = 0;
+        if (scrubTargetHour === null) return;
+        const targetHour = scrubTargetHour;
+        if (renderScrubPreview(targetHour)) {
+          setFrameStatus("ready", "Interpolated forecast preview");
+          return;
+        }
+
+        setFrameStatus("loading", "Loading forecast preview");
+        const generation = scrubGeneration;
+        if (scrubLoadingGeneration === generation) return;
+        scrubLoadingGeneration = generation;
+        loadPreviewDataset()
+          .then((preview) => ensurePreviewHour(preview, targetHour))
+          .then((ready) => {
+            if (
+              generation !== scrubGeneration ||
+              scrubTargetHour === null
+            ) return;
+            if (ready) queueScrubPreview(scrubTargetHour);
+          })
+          .finally(() => {
+            if (scrubLoadingGeneration === generation) {
+              scrubLoadingGeneration = -1;
+            }
+          });
       }
 
       const ContinuousImageOverlay = L.ImageOverlay.extend({
@@ -2199,6 +2257,13 @@
           this._nextSource = toSource;
           this._upload(this._currentTexture, fromSource);
           this._upload(this._nextTexture, toSource);
+          this._draw(Math.max(0, Math.min(1, progress)));
+          return true;
+        },
+
+        setBlendProgress(progress) {
+          this.finishTransition();
+          if (!this._currentSource || !this._nextSource) return false;
           this._draw(Math.max(0, Math.min(1, progress)));
           return true;
         },
@@ -2571,7 +2636,7 @@
 
       function settleScrub() {
         cancelScheduledProcessing();
-        scrubGeneration += 1;
+        cancelScrubPreview();
         const snappedHour = Math.max(
           minimumHour,
           Math.min(maximumHour, Math.round(Number(slider.value)))
@@ -2582,8 +2647,13 @@
         showFrame(snappedHour, { prime: true, quiet: true });
       }
 
-      slider.addEventListener("pointerdown", () => {
-        const pointerHour = Number(slider.value);
+      slider.addEventListener("pointerdown", (event) => {
+        cancelScrubPreview();
+        const bounds = slider.getBoundingClientRect();
+        const progress = bounds.width > 0
+          ? Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
+          : 0;
+        const pointerHour = minimumHour + progress * (maximumHour - minimumHour);
         loadPreviewDataset()
           .then((preview) => ensurePreviewHour(preview, pointerHour));
       });
@@ -2592,24 +2662,9 @@
         if (playing) stopPlayback();
         else transitionGeneration += 1;
         cancelScheduledProcessing();
-        const generation = ++scrubGeneration;
         selectedHour = Number(slider.value);
         updateLabels(selectedHour, false);
-        const rendered = renderScrubPreview(selectedHour);
-        setFrameStatus(
-          rendered ? "ready" : "loading",
-          rendered ? "Interpolated forecast preview" : "Loading forecast preview"
-        );
-        if (!rendered) {
-          loadPreviewDataset()
-            .then((preview) => ensurePreviewHour(preview, selectedHour))
-            .then(() => {
-              if (generation !== scrubGeneration) return;
-              if (renderScrubPreview(selectedHour)) {
-                setFrameStatus("ready", "Interpolated forecast preview");
-              }
-            });
-        }
+        queueScrubPreview(selectedHour);
       });
 
       slider.addEventListener("change", settleScrub);
