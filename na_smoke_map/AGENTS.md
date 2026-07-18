@@ -220,6 +220,8 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 
 When editing files in this workspace, use `apply_patch` for manual changes and preserve unrelated user work.
 
+After every completed and verified project update, commit the in-scope changes and push the current branch to its configured GitHub remote before handing off. Do not leave completed project updates only in the local worktree.
+
 ## Verification checklist
 
 Before handing off a material change:
