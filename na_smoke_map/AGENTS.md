@@ -89,9 +89,11 @@ Preserve the double-buffered animation design:
 - Maintain an active image overlay and a hidden standby image overlay.
 - Load the requested frame completely into the standby overlay while the active frame remains visible.
 - After the standby image fires its load event, raise it, fade it in, and fade the old active overlay out.
-- Swap the active and standby references after the cross-fade.
-- Preload the following forecast hour whenever practical.
-- On a failed or timed-out frame, retain the previous visible map and show a concise status message.
+- Swap the active and standby references synchronously when the cross-fade starts; the fade delay is visual only and must not leave the logical buffer ownership ambiguous.
+- Capture the exact target layer in every asynchronous load callback. Do not read a mutable global standby-layer reference from a callback after an asynchronous boundary.
+- Coalesce rapid timeline input so the latest requested hour wins. Generation checks must run after every asynchronous boundary, and stale loads must never update layer references, keys, labels, or status.
+- Preload the following forecast hour whenever practical, but prefetch only into raw or processed memory caches. Prefetch must not prepare, attach listeners to, or otherwise claim the visible standby overlay.
+- On a failed or timed-out frame, clear its standby key and promise, retain the previous visible map, and show a concise status message so the same hour can be retried.
 - Never clear or remove the active frame before its replacement has loaded.
 
 Playback should advance without a vacant flash between frames. At the end of the available forecast, return to the current model hour and continue playing. Switching particle type or vertical extent during playback must preserve the selected hour and resume playback after the replacement dataset has loaded; keep the previous visible frame in place during that load. The Reset control stops playback and returns to the current model hour. Respect `prefers-reduced-motion` by removing or reducing transitions and slowing automated playback appropriately.
@@ -102,14 +104,16 @@ The likely model reference time is selected conservatively by allowing roughly s
 
 The production cache is a same-origin GitHub Pages deployment artifact, not browser storage and not committed binary data:
 
-- `.github/workflows/deploy-pages-with-smoke-cache.yml` runs after the expected 00 and 12 UTC model publication windows and on pushes or manual dispatch.
+- `.github/workflows/deploy-pages-with-smoke-cache.yml` runs hourly, on pushes, and on manual dispatch.
 - `scripts/build_static_cache.py` downloads the latest bounded set of raw, transparent WMS PNGs for all four particle/extent combinations.
-- Cache the prior 72 valid hours and every forecast hour still available through model hour 72. The UI exposes a symmetric window around Now using the smaller available future radius, so Now remains centered and every shown future position is scientifically available.
-- Restore the newest rolling GitHub Actions frame cache before each build and save the refreshed bounded set afterward. GeoMet currently advertises roughly 48 hours of reference cycles, so retaining still-needed frames from prior scheduled runs is what allows the deployed artifact to maintain a 72-hour historical window without committing binaries.
+- Cache up to 64 valid hours on either side of the current model hour. The actual future side may be shorter near the end of a model run.
+- Generate a schema-v2 manifest containing the four datasets' common, continuous, symmetric `timelineHours` coverage. At runtime, initialize the slider from this list and never expose an hour whose cached frame is missing for any selectable dataset. If the manifest is absent or stale, use the conservative direct-GeoMet range as a fallback.
+- Restore the newest rolling GitHub Actions frame cache before each build and save the refreshed bounded set afterward. GeoMet currently advertises roughly 48 hours of reference cycles, so retaining still-needed frames from prior scheduled runs is what allows the deployed artifact to maintain historical coverage without committing binaries.
 - Permit an 80% minimum success ratio only for the initial cache bootstrap, when no previous rolling cache exists. Missing bootstrap entries must fall back to GeoMet; after scheduled accumulation, the bounded rolling cache should fill the full requested window.
-- Publish the generated `cache/manifest.json` and `cache/frames/` only inside the Pages artifact. Do not commit generated PNG frames to Git history.
-- At runtime, consult the same-origin manifest and load a matching static PNG first. If the manifest, entry, or cached image is missing, stale, partial, or unavailable, fall back to the direct GeoMet WMS request without clearing the currently visible frame.
-- Keep the raw cached PNGs in the official GeoMet palette. Particle-specific recoloring and value inference remain in the browser's existing preparation path.
+- Run the Pages cache workflow hourly. Most hourly runs reuse the rolling raw and display caches and mainly advance the manifest's `Now`; the heavier frame refresh occurs when a new 00 or 12 UTC model run becomes available.
+- Keep source WMS PNGs only in the rolling GitHub Actions cache. During the build, precompute display-ready PNGs with the selected monochromatic palette, alpha treatment, high-quality smoothing, and final dimensions. Publish only `cache/manifest.json` and these display-ready `cache/frames/` inside the Pages artifact; do not commit generated frames to Git history.
+- At runtime, consult the same-origin manifest and load a matching display-ready PNG directly. This bypasses client-side full-frame recoloring and PNG encoding during normal playback. If the manifest, entry, or cached image is missing, stale, partial, or unavailable, fall back to the direct GeoMet WMS request and browser preparation path without clearing the currently visible frame.
+- Prepared-frame point probes sample the displayed monochromatic palette and infer its value lazily. Direct-GeoMet fallback frames continue using the original per-pixel value grid.
 
 This arrangement avoids user-device persistence, keeps Git history small, reduces GeoMet latency during normal use, and allows a partial cache to degrade safely.
 
@@ -117,13 +121,13 @@ This arrangement avoids user-device persistence, keeps Git history small, reduce
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
-- Apply high-quality bilinear canvas upscaling at approximately 1.15× plus a restrained sub-pixel blur to soften raster stair-stepping and make plume edges visually finer.
-- Keep the original 1000 × 625 value grid for lookup and scientific labeling; smoothing applies only to the displayed PNG. This remains close to the source model's approximate spatial resolution while substantially reducing download, canvas, and recoloring work.
-- Linearly cross-fade the active and standby hourly frames over approximately 720 ms. This creates visible intermediate blends between hourly products while preserving their actual valid times.
-- Keep automated-playback dwell short after each cross-fade so animation motion remains continuous.
+- Apply high-quality bicubic spatial interpolation at approximately 1.5× plus a restrained 0.6 px blur to soften raster stair-stepping and grid-cell transitions. This is display smoothing, not a higher-resolution forecast.
+- Keep the original 1000 × 625 WMS image as the scientific source grid; smoothing applies only to the displayed PNG. Direct-GeoMet fallback retains its original-grid value lookup, while prepared-cache frames use lazy palette sampling for the popup. Build-time preparation removes full-frame canvas recoloring and PNG encoding from normal client playback.
+- Linearly cross-fade the active and standby hourly frames over approximately 900 ms during playback, with only a very short dwell afterward. This creates a nearly continuous visual interpolation between hourly products while preserving their actual valid times.
+- Use a shorter approximately 260 ms cross-fade for manual scrubbing, previous/next, and Reset so direct manipulation remains responsive.
 - Disable visual interpolation transitions when `prefers-reduced-motion` is active.
 
-Do not call the spatial smoothing a higher-resolution forecast, and do not call the cross-faded states new sub-hourly model outputs.
+Do not call the spatial smoothing a 1 km forecast, and do not call cross-faded states new 10-minute or sub-hourly model outputs. Neither treatment creates new atmospheric information.
 
 ### Point-value interaction
 
@@ -207,7 +211,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Keep canvas recoloring inside the existing double-buffer preparation step so the visible frame is never cleared while recoloring occurs.
 - Use integer Leaflet zoom levels (`zoomSnap: 1`) for raster basemaps. Fractional zoom scaling exposed visible tile seams.
 - Keep basemap tiles at their native size and use only a transparent outline seam guard; do not enlarge tiles, which made grid lines more visible.
-- Preserve Leaflet's 250 ms zoom-transform transition on pollution image overlays while retaining the separate 720 ms opacity cross-fade. A high-specificity opacity-only `transition` shorthand overrides Leaflet's transform animation and makes the basemap and pollution layer appear out of sync.
+- Preserve Leaflet's 250 ms zoom-transform transition on pollution image overlays while retaining the separate variable opacity cross-fade (approximately 900 ms for playback and 260 ms for direct manipulation). A high-specificity opacity-only `transition` shorthand overrides Leaflet's transform animation and makes the basemap and pollution layer appear out of sync.
 - Apply `will-change: opacity, transform` to pollution overlays so the browser can keep zoom transforms and forecast fades on the compositor.
 
 When editing files in this workspace, use `apply_patch` for manual changes and preserve unrelated user work.
@@ -230,7 +234,7 @@ Before handing off a material change:
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Then click a transparent or no-data pixel and verify that no popup remains.
-15. During playback, confirm both image buffers have a 720 ms opacity transition and visibly hold complementary intermediate opacities.
+15. During playback, confirm both image buffers have an approximately 900 ms linear opacity transition and visibly hold complementary intermediate opacities; direct scrubbing should settle much faster.
 16. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution overlay scale and settle together without visible lag.
 17. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
 18. Confirm playback loops from the final forecast frame to Now and continues, and switch pollutant or vertical extent during playback to verify the current hour is preserved and animation resumes without a blank map.

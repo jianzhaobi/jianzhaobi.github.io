@@ -141,14 +141,14 @@
     }
 
     #north-america-pm25 .leaflet-image-layer {
-      transition: opacity 720ms linear;
+      transition: opacity var(--pm-frame-fade, 900ms) linear;
       will-change: opacity, transform;
     }
 
     #north-america-pm25 .leaflet-zoom-anim .leaflet-image-layer.leaflet-zoom-animated {
       transition:
         transform 250ms cubic-bezier(0, 0, 0.25, 1),
-        opacity 720ms linear;
+        opacity var(--pm-frame-fade, 900ms) linear;
     }
 
     #north-america-pm25 .leaflet-tile-container img.leaflet-tile {
@@ -937,9 +937,10 @@
       const WMS = "https://geo.weather.gc.ca/geomet";
       const HOUR = 60 * 60 * 1000;
       const DATA_OPACITY = 0.9;
-      const FADE_MS = 720;
+      const PLAYBACK_FADE_MS = 900;
+      const SCRUB_FADE_MS = 260;
       const IMAGE_SIZE = { width: 1000, height: 625 };
-      const SPATIAL_SCALE = 1.15;
+      const SPATIAL_SCALE = 1.5;
       const DATA_BOUNDS = L.latLngBounds([[16, -170], [76, -52]]);
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const cacheLimit = window.innerWidth < 600 || (navigator.deviceMemory && navigator.deviceMemory <= 4) ? 3 : 5;
@@ -1053,19 +1054,15 @@
       }
 
       const now = new Date();
-      const referenceTime = latestLikelyRun(now);
-      const forecastTimes = Array.from(
-        { length: 73 },
-        (_, index) => new Date(referenceTime.getTime() + index * HOUR)
-      );
-      const currentIndex = Math.max(
+      let referenceTime = latestLikelyRun(now);
+      let currentIndex = Math.max(
         0,
         Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR))
       );
-      const currentValidTime = forecastTimes[currentIndex];
-      const timelineRadius = Math.max(0, 72 - currentIndex);
-      const minimumHour = -timelineRadius;
-      const maximumHour = timelineRadius;
+      let currentValidTime = new Date(referenceTime.getTime() + currentIndex * HOUR);
+      let timelineRadius = Math.max(0, 72 - currentIndex);
+      let minimumHour = -timelineRadius;
+      let maximumHour = timelineRadius;
       const DEFAULT_CENTER = [window.innerWidth < 720 ? 49.5 : 46.5, -101];
       const DEFAULT_ZOOM = window.innerWidth < 720 ? 3 : 4;
 
@@ -1080,6 +1077,7 @@
       let standbyCleanup = null;
       let standbyGeneration = 0;
       let transitionGeneration = 0;
+      let fadePromise = Promise.resolve();
       let zIndex = 420;
       let playing = false;
       let playbackGeneration = 0;
@@ -1092,7 +1090,7 @@
 
       const rawCache = new Map();
       const processedCache = new Map();
-      const scheduledProcessing = new Set();
+      const scheduledProcessing = new Map();
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
       const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
         .then((response) => {
@@ -1101,7 +1099,7 @@
         })
         .then((manifest) => (
           manifest &&
-          manifest.schemaVersion === 1 &&
+          (manifest.schemaVersion === 1 || manifest.schemaVersion === 2) &&
           manifest.frames &&
           typeof manifest.frames === "object"
             ? manifest
@@ -1234,6 +1232,41 @@
         return DATASETS[particle][extent];
       }
 
+      function applyManifestTimeline(manifest) {
+        if (manifest?.schemaVersion !== 2 || !Array.isArray(manifest.timelineHours)) return false;
+        const generatedAt = new Date(manifest.generatedAt);
+        const manifestReference = new Date(manifest.primaryReferenceTime);
+        const manifestNow = new Date(manifest.currentValidTime);
+        if (
+          !Number.isFinite(generatedAt.getTime()) ||
+          !Number.isFinite(manifestReference.getTime()) ||
+          !Number.isFinite(manifestNow.getTime()) ||
+          Math.abs(now.getTime() - generatedAt.getTime()) > 4 * HOUR
+        ) return false;
+
+        const available = new Set(
+          manifest.timelineHours
+            .map(Number)
+            .filter((hour) => Number.isInteger(hour))
+        );
+        if (!available.has(0)) return false;
+        let radius = 0;
+        while (
+          radius < 64 &&
+          available.has(-(radius + 1)) &&
+          available.has(radius + 1)
+        ) radius += 1;
+        if (radius < 1) return false;
+
+        referenceTime = manifestReference;
+        currentValidTime = manifestNow;
+        currentIndex = Math.round((currentValidTime.getTime() - referenceTime.getTime()) / HOUR);
+        timelineRadius = radius;
+        minimumHour = -radius;
+        maximumHour = radius;
+        return true;
+      }
+
       function descriptor(hour) {
         const data = dataset();
         const safeHour = Math.max(minimumHour, Math.min(maximumHour, Number(hour)));
@@ -1340,6 +1373,35 @@
         return colors[colors.length - 1].slice(1);
       }
 
+      function palettePosition(red, green, blue, particleType) {
+        const colors = COLOR_RAMPS[particleType];
+        let bestDistance = Infinity;
+        let bestPosition = 0;
+        for (let index = 0; index < colors.length - 1; index += 1) {
+          const start = colors[index];
+          const end = colors[index + 1];
+          const dr = end[1] - start[1];
+          const dg = end[2] - start[2];
+          const db = end[3] - start[3];
+          const lengthSquared = dr * dr + dg * dg + db * db;
+          const projection = lengthSquared === 0 ? 0 : (
+            (red - start[1]) * dr +
+            (green - start[2]) * dg +
+            (blue - start[3]) * db
+          ) / lengthSquared;
+          const amount = Math.max(0, Math.min(1, projection));
+          const rr = start[1] + dr * amount;
+          const gg = start[2] + dg * amount;
+          const bb = start[3] + db * amount;
+          const distance = (red - rr) ** 2 + (green - gg) ** 2 + (blue - bb) ** 2;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestPosition = start[0] + (end[0] - start[0]) * amount;
+          }
+        }
+        return bestPosition;
+      }
+
       function concentrationAtPosition(position, scale) {
         const values = CONCENTRATION_VALUES[scale];
         for (let index = 0; index < SOURCE_COLORS.length - 1; index += 1) {
@@ -1430,7 +1492,9 @@
         }
 
         const promise = cacheManifestPromise.then(async (manifest) => {
-          const cachedPath = manifest?.frames?.[frame.key];
+          const cachedPath = manifest?.schemaVersion === 1
+            ? manifest.frames?.[frame.key]
+            : null;
           if (typeof cachedPath === "string" && cachedPath) {
             try {
               return await loadImage(new URL(cachedPath, cacheManifestUrl).href);
@@ -1448,6 +1512,29 @@
       }
 
       async function recolorFrame(frame) {
+        const prepared = await cacheManifestPromise.then(async (manifest) => {
+          const cachedPath = manifest?.schemaVersion === 2
+            ? manifest.frames?.[frame.key]
+            : null;
+          if (typeof cachedPath !== "string" || !cachedPath) return null;
+          try {
+            const objectUrl = new URL(cachedPath, cacheManifestUrl).href;
+            const image = await loadImage(objectUrl);
+            return {
+              objectUrl,
+              image,
+              values: null,
+              width: image.naturalWidth,
+              height: image.naturalHeight,
+              frame,
+              revoke: false
+            };
+          } catch {
+            return null;
+          }
+        });
+        if (prepared) return prepared;
+
         const image = await loadRawFrame(frame);
         const canvas = document.createElement("canvas");
         canvas.width = image.naturalWidth;
@@ -1485,7 +1572,7 @@
         const outputContext = output.getContext("2d", { alpha: true });
         outputContext.imageSmoothingEnabled = true;
         outputContext.imageSmoothingQuality = "high";
-        outputContext.filter = "blur(0.45px)";
+        outputContext.filter = "blur(0.6px)";
         outputContext.drawImage(canvas, 0, 0, output.width, output.height);
 
         const blob = await new Promise((resolve, reject) => {
@@ -1497,10 +1584,12 @@
 
         return {
           objectUrl: URL.createObjectURL(blob),
+          image: null,
           values,
           width: canvas.width,
           height: canvas.height,
-          frame
+          frame,
+          revoke: true
         };
       }
 
@@ -1513,7 +1602,7 @@
         for (const [key, entry] of processedCache) {
           if (processedCache.size <= cacheLimit) break;
           if (!entry.value || objectUrlInUse(entry.value.objectUrl)) continue;
-          URL.revokeObjectURL(entry.value.objectUrl);
+          if (entry.value.revoke) URL.revokeObjectURL(entry.value.objectUrl);
           processedCache.delete(key);
         }
       }
@@ -1554,16 +1643,25 @@
         const nextHour = hour > maximumHour ? 0 : hour;
         const frame = descriptor(nextHour);
         if (processedCache.has(frame.key) || scheduledProcessing.has(frame.key)) return;
-        scheduledProcessing.add(frame.key);
         const run = () => {
           scheduledProcessing.delete(frame.key);
           getProcessedFrame(frame).catch(() => {});
         };
         if ("requestIdleCallback" in window) {
-          window.requestIdleCallback(run, { timeout: 260 });
+          const handle = window.requestIdleCallback(run, { timeout: 500 });
+          scheduledProcessing.set(frame.key, { handle, idle: true });
         } else {
-          window.setTimeout(run, 40);
+          const handle = window.setTimeout(run, 80);
+          scheduledProcessing.set(frame.key, { handle, idle: false });
         }
+      }
+
+      function cancelScheduledProcessing() {
+        for (const { handle, idle } of scheduledProcessing.values()) {
+          if (idle && "cancelIdleCallback" in window) window.cancelIdleCallback(handle);
+          else window.clearTimeout(handle);
+        }
+        scheduledProcessing.clear();
       }
 
       function makeLayer(opacity) {
@@ -1581,10 +1679,6 @@
 
       function delay(milliseconds) {
         return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-      }
-
-      function nextPaint() {
-        return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       }
 
       function updateLegend() {
@@ -1683,7 +1777,7 @@
         }
       }
 
-      function waitForStandby(frame, generation) {
+      function waitForStandby(frame, generation, targetLayer) {
         if (standbyCleanup) standbyCleanup();
 
         return new Promise((resolve) => {
@@ -1694,10 +1788,10 @@
             if (settled) return;
             settled = true;
             window.clearTimeout(timeout);
-            standbyLayer.off("load", onLoad);
-            standbyLayer.off("error", onError);
+            targetLayer.off("load", onLoad);
+            targetLayer.off("error", onError);
             if (generation === standbyGeneration) standbyCleanup = null;
-            resolve({ ok, frame, generation });
+            resolve({ ok, frame, generation, layer: targetLayer });
           }
 
           function onLoad() {
@@ -1708,25 +1802,26 @@
             finish(false);
           }
 
-          standbyLayer.on("load", onLoad);
-          standbyLayer.on("error", onError);
+          targetLayer.on("load", onLoad);
+          targetLayer.on("error", onError);
           standbyCleanup = () => finish(false);
-          standbyLayer.setOpacity(0);
-          standbyLayer.setZIndex(++zIndex);
+          targetLayer.setOpacity(0);
+          targetLayer.setZIndex(++zIndex);
 
           getProcessedFrame(frame)
             .then((processed) => {
-              if (generation !== standbyGeneration) {
+              if (generation !== standbyGeneration || targetLayer !== standbyLayer) {
                 finish(false);
                 return;
               }
-              standbyLayer._pmObjectUrl = processed.objectUrl;
-              standbyLayer._pmValues = processed.values;
-              standbyLayer._pmWidth = processed.width;
-              standbyLayer._pmHeight = processed.height;
-              standbyLayer._pmFrame = processed.frame;
-              standbyLayer.setUrl(processed.objectUrl);
-              if (!map.hasLayer(standbyLayer)) standbyLayer.addTo(map);
+              targetLayer._pmObjectUrl = processed.objectUrl;
+              targetLayer._pmImage = processed.image;
+              targetLayer._pmValues = processed.values;
+              targetLayer._pmWidth = processed.width;
+              targetLayer._pmHeight = processed.height;
+              targetLayer._pmFrame = processed.frame;
+              targetLayer.setUrl(processed.objectUrl);
+              if (!map.hasLayer(targetLayer)) targetLayer.addTo(map);
             })
             .catch(onError);
         });
@@ -1738,13 +1833,15 @@
             ok: true,
             frame,
             generation: standbyGeneration,
+            layer: activeLayer,
             alreadyActive: true
           });
         }
         if (frame.key === standbyKey && standbyPromise) return standbyPromise;
         if (
           standbyLayer?._pmFrame?.key === frame.key &&
-          standbyLayer?._image?.complete
+          standbyLayer?._image?.complete &&
+          standbyLayer._image.naturalWidth > 0
         ) {
           standbyLayer.setOpacity(0);
           standbyLayer.setZIndex(++zIndex);
@@ -1752,7 +1849,8 @@
           standbyPromise = Promise.resolve({
             ok: true,
             frame,
-            generation: standbyGeneration
+            generation: standbyGeneration,
+            layer: standbyLayer
           });
           return standbyPromise;
         }
@@ -1760,13 +1858,14 @@
         standbyGeneration += 1;
         const generation = standbyGeneration;
         standbyKey = frame.key;
-        standbyPromise = waitForStandby(frame, generation);
+        const targetLayer = standbyLayer;
+        standbyPromise = waitForStandby(frame, generation, targetLayer);
         return standbyPromise;
       }
 
-      async function primeNext() {
+      function primeNext() {
         const nextHour = selectedHour >= maximumHour ? 0 : selectedHour + 1;
-        await prepare(descriptor(nextHour), true);
+        scheduleProcessedAhead(nextHour);
       }
 
       async function showFrame(hour, options = {}) {
@@ -1775,6 +1874,9 @@
         selectedHour = frame.hour;
         updateLabels(frame.hour, frame.key !== activeKey);
         if (frame.key !== activeKey) map.closePopup();
+
+        await fadePromise;
+        if (transition !== transitionGeneration) return false;
 
         if (frame.key === activeKey) {
           updateLabels(frame.hour, false);
@@ -1787,26 +1889,37 @@
         if (
           transition !== transitionGeneration ||
           loaded.generation !== standbyGeneration ||
-          loaded.frame.key !== frame.key
+          loaded.frame.key !== frame.key ||
+          loaded.layer !== standbyLayer
         ) {
           return false;
         }
         if (!loaded.ok) {
+          if (loaded.generation === standbyGeneration) {
+            standbyKey = "";
+            standbyPromise = null;
+          }
           setFrameStatus("error", "Forecast frame unavailable");
           return false;
         }
 
-        const oldActive = activeLayer;
-        standbyLayer.setZIndex(++zIndex);
+        const incomingLayer = loaded.layer;
+        const outgoingLayer = activeLayer;
+        if (incomingLayer === outgoingLayer) {
+          setFrameStatus("error", "Forecast frame unavailable");
+          return false;
+        }
+
+        incomingLayer.setZIndex(++zIndex);
         warmAhead(frame.hour);
         scheduleProcessedAhead(frame.hour + 1);
-        await nextPaint();
-        standbyLayer.setOpacity(DATA_OPACITY);
-        oldActive.setOpacity(0);
-        if (!reducedMotion) await delay(FADE_MS);
+        const fadeMilliseconds = playing ? PLAYBACK_FADE_MS : SCRUB_FADE_MS;
+        root.style.setProperty("--pm-frame-fade", `${fadeMilliseconds}ms`);
+        incomingLayer.setOpacity(DATA_OPACITY);
+        outgoingLayer.setOpacity(0);
 
-        activeLayer = standbyLayer;
-        standbyLayer = oldActive;
+        activeLayer = incomingLayer;
+        standbyLayer = outgoingLayer;
         activeKey = frame.key;
         standbyKey = "";
         standbyPromise = null;
@@ -1814,7 +1927,9 @@
         updateLabels(frame.hour, false);
         trimProcessedCache();
 
-        if (options.prime !== false) primeNext();
+        fadePromise = reducedMotion ? Promise.resolve() : delay(fadeMilliseconds);
+        await fadePromise;
+        if (transition === transitionGeneration && options.prime !== false) primeNext();
         return true;
       }
 
@@ -1850,6 +1965,7 @@
         const resumePlayback = playing;
         const change = ++datasetGeneration;
         playbackGeneration += 1;
+        cancelScheduledProcessing();
         particle = particleSelect.value;
         extent = extentSelect.value;
         transitionGeneration += 1;
@@ -1904,6 +2020,7 @@
 
       slider.addEventListener("input", () => {
         stopPlayback();
+        cancelScheduledProcessing();
         selectedHour = Number(slider.value);
         updateLabels(selectedHour, true);
         if (scrubTimer !== null) window.clearTimeout(scrubTimer);
@@ -1914,6 +2031,7 @@
       });
 
       slider.addEventListener("change", () => {
+        cancelScheduledProcessing();
         if (scrubTimer !== null) window.clearTimeout(scrubTimer);
         scrubTimer = null;
         showFrame(Number(slider.value), { prime: true, quiet: true });
@@ -1939,13 +2057,25 @@
         else startPlayback();
       });
 
+      const probeCanvas = document.createElement("canvas");
+      probeCanvas.width = 1;
+      probeCanvas.height = 1;
+      const probeContext = probeCanvas.getContext("2d", { willReadFrequently: true, alpha: true });
+
       map.on("click", (event) => {
         map.closePopup();
         const values = activeLayer?._pmValues;
+        const preparedImage = activeLayer?._pmImage;
         const frame = activeLayer?._pmFrame;
         const width = activeLayer?._pmWidth;
         const height = activeLayer?._pmHeight;
-        if (!values || !frame || !width || !height || !DATA_BOUNDS.contains(event.latlng)) return;
+        if (
+          (!values && !preparedImage) ||
+          !frame ||
+          !width ||
+          !height ||
+          !DATA_BOUNDS.contains(event.latlng)
+        ) return;
 
         const point = mercatorPoint(event.latlng.lat, event.latlng.lng);
         const x = Math.max(0, Math.min(width - 1, Math.floor(
@@ -1954,7 +2084,22 @@
         const y = Math.max(0, Math.min(height - 1, Math.floor(
           (northEast.y - point.y) / (northEast.y - southWest.y) * height
         )));
-        const value = values[y * width + x];
+        let value = values ? values[y * width + x] : -1;
+        if (!values && preparedImage && probeContext) {
+          try {
+            probeContext.clearRect(0, 0, 1, 1);
+            probeContext.drawImage(preparedImage, x, y, 1, 1, 0, 0, 1, 1);
+            const [red, green, blue, alpha] = probeContext.getImageData(0, 0, 1, 1).data;
+            if (alpha > 2) {
+              value = concentrationAtPosition(
+                palettePosition(red, green, blue, frame.particle),
+                frame.scale
+              );
+            }
+          } catch {
+            value = -1;
+          }
+        }
         if (value < 0) return;
 
         const valueText = `${value.toFixed(value < 10 ? 1 : 0)} ${frame.unit}`;
@@ -1985,19 +2130,30 @@
       resizeObserver.observe(root);
 
       window.addEventListener("pagehide", () => {
+        cancelScheduledProcessing();
         for (const entry of processedCache.values()) {
-          if (entry.value) URL.revokeObjectURL(entry.value.objectUrl);
+          if (entry.value?.revoke) URL.revokeObjectURL(entry.value.objectUrl);
         }
       }, { once: true });
 
-      slider.min = String(minimumHour);
-      slider.max = String(maximumHour);
-      slider.value = "0";
-      updateRangeLabels();
-      updateLegend();
-      updateLabels(0, true);
-      showFrame(0, { prime: true, quiet: true });
       renderIcons();
+
+      async function initialize() {
+        slider.disabled = true;
+        setFrameStatus("loading", "Loading available forecast frames");
+        const manifest = await cacheManifestPromise;
+        applyManifestTimeline(manifest);
+        slider.min = String(minimumHour);
+        slider.max = String(maximumHour);
+        slider.value = "0";
+        slider.disabled = false;
+        updateRangeLabels();
+        updateLegend();
+        updateLabels(0, true);
+        await showFrame(0, { prime: true, quiet: true });
+      }
+
+      initialize();
 
       if (navigator.permissions?.query) {
         try {
