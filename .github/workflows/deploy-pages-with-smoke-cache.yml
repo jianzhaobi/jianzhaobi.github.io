@@ -40,13 +40,28 @@ jobs:
             --exclude _site \
             ./ _site/
 
+      - name: Restore rolling frame cache
+        uses: actions/cache/restore@v4
+        with:
+          path: _site/na_smoke_map/cache/frames
+          key: raqdps-frames-${{ github.run_id }}
+          restore-keys: |
+            raqdps-frames-
+
       - name: Build same-origin PM2.5 frame cache
         run: |
           python na_smoke_map/scripts/build_static_cache.py \
             --output _site/na_smoke_map/cache \
             --history-hours 72 \
             --forecast-hours 72 \
-            --jobs 8
+            --jobs 8 \
+            --minimum-success-ratio 0.8
+
+      - name: Save rolling frame cache
+        uses: actions/cache/save@v4
+        with:
+          path: _site/na_smoke_map/cache/frames
+          key: raqdps-frames-${{ github.run_id }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
