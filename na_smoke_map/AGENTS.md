@@ -112,16 +112,16 @@ Do not call the spatial smoothing a higher-resolution forecast, and do not call 
 
 ### Point-value interaction
 
-Clicking or tapping inside the modeled North America bounds should open a compact Leaflet popup:
+Clicking or tapping a visibly rendered concentration pixel inside the modeled North America bounds should open a compact Leaflet popup:
 
 - Infer an approximate displayed value from the original ECCC rendered color ramp before the pixel is recolored.
 - Keep a `Float32Array` value grid on each active/standby frame buffer.
 - Convert the clicked latitude/longitude through the same Web Mercator bounds used by the WMS image before indexing the grid.
-- Show the active frame's particle type, vertical extent, valid time, value, and correct unit.
+- Show only the active frame's particle type, inferred value, and correct unit. Do not display the valid time or vertical extent in the popup.
 - Show the inferred numeric value without an `≈` prefix. Keep the implementation and accessible context clear that values are inferred from rendered colors rather than read from the raw model field.
-- Show the popup's full valid date and time, including year, month, day, weekday, clock time, and time zone.
 - Do not show a popup close “×”; clicking elsewhere on the map is sufficient to dismiss or replace the popup.
-- For transparent/no-data pixels, say “Below display threshold” rather than claiming the modeled concentration is exactly zero.
+- Treat pixels whose processed display alpha is effectively transparent as below the display threshold.
+- Clicking a transparent, below-threshold, no-data, or out-of-bounds location should show nothing and close any existing concentration popup.
 
 ## Interface and visual preferences
 
@@ -213,7 +213,7 @@ Before handing off a material change:
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the monochromatic smoky-blue ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
-14. Click both a plume pixel and a transparent pixel; verify the popup uses the active layer's unit, omits the approximation symbol, shows the full valid date/time/time zone, and says “Below display threshold” for transparent pixels.
+14. Click a plume pixel and verify the popup shows only the pollutant type and inferred concentration with the active layer's unit, without an approximation symbol or time. Then click a transparent or no-data pixel and verify that no popup remains.
 15. During playback, confirm both image buffers have a 720 ms opacity transition and visibly hold complementary intermediate opacities.
 16. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution overlay scale and settle together without visible lag.
 17. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
