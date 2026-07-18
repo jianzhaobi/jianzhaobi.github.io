@@ -108,14 +108,16 @@ The production cache is a same-origin GitHub Pages deployment artifact, not brow
 - `.github/workflows/deploy-pages-with-smoke-cache.yml` runs hourly, on pushes, and on manual dispatch.
 - `scripts/build_static_cache.py` downloads the latest bounded set of raw, transparent WMS PNGs for all four particle/extent combinations.
 - Cache up to 64 valid hours on either side of the current model hour. The actual future side may be shorter near the end of a model run.
-- Generate a schema-v3 manifest containing the four datasets' common, continuous, symmetric `timelineHours` coverage. At runtime, initialize the slider from this list and never expose an hour whose cached frame is missing for any selectable dataset. If the manifest is absent or stale, use the conservative direct-GeoMet range as a fallback.
+- Generate a schema-v4 manifest containing the four datasets' common, continuous, symmetric `timelineHours` coverage. At runtime, initialize the slider from this list and never expose an hour whose cached frame is missing for any selectable dataset. If the manifest is absent or stale, use the conservative direct-GeoMet range as a fallback.
 - Restore the newest rolling GitHub Actions frame cache before each build and save the refreshed bounded set afterward. GeoMet currently advertises roughly 48 hours of reference cycles, so retaining still-needed frames from prior scheduled runs is what allows the deployed artifact to maintain historical coverage without committing binaries.
 - Keep the cache build's minimum success ratio at 80% on every run. A few edge-hour or transient GeoMet failures must not block publication of an otherwise valid common timeline; the manifest still exposes only the continuous symmetric hours present for all four datasets.
 - Run the Pages cache workflow hourly. Most hourly runs reuse the rolling raw and display caches and mainly advance the manifest's `Now`; the heavier frame refresh occurs when a new 00 or 12 UTC model run becomes available.
-- Keep source WMS PNGs only in the rolling GitHub Actions cache. During the build, precompute display-ready PNGs with the selected monochromatic palette, alpha treatment, high-quality smoothing, and final dimensions. Publish only `cache/manifest.json` and these display-ready `cache/frames/` inside the Pages artifact; do not commit generated frames to Git history.
-- Build compact scrub-preview atlases for every dataset from the common timeline hours. Each atlas contains a short run of 320 × 200 preview frames and the manifest records the integer hours stored in it. For the selected dataset, load the atlas nearest the current hour first, then fill the rest with a small background worker pool. If a user jumps into an atlas that is not ready yet, prioritize that exact atlas. Retain at most two datasets in memory and use ready atlases for synchronous random-access dragging.
-- At runtime, consult the same-origin manifest and load a matching display-ready PNG directly. This bypasses client-side full-frame recoloring and PNG encoding during normal playback. If the manifest, entry, or cached image is missing, stale, partial, or unavailable, fall back to the direct GeoMet WMS request and browser preparation path without clearing the currently visible frame.
-- Prepared-frame point probes sample the displayed monochromatic palette and infer its value lazily. Direct-GeoMet fallback frames continue using the original per-pixel value grid.
+- Keep source WMS PNGs only in the rolling GitHub Actions cache. During the build, precompute both display-ready fallback PNGs and smoothed scalar-field packs. Publish `cache/manifest.json`, `cache/frames/`, and `cache/fields/` inside the Pages artifact; do not commit generated binary data to Git history.
+- Build full-source-grid field packs for every dataset from the common timeline hours. Each pack stores up to three consecutive 1000 × 625 hours in the RGB channels of two opaque PNGs: one alpha-weighted scalar-position image and one coverage image. Keep the PNG alpha channel fully opaque because browser decoders may discard RGB data behind transparent alpha. Apply the restrained spatial blur to these scalar and coverage fields at build time, before packing.
+- For the selected dataset, load every field pack before enabling the timeline. Retain at most one decoded field dataset in memory. During normal schema-v4 operation, dragging, playback, previous/next, Reset, and release snapping must all sample these same full-grid fields through the persistent WebGL canvas; never render a low-resolution scrub preview and never fetch or swap to a separate full-frame PNG when dragging ends.
+- Use field packs only from the fresh schema-v4 manifest that was accepted to define the active timeline. Validate the 1000 × 625 dimensions, three-hour RGB packing, paths, uniqueness, and complete integer-hour coverage; fully decode every selected-dataset pack before enabling timeline interaction.
+- Prepared display PNGs are a compatibility and failure fallback only. If the schema-v4 field manifest, a field pack, or WebGL field rendering is unavailable, use a matching display-ready PNG or the direct GeoMet browser-preparation path without clearing the currently visible frame.
+- Schema-v4 point probes sample the weighted scalar and coverage field packs at the displayed temporal mix. Prepared-frame fallback probes sample the displayed monochromatic palette, while direct-GeoMet fallback frames keep the original per-pixel value grid.
 
 This arrangement avoids user-device persistence, keeps Git history small, reduces GeoMet latency during normal use, and allows a partial cache to degrade safely.
 
@@ -123,11 +125,11 @@ This arrangement avoids user-device persistence, keeps Git history small, reduce
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
-- Infer the scalar ramp position first, then apply high-quality alpha-weighted bicubic interpolation at approximately 1.5× plus a restrained 1.0 px blur before recoloring. Smoothing the scalar field rather than already-colored pixels removes high-concentration stair steps while preserving a continuous plume. This is display smoothing, not a higher-resolution forecast.
-- Keep the original 1000 × 625 WMS image as the scientific source grid; smoothing applies only to the displayed PNG. Direct-GeoMet fallback retains its original-grid value lookup, while prepared-cache frames use lazy palette sampling for the popup. Build-time preparation removes full-frame canvas recoloring and PNG encoding from normal client playback.
-- Linearly interpolate premultiplied pixel color and alpha in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
-- Keep the visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value, synchronously extract the two adjacent integer preview frames, and set the shader mix amount from the pointer's fractional position. On release, snap to the nearest integer hour and smoothly refine the preview to that hour's full-resolution frame.
-- Dragging must follow the pointer in either direction and during random jumps without the old debounce delay. Preview textures may be lower resolution while the pointer is moving, but temporal position must update immediately.
+- Infer the scalar ramp position first, alpha-weight it by source coverage, and apply a restrained Gaussian blur to the scalar and coverage fields before packing them at build time. Smoothing the scalar field rather than already-colored pixels removes high-concentration stair steps while preserving a continuous plume. This is display smoothing, not a higher-resolution forecast.
+- Keep the original 1000 × 625 WMS image as the scientific source grid. In normal schema-v4 operation, upload the pre-smoothed field packs once and use GPU linear spatial sampling to render them into the fixed 1500 × 938 display canvas. Reconstruct the scalar position from weighted value and coverage, then apply the selected monochromatic palette in the shader.
+- Linearly interpolate premultiplied pixel color and alpha from the two adjacent field hours in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
+- Keep visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value and synchronously set the adjacent field hours, channel masks, and fractional shader mix. On release, snap to the nearest integer hour without changing render source, resolution, canvas, or image quality.
+- Dragging must follow the pointer in either direction and during random jumps without debounce, delayed network requests, or a post-release clarity swap. Every intermediate and resting state must use the same smooth full-grid field renderer.
 - Disable visual interpolation transitions when `prefers-reduced-motion` is active.
 
 Do not call the spatial smoothing a 1 km forecast, and do not call interpolated states new 10-minute or sub-hourly model outputs. Neither treatment creates new atmospheric information.
@@ -158,6 +160,7 @@ Maintain these preferences:
 - Keep the horizontal legend compact—roughly 320 px on desktop and narrower on phones—so it does not obscure a large portion of the map.
 - Forecast controls and time slider integrated as a floating bottom panel over the map.
 - Keep the legend, valid time, frame status, playback controls, and forecast slider fused into one coordinated bottom panel.
+- Keep the visible valid-time line compact while preserving weekday, date, year, time, and timezone; prefer a form such as `Sat · Jul 18, ’26 · 12:00 PM EDT`. Keep the fully expanded localized timestamp in accessible labels.
 - Keep a concise frame-status dot inside the forecast panel: green when the selected frame is ready, orange/pulsing while it loads, and red when unavailable.
 - Rounded corners, compact spacing, readable typography, and clear selected states.
 - Minimal explanatory chrome; keep the geographic data visually dominant.
@@ -199,7 +202,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 
 ## Implementation conventions
 
-- Keep all application markup, styling, and runtime logic in `index.html`. The only local runtime companions are the generated static cache manifest and frames; build and deployment automation live outside the application file.
+- Keep all application markup, styling, and runtime logic in `index.html`. The only local runtime companions are the generated static cache manifest, fallback frames, and field packs; build and deployment automation live outside the application file.
 - Apply every future application, feature, design, and bug-fix update directly to `index.html`.
 - Do not create or maintain a duplicate standalone HTML entry point such as `north-america-smoke-forecast.html`.
 - Use plain HTML, CSS, and JavaScript; do not introduce a build step without a clear need.
@@ -241,16 +244,16 @@ Before handing off a material change:
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
 15. During playback, confirm there is exactly one pollution canvas and no pollution `<img>` overlays. Inspect several transition midpoints for brightness pulses or vacant flashes.
-16. Drag the slider slowly forward and backward, then rapidly across random positions. The thumb and preview plume must track continuously during pointer movement, visible hour labels and release positions must remain integer hours, and release must refine to the full-resolution integer frame without a temporal jump.
+16. Drag the slider slowly forward and backward, then rapidly across random positions. The thumb and plume must track continuously during pointer movement, visible hour labels and release positions must remain integer hours, and every intermediate and resting state must keep the same fixed high-resolution canvas and smooth full-grid field source. Confirm that release causes no delayed full-frame request, clarity swap, or temporal jump.
 17. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution canvas scale and settle together without visible lag.
 18. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
 19. Confirm playback loops from the final forecast frame to Now and continues, and switch pollutant or vertical extent during playback to verify the current hour is preserved and animation resumes without a blank map.
-20. Validate a generated cache manifest, display PNG set, and preview-atlas set; confirm the page loads matching same-origin assets and falls back to GeoMet when a full frame is absent.
+20. Validate a generated schema-v4 cache manifest, display PNG fallback set, and weighted/coverage field-pack set. Confirm the normal page loads only the selected dataset's same-origin field packs before enabling the timeline, performs no `cache/frames/` request when dragging or releasing, and still falls back safely when a field asset is absent.
 
 ## Known tradeoffs
 
 - A single 1000 × 625 WMS image per frame avoids tile artifacts, stays close to the approximate 10 km model resolution, and lowers client processing cost, but it will become pixelated at unusually deep zoom levels.
-- Loading full-frame PNGs can use more bandwidth per time step than a small set of visible tiles. The processed-frame LRU, WebGL's two textures, and selected-dataset-only preview atlases bound normal client memory.
+- Preloading all full-grid field packs for the selected dataset increases its initial transfer and decoded-memory cost, but it removes timeline-time image loading and guarantees consistent spatial quality while dragging. Three-hour RGB packing, one decoded dataset at a time, and four WebGL field textures bound normal client memory.
 - Direct-GeoMet fallback recoloring adds CPU work before a frame becomes ready. It belongs on an offscreen source canvas so it cannot clear the persistent visible WebGL canvas.
 - The Pages cache is refreshed on a schedule rather than continuously. Runtime GeoMet fallback is required for gaps between publication and the next successful deployment.
 - The fixed image bounds intentionally focus the product on North America. Expanding coverage requires recalculating the matching Web Mercator WMS bounding box and validating the image overlay alignment.

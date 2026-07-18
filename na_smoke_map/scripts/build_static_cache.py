@@ -28,6 +28,7 @@ HOUR = dt.timedelta(hours=1)
 WMS = "https://geo.weather.gc.ca/geomet"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 DISPLAY_PREPARATION_VERSION = 2
+FIELD_PREPARATION_VERSION = 1
 BOUNDS = (-18924313.434856508, 1804722.766257292, -5788613.521250226, 13377019.784465117)
 
 DATASETS = {
@@ -461,71 +462,116 @@ def timeline_hours(frames: list[Frame], successful_keys: set[str], datasets: lis
     return list(range(-radius, radius + 1)) if 0 in common else []
 
 
-def build_preview_atlases(
+def build_field_packs(
     frames: list[Frame],
     prepared: dict[str, str],
+    raw_output: Path,
     output: Path,
     datasets: list[str],
     hours: list[int],
     anchor: str,
-    frame_size: tuple[int, int] = (320, 200),
-    chunk_size: int = 12,
+    frame_size: tuple[int, int],
+    blur_radius: float = 0.55,
+    pack_size: int = 3,
 ) -> tuple[dict[str, list[dict[str, object]]], set[Path]]:
     frame_by_dataset_hour = {
         (frame.dataset, frame.hour): frame
         for frame in frames
         if frame.key in prepared
     }
-    atlases: dict[str, list[dict[str, object]]] = {dataset: [] for dataset in datasets}
+    packs: dict[str, list[dict[str, object]]] = {dataset: [] for dataset in datasets}
     retained: set[Path] = set()
 
     for dataset in datasets:
-        for chunk_index in range(0, len(hours), chunk_size):
-            chunk_hours = hours[chunk_index:chunk_index + chunk_size]
-            atlas = Image.new(
-                "RGBA",
-                (frame_size[0] * len(chunk_hours), frame_size[1]),
-                (0, 0, 0, 0),
+        for pack_index in range(0, len(hours), pack_size):
+            pack_hours = hours[pack_index:pack_index + pack_size]
+            weighted_pack = np.zeros(
+                (frame_size[1], frame_size[0], 4),
+                dtype=np.uint8,
             )
-            for column, hour in enumerate(chunk_hours):
-                frame = frame_by_dataset_hour[(dataset, hour)]
-                with Image.open(output / prepared[frame.key]) as image:
-                    preview = image.convert("RGBA").resize(
-                        frame_size,
-                        resample=Image.Resampling.BICUBIC,
-                    )
-                atlas.paste(preview, (column * frame_size[0], 0))
+            coverage_pack = np.zeros_like(weighted_pack)
+            # Keep PNG alpha opaque. Browser image decoders may premultiply or
+            # discard RGB values behind transparent alpha, so the alpha channel
+            # cannot safely carry an independent forecast hour.
+            weighted_pack[:, :, 3] = 255
+            coverage_pack[:, :, 3] = 255
 
-            relative_path = (
-                f"previews/{dataset}/{anchor}/"
-                f"{chunk_index // chunk_size:02d}.png"
+            for channel, hour in enumerate(pack_hours):
+                frame = frame_by_dataset_hour[(dataset, hour)]
+                raw_path = raw_output / frame.relative_path
+                if not valid_png(raw_path, frame_size):
+                    raise ValueError(f"raw frame unavailable for field pack: {frame.key}")
+                with Image.open(raw_path) as source:
+                    rgba = np.asarray(source.convert("RGBA"), dtype=np.uint8)
+
+                source_alpha = rgba[:, :, 3]
+                mask = source_alpha > 2
+                source_indexes = (
+                    (rgba[:, :, 0].astype(np.uint16) >> 3) << 10
+                    | (rgba[:, :, 1].astype(np.uint16) >> 3) << 5
+                    | (rgba[:, :, 2].astype(np.uint16) >> 3)
+                )
+                positions = np.where(mask, SOURCE_POSITION_LUT[source_indexes], 0.0)
+                weighted = np.rint(
+                    positions * source_alpha.astype(np.float32)
+                ).astype(np.uint8)
+                coverage = source_alpha.copy()
+                if blur_radius > 0:
+                    weighted = np.asarray(
+                        Image.fromarray(weighted).filter(
+                            ImageFilter.GaussianBlur(blur_radius)
+                        ),
+                        dtype=np.uint8,
+                    )
+                    coverage = np.asarray(
+                        Image.fromarray(coverage).filter(
+                            ImageFilter.GaussianBlur(blur_radius)
+                        ),
+                        dtype=np.uint8,
+                    )
+                weighted_pack[:, :, channel] = weighted
+                coverage_pack[:, :, channel] = coverage
+
+            base_path = (
+                f"fields/{dataset}/{anchor}/"
+                f"{pack_index // pack_size:02d}"
             )
-            destination = output / relative_path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            temporary = destination.with_suffix(f".tmp-{os.getpid()}")
-            atlas.save(temporary, format="PNG", compress_level=6)
-            expected_size = (frame_size[0] * len(chunk_hours), frame_size[1])
-            if not valid_png(temporary, expected_size):
-                temporary.unlink(missing_ok=True)
-                raise ValueError(f"preview atlas was incomplete: {relative_path}")
-            temporary.replace(destination)
-            retained.add(destination)
-            atlases[dataset].append({
-                "path": relative_path,
-                "hours": chunk_hours,
+            weighted_path = f"{base_path}-weighted.png"
+            coverage_path = f"{base_path}-coverage.png"
+            for relative_path, pixels in (
+                (weighted_path, weighted_pack),
+                (coverage_path, coverage_pack),
+            ):
+                destination = output / relative_path
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                temporary = destination.with_suffix(f".tmp-{os.getpid()}")
+                Image.fromarray(pixels).save(
+                    temporary,
+                    format="PNG",
+                    compress_level=7,
+                )
+                if not valid_png(temporary, frame_size):
+                    temporary.unlink(missing_ok=True)
+                    raise ValueError(f"field pack was incomplete: {relative_path}")
+                temporary.replace(destination)
+                retained.add(destination)
+            packs[dataset].append({
+                "weightedPath": weighted_path,
+                "coveragePath": coverage_path,
+                "hours": pack_hours,
             })
 
-    return atlases, retained
+    return packs, retained
 
 
-def prune_stale_previews(output: Path, retained: set[Path]) -> None:
-    previews_root = output / "previews"
-    if not previews_root.exists():
+def prune_stale_fields(output: Path, retained: set[Path]) -> None:
+    fields_root = output / "fields"
+    if not fields_root.exists():
         return
-    for path in previews_root.rglob("*.png"):
+    for path in fields_root.rglob("*.png"):
         if path not in retained:
             path.unlink(missing_ok=True)
-    for directory in sorted(previews_root.rglob("*"), reverse=True):
+    for directory in sorted(fields_root.rglob("*"), reverse=True):
         if directory.is_dir():
             try:
                 directory.rmdir()
@@ -539,9 +585,20 @@ def reset_stale_display_cache(output: Path) -> None:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         manifest = {}
-    if manifest.get("displayPreparationVersion") == DISPLAY_PREPARATION_VERSION:
+    display_current = (
+        manifest.get("displayPreparationVersion") ==
+        DISPLAY_PREPARATION_VERSION
+    )
+    fields_current = (
+        manifest.get("fieldPreparationVersion") ==
+        FIELD_PREPARATION_VERSION
+    )
+    if display_current and fields_current:
         return
-    shutil.rmtree(output / "frames", ignore_errors=True)
+    if not display_current:
+        shutil.rmtree(output / "frames", ignore_errors=True)
+    if not fields_current:
+        shutil.rmtree(output / "fields", ignore_errors=True)
     shutil.rmtree(output / "previews", ignore_errors=True)
     manifest_path.unlink(missing_ok=True)
 
@@ -670,33 +727,38 @@ def main() -> int:
     if not available_hours:
         print("cache build rejected: no common frame exists at Now", file=sys.stderr)
         return 1
-    preview_anchor = compact_hour(parse_time(metadata["currentValidTime"]))
+    field_anchor = compact_hour(parse_time(metadata["currentValidTime"]))
     try:
-        preview_atlases, retained_previews = build_preview_atlases(
+        field_packs, retained_fields = build_field_packs(
             frames,
             prepared,
+            args.raw_output,
             args.output,
             args.datasets,
             available_hours,
-            preview_anchor,
+            field_anchor,
+            (args.width, args.height),
         )
     except Exception as exc:
-        print(f"cache build rejected: unable to prepare scrub previews: {exc}", file=sys.stderr)
+        print(f"cache build rejected: unable to prepare smooth field packs: {exc}", file=sys.stderr)
         return 1
-    prune_stale_previews(args.output, retained_previews)
+    prune_stale_fields(args.output, retained_fields)
 
     manifest = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         **metadata,
         "displayPrepared": True,
         "displayPreparationVersion": DISPLAY_PREPARATION_VERSION,
+        "fieldPreparationVersion": FIELD_PREPARATION_VERSION,
         "frameIntervalMinutes": 60,
         "visualInterpolation": "premultiplied-alpha",
         "timelineHours": available_hours,
-        "scrubPreview": {
-            "frameWidth": 320,
-            "frameHeight": 200,
-            "atlases": preview_atlases,
+        "smoothTimeline": {
+            "frameWidth": args.width,
+            "frameHeight": args.height,
+            "packSize": 3,
+            "spatialInterpolation": "gpu-linear-smoothed-field",
+            "packs": field_packs,
         },
         "frameCount": len(prepared),
         "failureCount": len(failures),
@@ -710,7 +772,8 @@ def main() -> int:
     temporary_manifest.replace(args.output / "manifest.json")
     print(
         f"cache ready: {len(prepared)} display frames, {len(failures)} fallbacks, "
-        f"{ratio:.1%} success, timeline {available_hours[0]:+d}…{available_hours[-1]:+d} h"
+        f"{ratio:.1%} success, {sum(len(items) for items in field_packs.values())} "
+        f"field packs, timeline {available_hours[0]:+d}…{available_hours[-1]:+d} h"
     )
     return 0
 

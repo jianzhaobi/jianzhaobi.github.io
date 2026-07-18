@@ -1106,6 +1106,33 @@
         minute: "2-digit",
         timeZoneName: "short"
       });
+      const formatCompactLocalParts = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        year: "2-digit",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short"
+      });
+
+      function formatCompactLocal(date) {
+        const parts = {};
+        formatCompactLocalParts.formatToParts(date).forEach((part) => {
+          if (part.type !== "literal") parts[part.type] = part.value;
+        });
+        const dateLabel = [
+          parts.month,
+          parts.day ? `${parts.day},` : "",
+          parts.year ? `’${parts.year.slice(-2)}` : ""
+        ].filter(Boolean).join(" ");
+        const clock = [
+          [parts.hour, parts.minute].filter(Boolean).join(":"),
+          parts.dayPeriod,
+          parts.timeZoneName
+        ].filter(Boolean).join(" ");
+        return [parts.weekday, dateLabel, clock].filter(Boolean).join(" · ");
+      }
 
       function isoHour(date) {
         return new Date(Math.floor(date.getTime() / HOUR) * HOUR).toISOString().replace(".000", "");
@@ -1161,17 +1188,18 @@
       let locateStatus;
       let locationMarker;
       let accuracyCircle;
+      let activeTimelineManifest = null;
 
       const rawCache = new Map();
       const processedCache = new Map();
       const scheduledProcessing = new Map();
       const previewCache = new Map();
-      const scrubCanvases = [document.createElement("canvas"), document.createElement("canvas")];
       let scrubGeneration = 0;
       let scrubRenderFrame = 0;
       let scrubTargetHour = null;
       let scrubLoadingGeneration = -1;
       let scrubPairKey = "";
+      let fieldRenderingFailed = false;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
       const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
         .then((response) => {
@@ -1180,7 +1208,7 @@
         })
         .then((manifest) => (
           manifest &&
-          [1, 2, 3].includes(manifest.schemaVersion) &&
+          [1, 2, 3, 4].includes(manifest.schemaVersion) &&
           manifest.frames &&
           typeof manifest.frames === "object"
             ? manifest
@@ -1321,8 +1349,9 @@
       }
 
       function applyManifestTimeline(manifest) {
+        activeTimelineManifest = null;
         if (
-          ![2, 3].includes(manifest?.schemaVersion) ||
+          ![2, 3, 4].includes(manifest?.schemaVersion) ||
           !Array.isArray(manifest.timelineHours)
         ) return false;
         const generatedAt = new Date(manifest.generatedAt);
@@ -1355,6 +1384,7 @@
         timelineRadius = radius;
         minimumHour = -radius;
         maximumHour = radius;
+        activeTimelineManifest = manifest;
         return true;
       }
 
@@ -1571,7 +1601,16 @@
 
           image.crossOrigin = "anonymous";
           image.decoding = "async";
-          image.onload = () => finish(true);
+          image.onload = () => {
+            if (typeof image.decode !== "function") {
+              finish(true);
+              return;
+            }
+            image.decode().then(
+              () => finish(true),
+              () => finish(image.naturalWidth > 0)
+            );
+          };
           image.onerror = () => finish(false);
           image.src = url;
         });
@@ -1606,7 +1645,7 @@
 
       async function recolorFrame(frame) {
         const prepared = await cacheManifestPromise.then(async (manifest) => {
-          const cachedPath = [2, 3].includes(manifest?.schemaVersion)
+          const cachedPath = [2, 3, 4].includes(manifest?.schemaVersion)
             ? manifest.frames?.[frame.key]
             : null;
           if (typeof cachedPath !== "string" || !cachedPath) return null;
@@ -1793,36 +1832,86 @@
 
         const entry = { value: null, promise: null };
         entry.promise = cacheManifestPromise.then(async (manifest) => {
-          const preview = manifest?.schemaVersion === 3
-            ? manifest.scrubPreview
+          const timeline = manifest === activeTimelineManifest && manifest?.schemaVersion === 4
+            ? manifest.smoothTimeline
             : null;
-          const atlases = preview?.atlases?.[datasetName];
+          const packs = timeline?.packs?.[datasetName];
           if (
-            !preview ||
-            !Number.isInteger(preview.frameWidth) ||
-            !Number.isInteger(preview.frameHeight) ||
-            !Array.isArray(atlases) ||
-            atlases.length === 0
+            !timeline ||
+            timeline.frameWidth !== IMAGE_SIZE.width ||
+            timeline.frameHeight !== IMAGE_SIZE.height ||
+            timeline.packSize !== 3 ||
+            !Array.isArray(packs) ||
+            packs.length === 0 ||
+            !packs.every((pack) => (
+              typeof pack.weightedPath === "string" &&
+              pack.weightedPath.length > 0 &&
+              typeof pack.coveragePath === "string" &&
+              pack.coveragePath.length > 0 &&
+              Array.isArray(pack.hours) &&
+              pack.hours.length > 0 &&
+              pack.hours.length <= 3 &&
+              pack.hours.every((hour) => Number.isInteger(Number(hour)))
+            ))
           ) return null;
 
           const value = {
-            frameWidth: preview.frameWidth,
-            frameHeight: preview.frameHeight,
-            atlases: atlases.map((atlas) => ({
-              hours: Array.isArray(atlas.hours) ? atlas.hours.map(Number) : [],
-              url: new URL(atlas.path, cacheManifestUrl).href,
-              image: null,
+            frameWidth: timeline.frameWidth,
+            frameHeight: timeline.frameHeight,
+            packs: packs.map((pack) => ({
+              hours: Array.isArray(pack.hours) ? pack.hours.map(Number) : [],
+              weightedUrl: new URL(pack.weightedPath, cacheManifestUrl).href,
+              coverageUrl: new URL(pack.coveragePath, cacheManifestUrl).href,
+              weightedImage: null,
+              coverageImage: null,
+              frameWidth: timeline.frameWidth,
+              frameHeight: timeline.frameHeight,
               promise: null
             })),
-            preloading: false
+            frames: new Map(),
+            ready: false
           };
           entry.value = value;
-          preloadPreviewAtlases(value, selectedHour);
+          value.packs.forEach((pack) => {
+            pack.hours.forEach((hour, channel) => {
+              if (value.frames.has(hour)) {
+                throw new Error("Duplicate smooth timeline field hour");
+              }
+              value.frames.set(hour, { pack, channel });
+            });
+          });
+          for (let hour = minimumHour; hour <= maximumHour; hour += 1) {
+            if (!value.frames.has(hour)) {
+              throw new Error("Incomplete smooth timeline field coverage");
+            }
+          }
+          const queue = [...value.packs].sort(
+            (left, right) =>
+              previewAtlasDistance(left, selectedHour) -
+              previewAtlasDistance(right, selectedHour)
+          );
+          let cursor = 0;
+          const worker = async () => {
+            while (cursor < queue.length) {
+              const pack = queue[cursor];
+              cursor += 1;
+              const loaded = await loadPreviewAtlas(pack);
+              if (!loaded) throw new Error("Smooth timeline field pack unavailable");
+            }
+          };
+          await Promise.all([worker(), worker(), worker(), worker()]);
+          value.ready = true;
           return value;
         }).then((value) => {
           entry.value = value;
-          while (previewCache.size > 2) {
-            previewCache.delete(previewCache.keys().next().value);
+          while (previewCache.size > 1) {
+            const oldestKey = previewCache.keys().next().value;
+            const oldest = previewCache.get(oldestKey)?.value;
+            oldest?.packs?.forEach((pack) => {
+              if (pack.weightedImage) pack.weightedImage.src = "";
+              if (pack.coverageImage) pack.coverageImage.src = "";
+            });
+            previewCache.delete(oldestKey);
           }
           return value;
         }).catch(() => {
@@ -1833,115 +1922,119 @@
         return entry.promise;
       }
 
-      function loadPreviewAtlas(atlas) {
-        if (atlas?.image) return Promise.resolve(atlas.image);
-        if (!atlas?.url) return Promise.resolve(null);
-        if (atlas.promise) return atlas.promise;
-        atlas.promise = loadImage(atlas.url)
-          .then((image) => {
-            atlas.image = image;
-            return image;
+      function loadPreviewAtlas(pack) {
+        if (pack?.weightedImage && pack?.coverageImage) {
+          return Promise.resolve(pack);
+        }
+        if (!pack?.weightedUrl || !pack?.coverageUrl) return Promise.resolve(null);
+        if (pack.promise) return pack.promise;
+        pack.promise = Promise.all([
+          loadImage(pack.weightedUrl),
+          loadImage(pack.coverageUrl)
+        ])
+          .then(([weightedImage, coverageImage]) => {
+            if (
+              weightedImage.naturalWidth !== pack.frameWidth ||
+              weightedImage.naturalHeight !== pack.frameHeight ||
+              coverageImage.naturalWidth !== pack.frameWidth ||
+              coverageImage.naturalHeight !== pack.frameHeight
+            ) {
+              throw new Error("Smooth timeline field pack dimensions do not match");
+            }
+            pack.weightedImage = weightedImage;
+            pack.coverageImage = coverageImage;
+            return pack;
           })
           .catch(() => {
-            atlas.promise = null;
+            pack.promise = null;
             return null;
           });
-        return atlas.promise;
+        return pack.promise;
       }
 
-      function previewAtlasDistance(atlas, hour) {
-        if (!atlas.hours.length) return Infinity;
-        const first = atlas.hours[0];
-        const last = atlas.hours[atlas.hours.length - 1];
+      function previewAtlasDistance(pack, hour) {
+        if (!pack.hours.length) return Infinity;
+        const first = pack.hours[0];
+        const last = pack.hours[pack.hours.length - 1];
         if (hour < first) return first - hour;
         if (hour > last) return hour - last;
         return 0;
       }
 
-      function preloadPreviewAtlases(preview, anchorHour) {
-        if (!preview || preview.preloading) return;
-        preview.preloading = true;
-        const queue = [...preview.atlases].sort(
-          (left, right) =>
-            previewAtlasDistance(left, anchorHour) -
-            previewAtlasDistance(right, anchorHour)
-        );
-        let cursor = 0;
-        const worker = async () => {
-          while (cursor < queue.length) {
-            const atlas = queue[cursor];
-            cursor += 1;
-            await loadPreviewAtlas(atlas);
-          }
-        };
-        Promise.all([worker(), worker(), worker()]).catch(() => {});
-      }
-
       function ensurePreviewHour(preview, hour) {
-        if (!preview) return Promise.resolve(false);
+        if (!preview?.ready) return Promise.resolve(false);
         const lowerHour = Math.max(minimumHour, Math.floor(hour));
         const upperHour = Math.min(maximumHour, Math.ceil(hour));
-        const needed = [...new Set([lowerHour, upperHour])]
-          .map((targetHour) =>
-            preview.atlases.find((atlas) => atlas.hours.includes(targetHour))
+        return Promise.resolve(
+          Boolean(
+            preview.frames.get(lowerHour)?.pack?.weightedImage &&
+            preview.frames.get(lowerHour)?.pack?.coverageImage &&
+            preview.frames.get(upperHour)?.pack?.weightedImage &&
+            preview.frames.get(upperHour)?.pack?.coverageImage
           )
-          .filter(Boolean);
-        if (!needed.length) return Promise.resolve(false);
-        return Promise.all(needed.map(loadPreviewAtlas))
-          .then((images) => images.every(Boolean));
+        );
       }
 
-      function previewSource(preview, hour, slot) {
-        const atlas = preview?.atlases.find((candidate) => candidate.hours.includes(hour));
-        if (!atlas?.image) return null;
-        const column = atlas.hours.indexOf(hour);
-        const canvas = scrubCanvases[slot];
-        if (
-          canvas.width !== preview.frameWidth ||
-          canvas.height !== preview.frameHeight
-        ) {
-          canvas.width = preview.frameWidth;
-          canvas.height = preview.frameHeight;
-        }
-        const context = canvas.getContext("2d", { alpha: true });
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(
-          atlas.image,
-          column * preview.frameWidth,
-          0,
-          preview.frameWidth,
-          preview.frameHeight,
-          0,
-          0,
-          preview.frameWidth,
-          preview.frameHeight
-        );
-        return canvas;
+      function clearSmoothTimelineCache() {
+        previewCache.forEach((entry) => {
+          entry.value?.packs?.forEach((pack) => {
+            if (pack.weightedImage) pack.weightedImage.src = "";
+            if (pack.coverageImage) pack.coverageImage.src = "";
+          });
+        });
+        previewCache.clear();
       }
 
       function renderScrubPreview(hour) {
         const datasetName = cacheDatasetName();
         const preview = previewCache.get(datasetName)?.value;
-        if (!preview) return false;
+        if (
+          !preview?.ready ||
+          fieldRenderingFailed ||
+          !renderLayer.supportsFieldRendering()
+        ) return false;
         const lowerHour = Math.max(minimumHour, Math.floor(hour));
         const upperHour = Math.min(maximumHour, Math.ceil(hour));
+        const fromField = preview.frames.get(lowerHour);
+        const toField = preview.frames.get(upperHour);
+        if (!fromField || !toField) return false;
         const progress = upperHour === lowerHour
           ? 0
           : (hour - lowerHour) / (upperHour - lowerHour);
         const pairKey = `${datasetName}|${lowerHour}|${upperHour}`;
 
-        if (pairKey !== scrubPairKey) {
-          const fromSource = previewSource(preview, lowerHour, 0);
-          const toSource = previewSource(preview, upperHour, 1);
-          if (!fromSource || !toSource) return false;
-          renderLayer.setBlend(fromSource, toSource, progress);
-          scrubPairKey = pairKey;
-        } else {
-          renderLayer.setBlendProgress(progress);
+        try {
+          if (pairKey !== scrubPairKey) {
+            renderLayer.setFieldBlend(
+              fromField.pack.weightedImage,
+              fromField.pack.coverageImage,
+              fromField.channel,
+              toField.pack.weightedImage,
+              toField.pack.coverageImage,
+              toField.channel,
+              progress,
+              particle,
+              dataset().scale
+            );
+            scrubPairKey = pairKey;
+          } else {
+            renderLayer.setBlendProgress(progress);
+          }
+        } catch {
+          fieldRenderingFailed = true;
+          scrubPairKey = "";
+          activeKey = "";
+          clearSmoothTimelineCache();
+          return false;
         }
 
-        activeProcessed = null;
-        activeKey = "";
+        activeProcessed = {
+          fields: { fromField, toField, progress },
+          frame: descriptor(hour),
+          width: preview.frameWidth,
+          height: preview.frameHeight
+        };
+        activeKey = Number.isInteger(hour) ? descriptor(hour).key : "";
         map.closePopup();
         return true;
       }
@@ -1967,11 +2060,18 @@
         if (scrubTargetHour === null) return;
         const targetHour = scrubTargetHour;
         if (renderScrubPreview(targetHour)) {
-          setFrameStatus("ready", "Interpolated forecast preview");
+          setFrameStatus("ready", "Interpolated forecast frame");
+          return;
+        }
+        if (
+          fieldRenderingFailed ||
+          !renderLayer.supportsFieldRendering()
+        ) {
+          setFrameStatus("loading", "Release to load forecast frame");
           return;
         }
 
-        setFrameStatus("loading", "Loading forecast preview");
+        setFrameStatus("loading", "Loading smooth forecast timeline");
         const generation = scrubGeneration;
         if (scrubLoadingGeneration === generation) return;
         scrubLoadingGeneration = generation;
@@ -1983,6 +2083,7 @@
               scrubTargetHour === null
             ) return;
             if (ready) queueScrubPreview(scrubTargetHour);
+            else setFrameStatus("loading", "Release to load forecast frame");
           })
           .finally(() => {
             if (scrubLoadingGeneration === generation) {
@@ -1999,6 +2100,8 @@
           this._nextTexture = 1;
           this._animationFrame = 0;
           this._animationResolve = null;
+          this._renderMode = "color";
+          this._fieldState = null;
         },
 
         _initImage() {
@@ -2025,7 +2128,22 @@
             this._contextLost = false;
             try {
               this._initializeRenderer();
-              if (this._currentSource) this.setFrame(this._currentSource);
+              if (this._renderMode === "field" && this._fieldState) {
+                const field = this._fieldState;
+                this.setFieldBlend(
+                  field.fromWeighted,
+                  field.fromCoverage,
+                  field.fromChannel,
+                  field.toWeighted,
+                  field.toCoverage,
+                  field.toChannel,
+                  field.progress,
+                  field.particleType,
+                  field.scale
+                );
+              } else if (this._currentSource) {
+                this.setFrame(this._currentSource);
+              }
             } catch {
               this._abortTransition();
             }
@@ -2079,9 +2197,58 @@
             precision mediump float;
             uniform sampler2D u_from;
             uniform sampler2D u_to;
+            uniform sampler2D u_from_coverage;
+            uniform sampler2D u_to_coverage;
+            uniform sampler2D u_palette;
             uniform float u_mix;
+            uniform float u_field_mode;
+            uniform vec4 u_from_channel;
+            uniform vec4 u_to_channel;
             varying vec2 v_texCoord;
+
+            vec4 fromFieldColor() {
+              float coverage = dot(
+                texture2D(u_from_coverage, v_texCoord),
+                u_from_channel
+              );
+              float weighted = dot(
+                texture2D(u_from, v_texCoord),
+                u_from_channel
+              );
+              float position = coverage > 0.002
+                ? clamp(weighted / coverage, 0.0, 1.0)
+                : 0.0;
+              vec4 color = texture2D(u_palette, vec2(position, 0.5));
+              color.a *= coverage;
+              return vec4(color.rgb * color.a, color.a);
+            }
+
+            vec4 toFieldColor() {
+              float coverage = dot(
+                texture2D(u_to_coverage, v_texCoord),
+                u_to_channel
+              );
+              float weighted = dot(
+                texture2D(u_to, v_texCoord),
+                u_to_channel
+              );
+              float position = coverage > 0.002
+                ? clamp(weighted / coverage, 0.0, 1.0)
+                : 0.0;
+              vec4 color = texture2D(u_palette, vec2(position, 0.5));
+              color.a *= coverage;
+              return vec4(color.rgb * color.a, color.a);
+            }
+
             void main() {
+              if (u_field_mode > 0.5) {
+                gl_FragColor = mix(
+                  fromFieldColor(),
+                  toFieldColor(),
+                  u_mix
+                ) * ${DATA_OPACITY.toFixed(2)};
+                return;
+              }
               vec4 fromColor = texture2D(u_from, v_texCoord);
               vec4 toColor = texture2D(u_to, v_texCoord);
               vec4 fromPremultiplied = vec4(
@@ -2148,20 +2315,40 @@
 
           const fromUniform = gl.getUniformLocation(program, "u_from");
           const toUniform = gl.getUniformLocation(program, "u_to");
+          const fromCoverageUniform = gl.getUniformLocation(program, "u_from_coverage");
+          const toCoverageUniform = gl.getUniformLocation(program, "u_to_coverage");
+          const paletteUniform = gl.getUniformLocation(program, "u_palette");
           const mixUniform = gl.getUniformLocation(program, "u_mix");
+          const fieldModeUniform = gl.getUniformLocation(program, "u_field_mode");
+          const fromChannelUniform = gl.getUniformLocation(program, "u_from_channel");
+          const toChannelUniform = gl.getUniformLocation(program, "u_to_channel");
           gl.uniform1i(fromUniform, 0);
           gl.uniform1i(toUniform, 1);
+          gl.uniform1i(fromCoverageUniform, 2);
+          gl.uniform1i(toCoverageUniform, 3);
+          gl.uniform1i(paletteUniform, 4);
           gl.disable(gl.BLEND);
           gl.disable(gl.DEPTH_TEST);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+          gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
 
           this._gl = gl;
           this._program = program;
           this._buffer = buffer;
           this._mixUniform = mixUniform;
+          this._fieldModeUniform = fieldModeUniform;
+          this._fromChannelUniform = fromChannelUniform;
+          this._toChannelUniform = toChannelUniform;
           this._textures = [gl.createTexture(), gl.createTexture()];
-          this._textures.forEach((texture) => {
+          this._coverageTextures = [gl.createTexture(), gl.createTexture()];
+          this._paletteTexture = gl.createTexture();
+          this._paletteKey = "";
+          [
+            ...this._textures,
+            ...this._coverageTextures,
+            this._paletteTexture
+          ].forEach((texture) => {
             gl.bindTexture(gl.TEXTURE_2D, texture);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -2201,8 +2388,55 @@
           );
         },
 
+        _uploadCoverage(textureIndex, source) {
+          this._resize(source);
+          if (!this._gl) return;
+          const gl = this._gl;
+          gl.activeTexture(textureIndex === this._currentTexture ? gl.TEXTURE2 : gl.TEXTURE3);
+          gl.bindTexture(gl.TEXTURE_2D, this._coverageTextures[textureIndex]);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            source
+          );
+        },
+
+        _uploadPalette(particleType, scale) {
+          if (!this._gl) return;
+          const key = `${particleType}-${scale}`;
+          if (this._paletteKey === key) return;
+          const lut = pixelLut(particleType, scale);
+          const pixels = new Uint8Array(1024 * 4);
+          for (let index = 0; index < 1024; index += 1) {
+            const offset = index * 4;
+            pixels[offset] = lut.red[index];
+            pixels[offset + 1] = lut.green[index];
+            pixels[offset + 2] = lut.blue[index];
+            pixels[offset + 3] = Math.round(lut.alpha[index] * 255);
+          }
+          const gl = this._gl;
+          gl.activeTexture(gl.TEXTURE4);
+          gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            1024,
+            1,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            pixels
+          );
+          this._paletteKey = key;
+        },
+
         _draw(progress) {
           if (!this._gl) {
+            if (this._renderMode === "field") return;
             const context = this._fallbackContext;
             if (!context || !this._currentSource) return;
             context.clearRect(0, 0, this._image.width, this._image.height);
@@ -2237,12 +2471,49 @@
           gl.bindTexture(gl.TEXTURE_2D, this._textures[this._currentTexture]);
           gl.activeTexture(gl.TEXTURE1);
           gl.bindTexture(gl.TEXTURE_2D, this._textures[this._nextTexture]);
+          if (this._renderMode === "field") {
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(
+              gl.TEXTURE_2D,
+              this._coverageTextures[this._currentTexture]
+            );
+            gl.activeTexture(gl.TEXTURE3);
+            gl.bindTexture(
+              gl.TEXTURE_2D,
+              this._coverageTextures[this._nextTexture]
+            );
+            gl.activeTexture(gl.TEXTURE4);
+            gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture);
+            gl.uniform1f(this._fieldModeUniform, 1);
+            gl.uniform4fv(
+              this._fromChannelUniform,
+              this._channelMask(this._fieldState.fromChannel)
+            );
+            gl.uniform4fv(
+              this._toChannelUniform,
+              this._channelMask(this._fieldState.toChannel)
+            );
+          } else {
+            gl.uniform1f(this._fieldModeUniform, 0);
+          }
           gl.uniform1f(this._mixUniform, progress);
           gl.drawArrays(gl.TRIANGLES, 0, 6);
         },
 
+        _channelMask(channel) {
+          const mask = new Float32Array(4);
+          mask[Math.max(0, Math.min(2, channel))] = 1;
+          return mask;
+        },
+
+        supportsFieldRendering() {
+          return Boolean(this._gl && !this._contextLost);
+        },
+
         setFrame(source) {
           this.finishTransition();
+          this._renderMode = "color";
+          this._fieldState = null;
           this._currentSource = source;
           this._nextSource = source;
           this._upload(this._currentTexture, source);
@@ -2253,6 +2524,8 @@
 
         setBlend(fromSource, toSource, progress) {
           this.finishTransition();
+          this._renderMode = "color";
+          this._fieldState = null;
           this._currentSource = fromSource;
           this._nextSource = toSource;
           this._upload(this._currentTexture, fromSource);
@@ -2261,9 +2534,48 @@
           return true;
         },
 
+        setFieldBlend(
+          fromWeighted,
+          fromCoverage,
+          fromChannel,
+          toWeighted,
+          toCoverage,
+          toChannel,
+          progress,
+          particleType,
+          scale
+        ) {
+          this.finishTransition();
+          if (!this._gl) return false;
+          this._renderMode = "field";
+          this._currentTexture = 0;
+          this._nextTexture = 1;
+          this._currentSource = fromWeighted;
+          this._nextSource = toWeighted;
+          this._fieldState = {
+            fromWeighted,
+            fromCoverage,
+            fromChannel,
+            toWeighted,
+            toCoverage,
+            toChannel,
+            progress,
+            particleType,
+            scale
+          };
+          this._upload(this._currentTexture, fromWeighted);
+          this._upload(this._nextTexture, toWeighted);
+          this._uploadCoverage(this._currentTexture, fromCoverage);
+          this._uploadCoverage(this._nextTexture, toCoverage);
+          this._uploadPalette(particleType, scale);
+          this._draw(Math.max(0, Math.min(1, progress)));
+          return true;
+        },
+
         setBlendProgress(progress) {
           this.finishTransition();
           if (!this._currentSource || !this._nextSource) return false;
+          if (this._fieldState) this._fieldState.progress = progress;
           this._draw(Math.max(0, Math.min(1, progress)));
           return true;
         },
@@ -2274,6 +2586,8 @@
 
         transitionTo(source, duration) {
           this.finishTransition();
+          this._renderMode = "color";
+          this._fieldState = null;
           this._nextSource = source;
           this._upload(this._nextTexture, source);
           if (duration <= 0) {
@@ -2336,6 +2650,8 @@
           this.finishTransition();
           if (this._gl) {
             this._textures.forEach((texture) => this._gl.deleteTexture(texture));
+            this._coverageTextures.forEach((texture) => this._gl.deleteTexture(texture));
+            this._gl.deleteTexture(this._paletteTexture);
             this._gl.deleteBuffer(this._buffer);
             this._gl.deleteProgram(this._program);
           }
@@ -2412,6 +2728,7 @@
         const displayedHour = Math.round(hour);
         const valid = new Date(currentValidTime.getTime() + displayedHour * HOUR);
         const localTime = formatLocal.format(valid);
+        const compactLocalTime = formatCompactLocal(valid);
         slider.value = String(hour);
         const rangeSpan = maximumHour - minimumHour;
         const progress = rangeSpan > 0
@@ -2429,7 +2746,7 @@
               : `${displayedHour < 0 ? "Minus" : "Plus"} ${Math.abs(displayedHour)} hours`
           }, ${localTime}`
         );
-        timeValue.textContent = localTime;
+        timeValue.textContent = compactLocalTime;
         hourValue.textContent = displayedHour === 0
           ? "Now"
           : `${displayedHour < 0 ? "−" : "+"}${Math.abs(displayedHour)} h`;
@@ -2460,7 +2777,14 @@
         transitionGeneration += 1;
         if (wasPlaying && renderLayer) {
           renderLayer.finishTransition();
-          if (pendingProcessed) {
+          if (smoothTimelineReady()) {
+            scrubPairKey = "";
+            if (renderScrubPreview(Math.round(selectedHour))) {
+              selectedHour = Math.round(selectedHour);
+              activeKey = descriptor(selectedHour).key;
+              updateLabels(selectedHour, false);
+            }
+          } else if (pendingProcessed) {
             activeProcessed = pendingProcessed;
             activeKey = pendingProcessed.frame.key;
             pendingProcessed = null;
@@ -2483,7 +2807,82 @@
         scheduleProcessedAhead(nextHour);
       }
 
+      function smoothTimelineReady() {
+        return Boolean(
+          !fieldRenderingFailed &&
+          previewCache.get(cacheDatasetName())?.value?.ready &&
+          renderLayer?.supportsFieldRendering()
+        );
+      }
+
+      async function showSmoothFrame(hour) {
+        const frame = descriptor(hour);
+        const transition = ++transitionGeneration;
+        const fromHour = selectedHour;
+        const adjacent = Math.abs(frame.hour - fromHour) === 1;
+        const duration = (
+          renderLayer.hasFrame() &&
+          adjacent &&
+          !reducedMotion
+        )
+          ? (playing ? PLAYBACK_FADE_MS : Math.min(SCRUB_FADE_MS, 140))
+          : 0;
+        selectedHour = frame.hour;
+        map.closePopup();
+
+        if (duration <= 0) {
+          if (!renderScrubPreview(frame.hour)) return false;
+        } else {
+          const rendered = await new Promise((resolve) => {
+            let start = null;
+            const step = (timestamp) => {
+              if (transition !== transitionGeneration) {
+                resolve(null);
+                return;
+              }
+              if (start === null) start = timestamp;
+              const progress = Math.max(
+                0,
+                Math.min(1, (timestamp - start) / duration)
+              );
+              const visualHour = fromHour + (frame.hour - fromHour) * progress;
+              const ok = renderScrubPreview(visualHour);
+              updateLabels(visualHour, false);
+              if (!ok) {
+                resolve(false);
+              } else if (progress < 1) {
+                window.requestAnimationFrame(step);
+              } else {
+                resolve(true);
+              }
+            };
+            window.requestAnimationFrame(step);
+          });
+          if (rendered === null || transition !== transitionGeneration) return null;
+          if (!rendered) return false;
+        }
+
+        selectedHour = frame.hour;
+        activeKey = frame.key;
+        updateLabels(frame.hour, false);
+        setFrameStatus("ready", "Forecast frame loaded");
+        return true;
+      }
+
       async function showFrame(hour, options = {}) {
+        if (smoothTimelineReady()) {
+          try {
+            const smoothResult = await showSmoothFrame(hour);
+            if (smoothResult === true) return true;
+            if (smoothResult === null) return false;
+          } catch {
+            // Fall through to the prepared full-frame compatibility path.
+          }
+          fieldRenderingFailed = true;
+          scrubPairKey = "";
+          activeKey = "";
+          clearSmoothTimelineCache();
+        }
         const frame = descriptor(hour);
         const transition = ++transitionGeneration;
         selectedHour = frame.hour;
@@ -2522,11 +2921,15 @@
           ? (playing ? PLAYBACK_FADE_MS : Math.min(SCRUB_FADE_MS, 140))
           : 0;
         pendingProcessed = loaded;
-        renderPromise = Promise.resolve(
-          hasRenderedFrame
-            ? renderLayer.transitionTo(loaded.source, reducedMotion ? 0 : fadeMilliseconds)
-            : renderLayer.setFrame(loaded.source)
-        ).catch(() => false);
+        try {
+          renderPromise = Promise.resolve(
+            hasRenderedFrame
+              ? renderLayer.transitionTo(loaded.source, reducedMotion ? 0 : fadeMilliseconds)
+              : renderLayer.setFrame(loaded.source)
+          ).catch(() => false);
+        } catch {
+          renderPromise = Promise.resolve(false);
+        }
         const rendered = await renderPromise;
         if (!rendered) {
           pendingProcessed = null;
@@ -2575,8 +2978,10 @@
           icon.outerHTML = '<i data-lucide="pause" aria-hidden="true"></i>';
           renderIcons();
         }
-        warmAhead(selectedHour, 4);
-        scheduleProcessedAhead(selectedHour + 1);
+        if (!smoothTimelineReady()) {
+          warmAhead(selectedHour, 4);
+          scheduleProcessedAhead(selectedHour + 1);
+        }
         playbackLoop(generation);
       }
 
@@ -2590,8 +2995,21 @@
         transitionGeneration += 1;
         renderLayer.finishTransition();
         updateLegend();
-        loadPreviewDataset(cacheDatasetName());
+        slider.disabled = true;
+        playButton.disabled = true;
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+        resetButton.disabled = true;
+        setFrameStatus("loading", "Preparing smooth forecast timeline");
+        const smoothTimeline = !fieldRenderingFailed && renderLayer.supportsFieldRendering()
+          ? await loadPreviewDataset(cacheDatasetName())
+          : null;
+        if (change !== datasetGeneration) return;
+        scrubPairKey = "";
         const ok = await showFrame(selectedHour, { prime: true, quiet: true });
+        slider.disabled = false;
+        updateLabels(selectedHour, !ok);
+        if (!ok) setFrameStatus("error", "Forecast frame unavailable");
         if (change === datasetGeneration && resumePlayback && playing) {
           if (!ok) {
             stopPlayback();
@@ -2599,6 +3017,9 @@
             playbackGeneration += 1;
             playbackLoop(playbackGeneration);
           }
+        }
+        if (!smoothTimeline && ok) {
+          setFrameStatus("ready", "Forecast frame loaded");
         }
         document.getElementById("pm-data-menu").open = false;
       }
@@ -2654,8 +3075,10 @@
           ? Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
           : 0;
         const pointerHour = minimumHour + progress * (maximumHour - minimumHour);
-        loadPreviewDataset()
-          .then((preview) => ensurePreviewHour(preview, pointerHour));
+        if (!fieldRenderingFailed && renderLayer.supportsFieldRendering()) {
+          loadPreviewDataset()
+            .then((preview) => ensurePreviewHour(preview, pointerHour));
+        }
       });
 
       slider.addEventListener("input", () => {
@@ -2723,11 +3146,12 @@
         map.closePopup();
         const values = activeProcessed?.values;
         const preparedImage = activeProcessed?.image;
+        const fields = activeProcessed?.fields;
         const frame = activeProcessed?.frame;
         const width = activeProcessed?.width;
         const height = activeProcessed?.height;
         if (
-          (!values && !preparedImage) ||
+          (!values && !preparedImage && !fields) ||
           !frame ||
           !width ||
           !height ||
@@ -2742,6 +3166,69 @@
           (northEast.y - point.y) / (northEast.y - southWest.y) * height
         )));
         let value = values ? values[y * width + x] : -1;
+        if (fields && probeContext) {
+          const sampleField = (field) => {
+            probeContext.clearRect(0, 0, 1, 1);
+            probeContext.drawImage(
+              field.pack.weightedImage,
+              x,
+              y,
+              1,
+              1,
+              0,
+              0,
+              1,
+              1
+            );
+            const weighted = probeContext.getImageData(0, 0, 1, 1).data[
+              field.channel
+            ];
+            probeContext.clearRect(0, 0, 1, 1);
+            probeContext.drawImage(
+              field.pack.coverageImage,
+              x,
+              y,
+              1,
+              1,
+              0,
+              0,
+              1,
+              1
+            );
+            const coverage = probeContext.getImageData(0, 0, 1, 1).data[
+              field.channel
+            ];
+            return coverage > 2
+              ? {
+                  position: Math.max(0, Math.min(1, weighted / coverage)),
+                  coverage: coverage / 255
+                }
+              : null;
+          };
+          try {
+            const fromSample = sampleField(fields.fromField);
+            const toSample = sampleField(fields.toField);
+            if (fromSample || toSample) {
+              const amount = fields.progress;
+              const fromCoverage = fromSample?.coverage || 0;
+              const toCoverage = toSample?.coverage || 0;
+              const coverage = fromCoverage + (toCoverage - fromCoverage) * amount;
+              const fromWeighted = (fromSample?.position || 0) * fromCoverage;
+              const toWeighted = (toSample?.position || 0) * toCoverage;
+              const weighted = fromWeighted + (toWeighted - fromWeighted) * amount;
+              const position = coverage > 0 ? weighted / coverage : 0;
+              const displayAlpha = paletteColor(
+                position,
+                frame.particle
+              )[3] * coverage;
+              if (displayAlpha > 0.01) {
+                value = concentrationAtPosition(position, frame.scale);
+              }
+            }
+          } catch {
+            value = -1;
+          }
+        }
         if (!values && preparedImage && probeContext) {
           try {
             probeContext.clearRect(0, 0, 1, 1);
@@ -2801,12 +3288,22 @@
         slider.min = String(minimumHour);
         slider.max = String(maximumHour);
         slider.value = "0";
-        slider.disabled = false;
         updateRangeLabels();
         updateLegend();
         updateLabels(0, true);
-        loadPreviewDataset();
-        await showFrame(0, { prime: true, quiet: true });
+        slider.disabled = true;
+        playButton.disabled = true;
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+        resetButton.disabled = true;
+        setFrameStatus("loading", "Preparing smooth forecast timeline");
+        if (!fieldRenderingFailed && renderLayer.supportsFieldRendering()) {
+          await loadPreviewDataset();
+        }
+        const ready = await showFrame(0, { prime: true, quiet: true });
+        slider.disabled = false;
+        updateLabels(0, !ready);
+        if (!ready) setFrameStatus("error", "Forecast frame unavailable");
       }
 
       initialize();
