@@ -140,15 +140,12 @@
       font-family: inherit;
     }
 
-    #north-america-pm25 .leaflet-image-layer {
-      transition: opacity var(--pm-frame-fade, 900ms) linear;
-      will-change: opacity, transform;
+    #north-america-pm25 .pm-continuous-layer {
+      will-change: transform;
     }
 
-    #north-america-pm25 .leaflet-zoom-anim .leaflet-image-layer.leaflet-zoom-animated {
-      transition:
-        transform 250ms cubic-bezier(0, 0, 0.25, 1),
-        opacity var(--pm-frame-fade, 900ms) linear;
+    #north-america-pm25 .leaflet-zoom-anim .pm-continuous-layer.leaflet-zoom-animated {
+      transition: transform 250ms cubic-bezier(0, 0, 0.25, 1);
     }
 
     #north-america-pm25 .leaflet-tile-container img.leaflet-tile {
@@ -893,7 +890,7 @@
             </div>
           </div>
           <label class="sr-only" for="pm-time">Forecast hour</label>
-          <input class="pm-range" id="pm-time" type="range" min="0" max="72" step="1" value="0">
+          <input class="pm-range" id="pm-time" type="range" min="0" max="72" step="0.01" value="0">
           <div class="pm-range-labels" id="pm-range-labels" aria-hidden="true"></div>
         </section>
       </div>
@@ -1070,19 +1067,14 @@
       let extent = "surface";
       let selectedHour = 0;
       let activeKey = "";
-      let standbyKey = "";
-      let activeLayer;
-      let standbyLayer;
-      let standbyPromise = null;
-      let standbyCleanup = null;
-      let standbyGeneration = 0;
+      let activeProcessed = null;
+      let pendingProcessed = null;
+      let renderLayer;
+      let renderPromise = Promise.resolve();
       let transitionGeneration = 0;
-      let fadePromise = Promise.resolve();
-      let zIndex = 420;
       let playing = false;
       let playbackGeneration = 0;
       let datasetGeneration = 0;
-      let scrubTimer = null;
       let locateButton;
       let locateStatus;
       let locationMarker;
@@ -1091,6 +1083,9 @@
       const rawCache = new Map();
       const processedCache = new Map();
       const scheduledProcessing = new Map();
+      const previewCache = new Map();
+      const scrubCanvases = [document.createElement("canvas"), document.createElement("canvas")];
+      let scrubGeneration = 0;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
       const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
         .then((response) => {
@@ -1099,7 +1094,7 @@
         })
         .then((manifest) => (
           manifest &&
-          (manifest.schemaVersion === 1 || manifest.schemaVersion === 2) &&
+          [1, 2, 3].includes(manifest.schemaVersion) &&
           manifest.frames &&
           typeof manifest.frames === "object"
             ? manifest
@@ -1232,8 +1227,18 @@
         return DATASETS[particle][extent];
       }
 
+      function cacheDatasetName(
+        particleType = particle,
+        extentType = extent
+      ) {
+        return `${particleType}-${extentType}`;
+      }
+
       function applyManifestTimeline(manifest) {
-        if (manifest?.schemaVersion !== 2 || !Array.isArray(manifest.timelineHours)) return false;
+        if (
+          ![2, 3].includes(manifest?.schemaVersion) ||
+          !Array.isArray(manifest.timelineHours)
+        ) return false;
         const generatedAt = new Date(manifest.generatedAt);
         const manifestReference = new Date(manifest.primaryReferenceTime);
         const manifestNow = new Date(manifest.currentValidTime);
@@ -1269,7 +1274,9 @@
 
       function descriptor(hour) {
         const data = dataset();
-        const safeHour = Math.max(minimumHour, Math.min(maximumHour, Number(hour)));
+        const safeHour = Math.round(
+          Math.max(minimumHour, Math.min(maximumHour, Number(hour)))
+        );
         const validTime = new Date(currentValidTime.getTime() + safeHour * HOUR);
         const currentRunIndex = currentIndex + safeHour;
         const frameReferenceTime = currentRunIndex >= 0 && currentRunIndex <= 72
@@ -1513,7 +1520,7 @@
 
       async function recolorFrame(frame) {
         const prepared = await cacheManifestPromise.then(async (manifest) => {
-          const cachedPath = manifest?.schemaVersion === 2
+          const cachedPath = [2, 3].includes(manifest?.schemaVersion)
             ? manifest.frames?.[frame.key]
             : null;
           if (typeof cachedPath !== "string" || !cachedPath) return null;
@@ -1521,13 +1528,12 @@
             const objectUrl = new URL(cachedPath, cacheManifestUrl).href;
             const image = await loadImage(objectUrl);
             return {
-              objectUrl,
+              source: image,
               image,
               values: null,
               width: image.naturalWidth,
               height: image.naturalHeight,
-              frame,
-              revoke: false
+              frame
             };
           } catch {
             return null;
@@ -1575,34 +1581,25 @@
         outputContext.filter = "blur(0.6px)";
         outputContext.drawImage(canvas, 0, 0, output.width, output.height);
 
-        const blob = await new Promise((resolve, reject) => {
-          output.toBlob((result) => {
-            if (result) resolve(result);
-            else reject(new Error("Unable to create map image"));
-          }, "image/png");
-        });
-
         return {
-          objectUrl: URL.createObjectURL(blob),
+          source: output,
           image: null,
           values,
           width: canvas.width,
           height: canvas.height,
-          frame,
-          revoke: true
+          frame
         };
-      }
-
-      function objectUrlInUse(objectUrl) {
-        return activeLayer?._pmObjectUrl === objectUrl || standbyLayer?._pmObjectUrl === objectUrl;
       }
 
       function trimProcessedCache() {
         if (processedCache.size <= cacheLimit) return;
         for (const [key, entry] of processedCache) {
           if (processedCache.size <= cacheLimit) break;
-          if (!entry.value || objectUrlInUse(entry.value.objectUrl)) continue;
-          if (entry.value.revoke) URL.revokeObjectURL(entry.value.objectUrl);
+          if (
+            !entry.value
+            || entry.value === activeProcessed
+            || entry.value === pendingProcessed
+          ) continue;
           processedCache.delete(key);
         }
       }
@@ -1664,21 +1661,459 @@
         scheduledProcessing.clear();
       }
 
-      function makeLayer(opacity) {
-        return L.imageOverlay(
-          "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=",
-          DATA_BOUNDS,
-          {
-            opacity,
-            pane: "overlayPane",
-            interactive: false,
-            attribution: '<a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/">ECCC GeoMet RAQDPS</a>'
+      function loadPreviewDataset(datasetName = cacheDatasetName()) {
+        const existing = previewCache.get(datasetName);
+        if (existing) {
+          touchCache(previewCache, datasetName, existing);
+          return existing.promise;
+        }
+
+        const entry = { value: null, promise: null };
+        entry.promise = cacheManifestPromise.then(async (manifest) => {
+          const preview = manifest?.schemaVersion === 3
+            ? manifest.scrubPreview
+            : null;
+          const atlases = preview?.atlases?.[datasetName];
+          if (
+            !preview ||
+            !Number.isInteger(preview.frameWidth) ||
+            !Number.isInteger(preview.frameHeight) ||
+            !Array.isArray(atlases) ||
+            atlases.length === 0
+          ) return null;
+
+          const loadedAtlases = await Promise.all(atlases.map(async (atlas) => ({
+            hours: Array.isArray(atlas.hours) ? atlas.hours.map(Number) : [],
+            image: await loadImage(new URL(atlas.path, cacheManifestUrl).href)
+          })));
+          return {
+            frameWidth: preview.frameWidth,
+            frameHeight: preview.frameHeight,
+            atlases: loadedAtlases
+          };
+        }).then((value) => {
+          entry.value = value;
+          while (previewCache.size > 2) {
+            previewCache.delete(previewCache.keys().next().value);
           }
+          return value;
+        }).catch(() => {
+          previewCache.delete(datasetName);
+          return null;
+        });
+        touchCache(previewCache, datasetName, entry);
+        return entry.promise;
+      }
+
+      function previewSource(preview, hour, slot) {
+        const atlas = preview?.atlases.find((candidate) => candidate.hours.includes(hour));
+        if (!atlas) return null;
+        const column = atlas.hours.indexOf(hour);
+        const canvas = scrubCanvases[slot];
+        if (
+          canvas.width !== preview.frameWidth ||
+          canvas.height !== preview.frameHeight
+        ) {
+          canvas.width = preview.frameWidth;
+          canvas.height = preview.frameHeight;
+        }
+        const context = canvas.getContext("2d", { alpha: true });
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(
+          atlas.image,
+          column * preview.frameWidth,
+          0,
+          preview.frameWidth,
+          preview.frameHeight,
+          0,
+          0,
+          preview.frameWidth,
+          preview.frameHeight
         );
+        return canvas;
+      }
+
+      function renderScrubPreview(hour) {
+        const preview = previewCache.get(cacheDatasetName())?.value;
+        if (!preview) return false;
+        const lowerHour = Math.max(minimumHour, Math.floor(hour));
+        const upperHour = Math.min(maximumHour, Math.ceil(hour));
+        const fromSource = previewSource(preview, lowerHour, 0);
+        const toSource = previewSource(preview, upperHour, 1);
+        if (!fromSource || !toSource) return false;
+        const progress = upperHour === lowerHour
+          ? 0
+          : (hour - lowerHour) / (upperHour - lowerHour);
+        renderLayer.setBlend(fromSource, toSource, progress);
+        activeProcessed = null;
+        activeKey = "";
+        map.closePopup();
+        return true;
+      }
+
+      const ContinuousImageOverlay = L.ImageOverlay.extend({
+        initialize(bounds, options) {
+          L.ImageOverlay.prototype.initialize.call(this, "", bounds, options);
+          this._textures = [];
+          this._currentTexture = 0;
+          this._nextTexture = 1;
+          this._animationFrame = 0;
+          this._animationResolve = null;
+        },
+
+        _initImage() {
+          const animationClass = this._zoomAnimated
+            ? "leaflet-zoom-animated"
+            : "leaflet-zoom-hide";
+          const className = [
+            "leaflet-image-layer",
+            animationClass,
+            this.options.className || ""
+          ].join(" ");
+          const canvas = this._image = L.DomUtil.create("canvas", className);
+          canvas.width = this.options.pixelWidth;
+          canvas.height = this.options.pixelHeight;
+          canvas.onselectstart = L.Util.falseFn;
+          canvas.onmousemove = L.Util.falseFn;
+          canvas.setAttribute("aria-hidden", "true");
+          canvas.addEventListener("webglcontextlost", (event) => {
+            event.preventDefault();
+            this._contextLost = true;
+            this._abortTransition();
+          });
+          canvas.addEventListener("webglcontextrestored", () => {
+            this._contextLost = false;
+            try {
+              this._initializeRenderer();
+              if (this._currentSource) this.setFrame(this._currentSource);
+            } catch {
+              this._abortTransition();
+            }
+          });
+          try {
+            this._initializeRenderer();
+          } catch {
+            const fallback = L.DomUtil.create("canvas", className);
+            fallback.width = this.options.pixelWidth;
+            fallback.height = this.options.pixelHeight;
+            fallback.onselectstart = L.Util.falseFn;
+            fallback.onmousemove = L.Util.falseFn;
+            fallback.setAttribute("aria-hidden", "true");
+            this._image = fallback;
+            this._fallbackContext = fallback.getContext("2d", { alpha: true });
+          }
+          this._updateZIndex();
+        },
+
+        _initializeRenderer() {
+          const canvas = this._image;
+          const gl = canvas.getContext("webgl", {
+            alpha: true,
+            antialias: false,
+            depth: false,
+            premultipliedAlpha: true,
+            preserveDrawingBuffer: false
+          }) || canvas.getContext("experimental-webgl", {
+            alpha: true,
+            antialias: false,
+            depth: false,
+            premultipliedAlpha: true,
+            preserveDrawingBuffer: false
+          });
+
+          if (!gl) {
+            this._fallbackContext = canvas.getContext("2d", { alpha: true });
+            return;
+          }
+
+          const vertexSource = `
+            attribute vec2 a_position;
+            attribute vec2 a_texCoord;
+            varying vec2 v_texCoord;
+            void main() {
+              gl_Position = vec4(a_position, 0.0, 1.0);
+              v_texCoord = a_texCoord;
+            }
+          `;
+          const fragmentSource = `
+            precision mediump float;
+            uniform sampler2D u_from;
+            uniform sampler2D u_to;
+            uniform float u_mix;
+            varying vec2 v_texCoord;
+            void main() {
+              vec4 fromColor = texture2D(u_from, v_texCoord);
+              vec4 toColor = texture2D(u_to, v_texCoord);
+              vec4 fromPremultiplied = vec4(
+                fromColor.rgb * fromColor.a,
+                fromColor.a
+              );
+              vec4 toPremultiplied = vec4(
+                toColor.rgb * toColor.a,
+                toColor.a
+              );
+              gl_FragColor = mix(
+                fromPremultiplied,
+                toPremultiplied,
+                u_mix
+              ) * ${DATA_OPACITY.toFixed(2)};
+            }
+          `;
+
+          const compileShader = (type, source) => {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+              const message = gl.getShaderInfoLog(shader) || "Unable to compile map shader";
+              gl.deleteShader(shader);
+              throw new Error(message);
+            }
+            return shader;
+          };
+
+          const vertexShader = compileShader(gl.VERTEX_SHADER, vertexSource);
+          const fragmentShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+          const program = gl.createProgram();
+          gl.attachShader(program, vertexShader);
+          gl.attachShader(program, fragmentShader);
+          gl.linkProgram(program);
+          gl.deleteShader(vertexShader);
+          gl.deleteShader(fragmentShader);
+          if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            const message = gl.getProgramInfoLog(program) || "Unable to link map shader";
+            gl.deleteProgram(program);
+            throw new Error(message);
+          }
+
+          const vertices = new Float32Array([
+            -1, -1, 0, 0,
+             1, -1, 1, 0,
+            -1,  1, 0, 1,
+            -1,  1, 0, 1,
+             1, -1, 1, 0,
+             1,  1, 1, 1
+          ]);
+          const buffer = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+          gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+          gl.useProgram(program);
+
+          const position = gl.getAttribLocation(program, "a_position");
+          const textureCoordinate = gl.getAttribLocation(program, "a_texCoord");
+          gl.enableVertexAttribArray(position);
+          gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 16, 0);
+          gl.enableVertexAttribArray(textureCoordinate);
+          gl.vertexAttribPointer(textureCoordinate, 2, gl.FLOAT, false, 16, 8);
+
+          const fromUniform = gl.getUniformLocation(program, "u_from");
+          const toUniform = gl.getUniformLocation(program, "u_to");
+          const mixUniform = gl.getUniformLocation(program, "u_mix");
+          gl.uniform1i(fromUniform, 0);
+          gl.uniform1i(toUniform, 1);
+          gl.disable(gl.BLEND);
+          gl.disable(gl.DEPTH_TEST);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+
+          this._gl = gl;
+          this._program = program;
+          this._buffer = buffer;
+          this._mixUniform = mixUniform;
+          this._textures = [gl.createTexture(), gl.createTexture()];
+          this._textures.forEach((texture) => {
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          });
+        },
+
+        _sourceSize(source) {
+          return {
+            width: source.naturalWidth || source.width,
+            height: source.naturalHeight || source.height
+          };
+        },
+
+        _resize(source) {
+          const { width, height } = this._sourceSize(source);
+          if (!width || !height) throw new Error("Forecast frame has no display dimensions");
+          if (this._gl) {
+            this._gl.viewport(0, 0, this._image.width, this._image.height);
+          }
+        },
+
+        _upload(textureIndex, source) {
+          this._resize(source);
+          if (!this._gl) return;
+          const gl = this._gl;
+          gl.activeTexture(textureIndex === this._currentTexture ? gl.TEXTURE0 : gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, this._textures[textureIndex]);
+          gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            source
+          );
+        },
+
+        _draw(progress) {
+          if (!this._gl) {
+            const context = this._fallbackContext;
+            if (!context || !this._currentSource) return;
+            context.clearRect(0, 0, this._image.width, this._image.height);
+            context.globalCompositeOperation = "source-over";
+            context.globalAlpha = DATA_OPACITY * (1 - progress);
+            context.drawImage(
+              this._currentSource,
+              0,
+              0,
+              this._image.width,
+              this._image.height
+            );
+            if (this._nextSource) {
+              context.globalCompositeOperation = "lighter";
+              context.globalAlpha = DATA_OPACITY * progress;
+              context.drawImage(
+                this._nextSource,
+                0,
+                0,
+                this._image.width,
+                this._image.height
+              );
+            }
+            context.globalCompositeOperation = "source-over";
+            context.globalAlpha = 1;
+            return;
+          }
+
+          const gl = this._gl;
+          gl.useProgram(this._program);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, this._textures[this._currentTexture]);
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, this._textures[this._nextTexture]);
+          gl.uniform1f(this._mixUniform, progress);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        },
+
+        setFrame(source) {
+          this.finishTransition();
+          this._currentSource = source;
+          this._nextSource = source;
+          this._upload(this._currentTexture, source);
+          this._upload(this._nextTexture, source);
+          this._draw(0);
+          return true;
+        },
+
+        setBlend(fromSource, toSource, progress) {
+          this.finishTransition();
+          this._currentSource = fromSource;
+          this._nextSource = toSource;
+          this._upload(this._currentTexture, fromSource);
+          this._upload(this._nextTexture, toSource);
+          this._draw(Math.max(0, Math.min(1, progress)));
+          return true;
+        },
+
+        hasFrame() {
+          return Boolean(this._currentSource);
+        },
+
+        transitionTo(source, duration) {
+          this.finishTransition();
+          this._nextSource = source;
+          this._upload(this._nextTexture, source);
+          if (duration <= 0) {
+            this._draw(1);
+            this._completeTransition();
+            return Promise.resolve(true);
+          }
+
+          return new Promise((resolve) => {
+            let start = null;
+            this._animationResolve = resolve;
+            const step = (timestamp) => {
+              try {
+                if (start === null) start = timestamp;
+                const progress = Math.max(0, Math.min(1, (timestamp - start) / duration));
+                this._draw(progress);
+                if (progress < 1) {
+                  this._animationFrame = window.requestAnimationFrame(step);
+                } else {
+                  this._completeTransition();
+                }
+              } catch {
+                this._abortTransition();
+              }
+            };
+            this._animationFrame = window.requestAnimationFrame(step);
+          });
+        },
+
+        _completeTransition() {
+          if (!this._animationResolve && !this._nextSource) return;
+          if (this._animationFrame) window.cancelAnimationFrame(this._animationFrame);
+          this._animationFrame = 0;
+          this._draw(1);
+          [this._currentTexture, this._nextTexture] = [
+            this._nextTexture,
+            this._currentTexture
+          ];
+          this._currentSource = this._nextSource;
+          this._nextSource = null;
+          const resolve = this._animationResolve;
+          this._animationResolve = null;
+          if (resolve) resolve(true);
+        },
+
+        _abortTransition() {
+          if (this._animationFrame) window.cancelAnimationFrame(this._animationFrame);
+          this._animationFrame = 0;
+          this._nextSource = null;
+          const resolve = this._animationResolve;
+          this._animationResolve = null;
+          if (resolve) resolve(false);
+        },
+
+        finishTransition() {
+          if (this._animationResolve) this._completeTransition();
+        },
+
+        onRemove(mapInstance) {
+          this.finishTransition();
+          if (this._gl) {
+            this._textures.forEach((texture) => this._gl.deleteTexture(texture));
+            this._gl.deleteBuffer(this._buffer);
+            this._gl.deleteProgram(this._program);
+          }
+          L.ImageOverlay.prototype.onRemove.call(this, mapInstance);
+        }
+      });
+
+      function makeContinuousLayer() {
+        return new ContinuousImageOverlay(DATA_BOUNDS, {
+          pane: "overlayPane",
+          interactive: false,
+          className: "pm-continuous-layer",
+          zIndex: 420,
+          pixelWidth: Math.round(IMAGE_SIZE.width * SPATIAL_SCALE),
+          pixelHeight: Math.round(IMAGE_SIZE.height * SPATIAL_SCALE),
+          attribution: '<a href="https://eccc-msc.github.io/open-data/msc-geomet/readme_en/">ECCC GeoMet RAQDPS</a>'
+        });
       }
 
       function delay(milliseconds) {
         return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+      }
+
+      function nextAnimationFrame() {
+        return new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       }
 
       function updateLegend() {
@@ -1727,21 +2162,22 @@
 
       function updateLabels(hour, pending = false) {
         const data = dataset();
-        const valid = descriptor(hour).validTime;
+        const displayedHour = Math.round(hour);
+        const valid = new Date(currentValidTime.getTime() + displayedHour * HOUR);
         const localTime = formatLocal.format(valid);
         slider.value = String(hour);
         slider.setAttribute(
           "aria-valuetext",
           `${
-            hour === 0
+            displayedHour === 0
               ? "Now"
-              : `${hour < 0 ? "Minus" : "Plus"} ${Math.abs(hour)} hours`
+              : `${displayedHour < 0 ? "Minus" : "Plus"} ${Math.abs(displayedHour)} hours`
           }, ${localTime}`
         );
         timeValue.textContent = localTime;
-        hourValue.textContent = hour === 0
+        hourValue.textContent = displayedHour === 0
           ? "Now"
-          : `${hour < 0 ? "−" : "+"}${Math.abs(hour)} h`;
+          : `${displayedHour < 0 ? "−" : "+"}${Math.abs(displayedHour)} h`;
         prevButton.disabled = hour <= minimumHour;
         nextButton.disabled = hour >= maximumHour;
         playButton.disabled = maximumHour <= 0;
@@ -1763,9 +2199,19 @@
       }
 
       function stopPlayback() {
+        const wasPlaying = playing;
         playing = false;
         playbackGeneration += 1;
         transitionGeneration += 1;
+        if (wasPlaying && renderLayer) {
+          renderLayer.finishTransition();
+          if (pendingProcessed) {
+            activeProcessed = pendingProcessed;
+            activeKey = pendingProcessed.frame.key;
+            pendingProcessed = null;
+            updateLabels(selectedHour, false);
+          }
+        }
         resetButton.disabled = selectedHour === 0;
         playButton.setAttribute("aria-pressed", "false");
         playButton.setAttribute("aria-label", "Play forecast animation");
@@ -1777,94 +2223,8 @@
         }
       }
 
-      function waitForStandby(frame, generation, targetLayer) {
-        if (standbyCleanup) standbyCleanup();
-
-        return new Promise((resolve) => {
-          let settled = false;
-          const timeout = window.setTimeout(() => finish(false), 16000);
-
-          function finish(ok) {
-            if (settled) return;
-            settled = true;
-            window.clearTimeout(timeout);
-            targetLayer.off("load", onLoad);
-            targetLayer.off("error", onError);
-            if (generation === standbyGeneration) standbyCleanup = null;
-            resolve({ ok, frame, generation, layer: targetLayer });
-          }
-
-          function onLoad() {
-            finish(true);
-          }
-
-          function onError() {
-            finish(false);
-          }
-
-          targetLayer.on("load", onLoad);
-          targetLayer.on("error", onError);
-          standbyCleanup = () => finish(false);
-          targetLayer.setOpacity(0);
-          targetLayer.setZIndex(++zIndex);
-
-          getProcessedFrame(frame)
-            .then((processed) => {
-              if (generation !== standbyGeneration || targetLayer !== standbyLayer) {
-                finish(false);
-                return;
-              }
-              targetLayer._pmObjectUrl = processed.objectUrl;
-              targetLayer._pmImage = processed.image;
-              targetLayer._pmValues = processed.values;
-              targetLayer._pmWidth = processed.width;
-              targetLayer._pmHeight = processed.height;
-              targetLayer._pmFrame = processed.frame;
-              targetLayer.setUrl(processed.objectUrl);
-              if (!map.hasLayer(targetLayer)) targetLayer.addTo(map);
-            })
-            .catch(onError);
-        });
-      }
-
-      function prepare(frame, quiet = false) {
-        if (frame.key === activeKey) {
-          return Promise.resolve({
-            ok: true,
-            frame,
-            generation: standbyGeneration,
-            layer: activeLayer,
-            alreadyActive: true
-          });
-        }
-        if (frame.key === standbyKey && standbyPromise) return standbyPromise;
-        if (
-          standbyLayer?._pmFrame?.key === frame.key &&
-          standbyLayer?._image?.complete &&
-          standbyLayer._image.naturalWidth > 0
-        ) {
-          standbyLayer.setOpacity(0);
-          standbyLayer.setZIndex(++zIndex);
-          standbyKey = frame.key;
-          standbyPromise = Promise.resolve({
-            ok: true,
-            frame,
-            generation: standbyGeneration,
-            layer: standbyLayer
-          });
-          return standbyPromise;
-        }
-
-        standbyGeneration += 1;
-        const generation = standbyGeneration;
-        standbyKey = frame.key;
-        const targetLayer = standbyLayer;
-        standbyPromise = waitForStandby(frame, generation, targetLayer);
-        return standbyPromise;
-      }
-
       function primeNext() {
-        const nextHour = selectedHour >= maximumHour ? 0 : selectedHour + 1;
+        const nextHour = selectedHour >= maximumHour ? 0 : Math.floor(selectedHour) + 1;
         scheduleProcessedAhead(nextHour);
       }
 
@@ -1875,7 +2235,11 @@
         updateLabels(frame.hour, frame.key !== activeKey);
         if (frame.key !== activeKey) map.closePopup();
 
-        await fadePromise;
+        try {
+          await renderPromise;
+        } catch {
+          renderPromise = Promise.resolve(false);
+        }
         if (transition !== transitionGeneration) return false;
 
         if (frame.key === activeKey) {
@@ -1885,60 +2249,60 @@
           return true;
         }
 
-        const loaded = await prepare(frame, options.quiet === true);
-        if (
-          transition !== transitionGeneration ||
-          loaded.generation !== standbyGeneration ||
-          loaded.frame.key !== frame.key ||
-          loaded.layer !== standbyLayer
-        ) {
-          return false;
-        }
-        if (!loaded.ok) {
-          if (loaded.generation === standbyGeneration) {
-            standbyKey = "";
-            standbyPromise = null;
+        let loaded;
+        try {
+          loaded = await getProcessedFrame(frame);
+        } catch {
+          if (transition === transitionGeneration) {
+            setFrameStatus("error", "Forecast frame unavailable");
           }
+          return false;
+        }
+        if (transition !== transitionGeneration || loaded.frame.key !== frame.key) {
+          return false;
+        }
+
+        const hasRenderedFrame = renderLayer.hasFrame();
+        const fadeMilliseconds = hasRenderedFrame
+          ? (playing ? PLAYBACK_FADE_MS : Math.min(SCRUB_FADE_MS, 140))
+          : 0;
+        pendingProcessed = loaded;
+        renderPromise = Promise.resolve(
+          hasRenderedFrame
+            ? renderLayer.transitionTo(loaded.source, reducedMotion ? 0 : fadeMilliseconds)
+            : renderLayer.setFrame(loaded.source)
+        ).catch(() => false);
+        const rendered = await renderPromise;
+        if (!rendered) {
+          pendingProcessed = null;
           setFrameStatus("error", "Forecast frame unavailable");
           return false;
         }
 
-        const incomingLayer = loaded.layer;
-        const outgoingLayer = activeLayer;
-        if (incomingLayer === outgoingLayer) {
-          setFrameStatus("error", "Forecast frame unavailable");
+        if (transition !== transitionGeneration) {
+          pendingProcessed = null;
           return false;
         }
-
-        incomingLayer.setZIndex(++zIndex);
+        activeProcessed = loaded;
+        pendingProcessed = null;
+        activeKey = frame.key;
         warmAhead(frame.hour);
         scheduleProcessedAhead(frame.hour + 1);
-        const fadeMilliseconds = playing ? PLAYBACK_FADE_MS : SCRUB_FADE_MS;
-        root.style.setProperty("--pm-frame-fade", `${fadeMilliseconds}ms`);
-        incomingLayer.setOpacity(DATA_OPACITY);
-        outgoingLayer.setOpacity(0);
-
-        activeLayer = incomingLayer;
-        standbyLayer = outgoingLayer;
-        activeKey = frame.key;
-        standbyKey = "";
-        standbyPromise = null;
         selectedHour = frame.hour;
         updateLabels(frame.hour, false);
         trimProcessedCache();
 
-        fadePromise = reducedMotion ? Promise.resolve() : delay(fadeMilliseconds);
-        await fadePromise;
         if (transition === transitionGeneration && options.prime !== false) primeNext();
         return true;
       }
 
       async function playbackLoop(generation) {
         while (playing && generation === playbackGeneration) {
-          const nextHour = selectedHour >= maximumHour ? 0 : selectedHour + 1;
+          const nextHour = selectedHour >= maximumHour ? 0 : Math.floor(selectedHour) + 1;
           const ok = await showFrame(nextHour, { prime: true, quiet: true });
           if (!ok || !playing || generation !== playbackGeneration) break;
-          await delay(reducedMotion ? 1400 : 45);
+          if (reducedMotion) await delay(1400);
+          else await nextAnimationFrame();
         }
         if (playing && generation === playbackGeneration) stopPlayback();
       }
@@ -1969,10 +2333,9 @@
         particle = particleSelect.value;
         extent = extentSelect.value;
         transitionGeneration += 1;
-        standbyGeneration += 1;
-        standbyKey = "";
-        standbyPromise = null;
+        renderLayer.finishTransition();
         updateLegend();
+        loadPreviewDataset(cacheDatasetName());
         const ok = await showFrame(selectedHour, { prime: true, quiet: true });
         if (change === datasetGeneration && resumePlayback && playing) {
           if (!ok) {
@@ -1995,9 +2358,7 @@
         document.getElementById("pm-map-menu").open = false;
       }
 
-      activeLayer = makeLayer(0).addTo(map);
-      standbyLayer = makeLayer(0);
-      activeLayer.setZIndex(++zIndex);
+      renderLayer = makeContinuousLayer().addTo(map);
 
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
@@ -2018,23 +2379,66 @@
         });
       });
 
-      slider.addEventListener("input", () => {
-        stopPlayback();
+      function settleScrub() {
         cancelScheduledProcessing();
+        scrubGeneration += 1;
+        const snappedHour = Math.max(
+          minimumHour,
+          Math.min(maximumHour, Math.round(Number(slider.value)))
+        );
+        slider.value = String(snappedHour);
+        selectedHour = snappedHour;
+        updateLabels(snappedHour, true);
+        showFrame(snappedHour, { prime: true, quiet: true });
+      }
+
+      slider.addEventListener("input", () => {
+        if (playing) stopPlayback();
+        else transitionGeneration += 1;
+        cancelScheduledProcessing();
+        const generation = ++scrubGeneration;
         selectedHour = Number(slider.value);
-        updateLabels(selectedHour, true);
-        if (scrubTimer !== null) window.clearTimeout(scrubTimer);
-        scrubTimer = window.setTimeout(() => {
-          scrubTimer = null;
-          showFrame(selectedHour, { prime: true, quiet: true });
-        }, 80);
+        updateLabels(selectedHour, false);
+        const rendered = renderScrubPreview(selectedHour);
+        setFrameStatus(
+          rendered ? "ready" : "loading",
+          rendered ? "Interpolated forecast preview" : "Loading forecast preview"
+        );
+        if (!rendered) {
+          loadPreviewDataset().then(() => {
+            if (generation !== scrubGeneration) return;
+            if (renderScrubPreview(selectedHour)) {
+              setFrameStatus("ready", "Interpolated forecast preview");
+            }
+          });
+        }
       });
 
-      slider.addEventListener("change", () => {
-        cancelScheduledProcessing();
-        if (scrubTimer !== null) window.clearTimeout(scrubTimer);
-        scrubTimer = null;
-        showFrame(Number(slider.value), { prime: true, quiet: true });
+      slider.addEventListener("change", settleScrub);
+      slider.addEventListener("pointerup", () => {
+        if (!Number.isInteger(Number(slider.value))) settleScrub();
+      });
+      slider.addEventListener("pointercancel", settleScrub);
+      slider.addEventListener("blur", () => {
+        if (!Number.isInteger(Number(slider.value))) settleScrub();
+      });
+
+      slider.addEventListener("keydown", (event) => {
+        const direction = ["ArrowRight", "ArrowUp"].includes(event.key)
+          ? 1
+          : ["ArrowLeft", "ArrowDown"].includes(event.key)
+            ? -1
+            : 0;
+        if (!direction) return;
+        event.preventDefault();
+        const target = Math.max(
+          minimumHour,
+          Math.min(maximumHour, Math.round(selectedHour) + direction)
+        );
+        slider.value = String(target);
+        selectedHour = target;
+        stopPlayback();
+        showFrame(target, { prime: true, quiet: true });
       });
 
       prevButton.addEventListener("click", () => {
@@ -2064,11 +2468,11 @@
 
       map.on("click", (event) => {
         map.closePopup();
-        const values = activeLayer?._pmValues;
-        const preparedImage = activeLayer?._pmImage;
-        const frame = activeLayer?._pmFrame;
-        const width = activeLayer?._pmWidth;
-        const height = activeLayer?._pmHeight;
+        const values = activeProcessed?.values;
+        const preparedImage = activeProcessed?.image;
+        const frame = activeProcessed?.frame;
+        const width = activeProcessed?.width;
+        const height = activeProcessed?.height;
         if (
           (!values && !preparedImage) ||
           !frame ||
@@ -2131,9 +2535,7 @@
 
       window.addEventListener("pagehide", () => {
         cancelScheduledProcessing();
-        for (const entry of processedCache.values()) {
-          if (entry.value?.revoke) URL.revokeObjectURL(entry.value.objectUrl);
-        }
+        if (renderLayer) renderLayer.finishTransition();
       }, { once: true });
 
       renderIcons();
@@ -2150,6 +2552,7 @@
         updateRangeLabels();
         updateLegend();
         updateLabels(0, true);
+        loadPreviewDataset();
         await showFrame(0, { prime: true, quiet: true });
       }
 

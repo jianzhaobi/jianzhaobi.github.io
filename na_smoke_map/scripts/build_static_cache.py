@@ -425,6 +425,78 @@ def timeline_hours(frames: list[Frame], successful_keys: set[str], datasets: lis
     return list(range(-radius, radius + 1)) if 0 in common else []
 
 
+def build_preview_atlases(
+    frames: list[Frame],
+    prepared: dict[str, str],
+    output: Path,
+    datasets: list[str],
+    hours: list[int],
+    anchor: str,
+    frame_size: tuple[int, int] = (320, 200),
+    chunk_size: int = 12,
+) -> tuple[dict[str, list[dict[str, object]]], set[Path]]:
+    frame_by_dataset_hour = {
+        (frame.dataset, frame.hour): frame
+        for frame in frames
+        if frame.key in prepared
+    }
+    atlases: dict[str, list[dict[str, object]]] = {dataset: [] for dataset in datasets}
+    retained: set[Path] = set()
+
+    for dataset in datasets:
+        for chunk_index in range(0, len(hours), chunk_size):
+            chunk_hours = hours[chunk_index:chunk_index + chunk_size]
+            atlas = Image.new(
+                "RGBA",
+                (frame_size[0] * len(chunk_hours), frame_size[1]),
+                (0, 0, 0, 0),
+            )
+            for column, hour in enumerate(chunk_hours):
+                frame = frame_by_dataset_hour[(dataset, hour)]
+                with Image.open(output / prepared[frame.key]) as image:
+                    preview = image.convert("RGBA").resize(
+                        frame_size,
+                        resample=Image.Resampling.BICUBIC,
+                    )
+                atlas.paste(preview, (column * frame_size[0], 0))
+
+            relative_path = (
+                f"previews/{dataset}/{anchor}/"
+                f"{chunk_index // chunk_size:02d}.png"
+            )
+            destination = output / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.with_suffix(f".tmp-{os.getpid()}")
+            atlas.save(temporary, format="PNG", compress_level=6)
+            expected_size = (frame_size[0] * len(chunk_hours), frame_size[1])
+            if not valid_png(temporary, expected_size):
+                temporary.unlink(missing_ok=True)
+                raise ValueError(f"preview atlas was incomplete: {relative_path}")
+            temporary.replace(destination)
+            retained.add(destination)
+            atlases[dataset].append({
+                "path": relative_path,
+                "hours": chunk_hours,
+            })
+
+    return atlases, retained
+
+
+def prune_stale_previews(output: Path, retained: set[Path]) -> None:
+    previews_root = output / "previews"
+    if not previews_root.exists():
+        return
+    for path in previews_root.rglob("*.png"):
+        if path not in retained:
+            path.unlink(missing_ok=True)
+    for directory in sorted(previews_root.rglob("*"), reverse=True):
+        if directory.is_dir():
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("cache"))
@@ -548,14 +620,33 @@ def main() -> int:
     if not available_hours:
         print("cache build rejected: no common frame exists at Now", file=sys.stderr)
         return 1
+    preview_anchor = compact_hour(parse_time(metadata["currentValidTime"]))
+    try:
+        preview_atlases, retained_previews = build_preview_atlases(
+            frames,
+            prepared,
+            args.output,
+            args.datasets,
+            available_hours,
+            preview_anchor,
+        )
+    except Exception as exc:
+        print(f"cache build rejected: unable to prepare scrub previews: {exc}", file=sys.stderr)
+        return 1
+    prune_stale_previews(args.output, retained_previews)
 
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         **metadata,
         "displayPrepared": True,
         "frameIntervalMinutes": 60,
-        "visualInterpolation": "cross-fade",
+        "visualInterpolation": "premultiplied-alpha",
         "timelineHours": available_hours,
+        "scrubPreview": {
+            "frameWidth": 320,
+            "frameHeight": 200,
+            "atlases": preview_atlases,
+        },
         "frameCount": len(prepared),
         "failureCount": len(failures),
         "frames": dict(sorted(prepared.items())),
