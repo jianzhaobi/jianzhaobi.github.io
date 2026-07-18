@@ -1682,15 +1682,20 @@
             atlases.length === 0
           ) return null;
 
-          const loadedAtlases = await Promise.all(atlases.map(async (atlas) => ({
-            hours: Array.isArray(atlas.hours) ? atlas.hours.map(Number) : [],
-            image: await loadImage(new URL(atlas.path, cacheManifestUrl).href)
-          })));
-          return {
+          const value = {
             frameWidth: preview.frameWidth,
             frameHeight: preview.frameHeight,
-            atlases: loadedAtlases
+            atlases: atlases.map((atlas) => ({
+              hours: Array.isArray(atlas.hours) ? atlas.hours.map(Number) : [],
+              url: new URL(atlas.path, cacheManifestUrl).href,
+              image: null,
+              promise: null
+            })),
+            preloading: false
           };
+          entry.value = value;
+          preloadPreviewAtlases(value, selectedHour);
+          return value;
         }).then((value) => {
           entry.value = value;
           while (previewCache.size > 2) {
@@ -1705,9 +1710,67 @@
         return entry.promise;
       }
 
+      function loadPreviewAtlas(atlas) {
+        if (atlas?.image) return Promise.resolve(atlas.image);
+        if (!atlas?.url) return Promise.resolve(null);
+        if (atlas.promise) return atlas.promise;
+        atlas.promise = loadImage(atlas.url)
+          .then((image) => {
+            atlas.image = image;
+            return image;
+          })
+          .catch(() => {
+            atlas.promise = null;
+            return null;
+          });
+        return atlas.promise;
+      }
+
+      function previewAtlasDistance(atlas, hour) {
+        if (!atlas.hours.length) return Infinity;
+        const first = atlas.hours[0];
+        const last = atlas.hours[atlas.hours.length - 1];
+        if (hour < first) return first - hour;
+        if (hour > last) return hour - last;
+        return 0;
+      }
+
+      function preloadPreviewAtlases(preview, anchorHour) {
+        if (!preview || preview.preloading) return;
+        preview.preloading = true;
+        const queue = [...preview.atlases].sort(
+          (left, right) =>
+            previewAtlasDistance(left, anchorHour) -
+            previewAtlasDistance(right, anchorHour)
+        );
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < queue.length) {
+            const atlas = queue[cursor];
+            cursor += 1;
+            await loadPreviewAtlas(atlas);
+          }
+        };
+        Promise.all([worker(), worker(), worker()]).catch(() => {});
+      }
+
+      function ensurePreviewHour(preview, hour) {
+        if (!preview) return Promise.resolve(false);
+        const lowerHour = Math.max(minimumHour, Math.floor(hour));
+        const upperHour = Math.min(maximumHour, Math.ceil(hour));
+        const needed = [...new Set([lowerHour, upperHour])]
+          .map((targetHour) =>
+            preview.atlases.find((atlas) => atlas.hours.includes(targetHour))
+          )
+          .filter(Boolean);
+        if (!needed.length) return Promise.resolve(false);
+        return Promise.all(needed.map(loadPreviewAtlas))
+          .then((images) => images.every(Boolean));
+      }
+
       function previewSource(preview, hour, slot) {
         const atlas = preview?.atlases.find((candidate) => candidate.hours.includes(hour));
-        if (!atlas) return null;
+        if (!atlas?.image) return null;
         const column = atlas.hours.indexOf(hour);
         const canvas = scrubCanvases[slot];
         if (
@@ -2392,6 +2455,12 @@
         showFrame(snappedHour, { prime: true, quiet: true });
       }
 
+      slider.addEventListener("pointerdown", () => {
+        const pointerHour = Number(slider.value);
+        loadPreviewDataset()
+          .then((preview) => ensurePreviewHour(preview, pointerHour));
+      });
+
       slider.addEventListener("input", () => {
         if (playing) stopPlayback();
         else transitionGeneration += 1;
@@ -2405,12 +2474,14 @@
           rendered ? "Interpolated forecast preview" : "Loading forecast preview"
         );
         if (!rendered) {
-          loadPreviewDataset().then(() => {
-            if (generation !== scrubGeneration) return;
-            if (renderScrubPreview(selectedHour)) {
-              setFrameStatus("ready", "Interpolated forecast preview");
-            }
-          });
+          loadPreviewDataset()
+            .then((preview) => ensurePreviewHour(preview, selectedHour))
+            .then(() => {
+              if (generation !== scrubGeneration) return;
+              if (renderScrubPreview(selectedHour)) {
+                setFrameStatus("ready", "Interpolated forecast preview");
+              }
+            });
         }
       });
 

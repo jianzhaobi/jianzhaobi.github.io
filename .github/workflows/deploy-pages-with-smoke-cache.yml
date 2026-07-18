@@ -53,18 +53,13 @@ jobs:
 
       - name: Build same-origin PM2.5 frame cache
         run: |
-          minimum_success_ratio=0.8
-          if [[ -f _frame-cache/site-cache/manifest.json ]]; then
-            minimum_success_ratio=1.0
-          fi
-
           python na_smoke_map/scripts/build_static_cache.py \
             --output _frame-cache/site-cache \
             --raw-output _frame-cache/source-cache \
             --history-hours 64 \
             --forecast-hours 64 \
             --jobs 8 \
-            --minimum-success-ratio "$minimum_success_ratio"
+            --minimum-success-ratio 0.8
 
           rsync -a --delete \
             _frame-cache/site-cache/ \
