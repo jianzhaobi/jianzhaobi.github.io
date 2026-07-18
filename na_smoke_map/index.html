@@ -6,9 +6,45 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self'; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
+  <meta
+    name="description"
+    content="Explore current and forecast wildfire-smoke PM2.5 and total PM2.5 across North America."
+  >
+  <meta name="theme-color" content="#e66a47">
+  <meta name="application-name" content="Smoke Map">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Smoke Map">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="North America Smoke &amp; PM2.5 Forecast">
+  <meta
+    property="og:description"
+    content="Explore current and forecast wildfire-smoke PM2.5 and total PM2.5 across North America."
+  >
+  <meta property="og:url" content="https://jianzhaobi.github.io/na_smoke_map/">
+  <meta
+    property="og:image"
+    content="https://jianzhaobi.github.io/na_smoke_map/icons/icon-512.png"
+  >
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="North America Smoke &amp; PM2.5 Forecast">
+  <meta
+    name="twitter:description"
+    content="Explore current and forecast wildfire-smoke PM2.5 and total PM2.5 across North America."
+  >
+  <meta
+    name="twitter:image"
+    content="https://jianzhaobi.github.io/na_smoke_map/icons/icon-512.png"
+  >
+  <link rel="icon" href="./icons/favicon.ico" sizes="any">
+  <link rel="icon" href="./icons/favicon-32x32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="./icons/favicon-16x16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" sizes="180x180">
+  <link rel="manifest" href="./site.webmanifest">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     :root {
