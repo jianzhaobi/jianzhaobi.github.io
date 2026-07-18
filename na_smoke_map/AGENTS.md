@@ -8,7 +8,7 @@ The map must let users independently choose:
 
 - Wildfire-smoke PM2.5 or total PM2.5.
 - Surface concentration or entire-atmosphere column loading.
-- The current model hour or an hourly forecast through 72 hours.
+- A single always-visible timeline that starts at the current model hour and continues hourly through the last available hour of the 72-hour model run.
 
 The experience should make the map the dominant visual element and make time exploration fast, smooth, and understandable on both desktop and mobile devices.
 
@@ -53,6 +53,8 @@ Use Leaflet with three selectable basemaps:
 - **Satellite**: Esri World Imagery.
 
 Preserve the corresponding Leaflet, OpenStreetMap, CARTO, and Esri attribution.
+
+Frame the initial map around the United States and Canada instead of showing the full RAQDPS data domain. Use a comparable regional scale on desktop and mobile, while allowing a slightly wider integer zoom on narrow screens so the view remains useful.
 
 ### Data-frame rendering
 
@@ -118,6 +120,7 @@ Clicking or tapping inside the modeled North America bounds should open a compac
 - Show the active frame's particle type, vertical extent, valid time, value, and correct unit.
 - Show the inferred numeric value without an `≈` prefix. Keep the implementation and accessible context clear that values are inferred from rendered colors rather than read from the raw model field.
 - Show the popup's full valid date and time, including year, month, day, weekday, clock time, and time zone.
+- Do not show a popup close “×”; clicking elsewhere on the map is sufficient to dismiss or replace the popup.
 - For transparent/no-data pixels, say “Below display threshold” rather than claiming the modeled concentration is exactly zero.
 
 ## Interface and visual preferences
@@ -132,7 +135,7 @@ Maintain these preferences:
 - Horizontal color scale rather than a tall official legend that consumes map space.
 - Keep the horizontal legend compact—roughly 320 px on desktop and narrower on phones—so it does not obscure a large portion of the map.
 - Forecast controls and time slider integrated as a floating bottom panel over the map.
-- Keep the legend and forecast panel inside one coordinated bottom dock: side by side on sufficiently wide screens and neatly stacked on narrow screens.
+- Keep the legend, valid time, frame status, playback controls, and forecast slider fused into one coordinated bottom panel.
 - Keep a concise frame-status dot inside the forecast panel: green when the selected frame is ready, orange/pulsing while it loads, and red when unavailable.
 - Rounded corners, compact spacing, readable typography, and clear selected states.
 - Minimal explanatory chrome; keep the geographic data visually dominant.
@@ -151,6 +154,8 @@ Cell-phone usability is a core requirement, not a later enhancement.
 - The legend must fit within the map width.
 - Closed Data and Map menus should be icon-led on phones; icon-only controls require accessible names.
 - Keep the basemap menu programmatically labeled, but do not display a visible “Basemap” heading inside the open menu.
+- Keep the zoom controls vertically centered along the right edge and place a compact location control directly beneath them.
+- After location permission is granted, show the user's current location as a modern blue dot with a restrained accuracy halo. Each location-button press should refresh the position and zoom to it; if permission was already granted, show the dot without prompting or changing the initial map view.
 - Forecast controls must remain usable without covering all meaningful map content.
 - The map receives additional vertical height on phones to accommodate floating controls.
 - Labels may wrap, but controls and scale values must not be clipped.
@@ -159,12 +164,13 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 
 ## Accessibility and copy
 
-- Keep programmatic labels for the map, selects, time-mode group, slider, and playback buttons.
+- Keep programmatic labels for the map, selects, slider, frame status, and playback buttons.
 - Update the map's accessible name with the selected particles, vertical extent, and valid time.
 - Use `aria-live` for concise data-loading and valid-time feedback.
-- Use `aria-pressed` for Now/Forecast and Play/Pause states.
+- Use `aria-pressed` for Play/Pause state.
 - Keep previous and next controls labeled even if their visible content is only an arrow.
 - Keep Leaflet zoom controls vertically centered along the right edge of the map.
+- Give the location control an accessible label and concise live feedback for loading, success, denied permission, timeout, or unavailable geolocation.
 - Do not rely on color alone to communicate selection or loading state.
 - Prefer plain-language labels such as “Entire atmosphere” and “Column loading.”
 
@@ -179,7 +185,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Keep external resource URLs HTTPS-only.
 - Preserve the current particle/extent dataset matrix as a single source of truth in JavaScript.
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
-- Clamp forecast indices to the supported 0–72 hour range.
+- Clamp forecast indices to the range from the current model hour through model hour 72. Present the first slider position as “Now” and later positions as hours relative to it.
 - Use generation counters or an equivalent cancellation mechanism so stale asynchronous image loads cannot replace a newer user selection.
 - Preserve the default `day` basemap and the `day`, `dark`, and `satellite` basemap option values.
 - Keep canvas recoloring inside the existing double-buffer preparation step so the visible frame is never cleared while recoloring occurs.
@@ -198,10 +204,10 @@ Before handing off a material change:
 2. Load the standalone HTML through a local HTTP server rather than relying only on a `file:` URL.
 3. Confirm all four particle/extent combinations reach the loaded state.
 4. Visually inspect wildfire smoke + entire atmosphere for yellow projection wedges, rectangles, or other model-domain artifacts.
-5. Open Forecast, scrub the slider, use previous/next, and play several frames.
+5. Scrub the always-visible forecast slider, use previous/next, and play several frames.
 6. Confirm the previous frame remains visible while the next frame loads and that there is no vacant flash.
 7. Confirm the horizontal legend title, scale, and units update correctly.
-8. Check Now/Forecast and Play/Pause pressed states and accessible labels.
+8. Confirm the timeline is always visible, begins at “Now,” and has correct Play/Pause pressed states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
@@ -210,6 +216,7 @@ Before handing off a material change:
 14. Click both a plume pixel and a transparent pixel; verify the popup uses the active layer's unit, omits the approximation symbol, shows the full valid date/time/time zone, and says “Below display threshold” for transparent pixels.
 15. During playback, confirm both image buffers have a 720 ms opacity transition and visibly hold complementary intermediate opacities.
 16. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution overlay scale and settle together without visible lag.
+17. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
 
 ## Known tradeoffs
 

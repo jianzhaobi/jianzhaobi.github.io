@@ -209,6 +209,12 @@
       transform: translateY(1px);
     }
 
+    #north-america-pm25 .pm-button:disabled {
+      cursor: not-allowed;
+      opacity: .4;
+      transform: none;
+    }
+
     #north-america-pm25 .pm-button[aria-pressed="true"],
     #north-america-pm25 .pm-button.pm-primary {
       border-color: transparent;
@@ -249,23 +255,6 @@
       border-color: rgb(230 106 71 / 35%);
       color: var(--pm-accent-strong);
       background: var(--pm-accent-soft);
-    }
-
-    #north-america-pm25 .pm-time-mode {
-      display: flex;
-      gap: 3px;
-      padding: 3px;
-      border-radius: 14px;
-    }
-
-    #north-america-pm25 .pm-time-mode .pm-button {
-      min-height: 34px;
-      padding-inline: 10px;
-      border: 0;
-      border-radius: 10px;
-      box-shadow: none;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
     }
 
     #north-america-pm25 .pm-map-menu {
@@ -352,12 +341,7 @@
       z-index: 650;
       bottom: calc(21px + var(--pm-safe-bottom));
       left: 50%;
-      display: flex;
-      width: max-content;
-      max-width: calc(100% - 24px - var(--pm-safe-left) - var(--pm-safe-right));
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
+      width: min(824px, calc(100% - 24px - var(--pm-safe-left) - var(--pm-safe-right)));
       transform: translateX(-50%);
       pointer-events: none;
     }
@@ -366,27 +350,12 @@
       pointer-events: auto;
     }
 
-    #north-america-pm25[data-time-mode="forecast"] .pm-bottom-dock {
-      display: grid;
-      width: min(824px, calc(100% - 24px - var(--pm-safe-left) - var(--pm-safe-right)));
-      max-width: none;
-      grid-template-columns: 204px minmax(0, 610px);
-      align-items: center;
-      gap: 10px;
-    }
-
     #north-america-pm25 .pm-legend {
       position: relative;
-      z-index: 1;
-      width: 218px;
-      padding: 5px 7px 4px;
-      border-radius: 10px;
-      opacity: .78;
+      width: 204px;
+      min-width: 0;
+      opacity: .82;
       transition: opacity 150ms ease;
-    }
-
-    #north-america-pm25[data-time-mode="forecast"] .pm-legend {
-      width: 100%;
     }
 
     #north-america-pm25 .pm-legend:hover {
@@ -437,21 +406,6 @@
       line-height: 1;
     }
 
-    #north-america-pm25 .pm-status-line {
-      display: flex;
-      max-width: calc(100vw - 24px);
-      min-height: 28px;
-      align-items: center;
-      gap: 7px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      color: var(--pm-text);
-      font-size: 11px;
-      font-weight: 600;
-      line-height: 1;
-      white-space: nowrap;
-    }
-
     #north-america-pm25 .pm-status-dot,
     #north-america-pm25 .pm-frame-status {
       width: 7px;
@@ -470,13 +424,11 @@
       justify-content: center;
     }
 
-    #north-america-pm25 .pm-status-line[data-state="loading"] .pm-status-dot,
     #north-america-pm25 .pm-frame-status[data-state="loading"] .pm-status-dot {
       background: var(--pm-accent);
       animation: pm-pulse 900ms ease-in-out infinite alternate;
     }
 
-    #north-america-pm25 .pm-status-line[data-state="error"] .pm-status-dot,
     #north-america-pm25 .pm-frame-status[data-state="error"] .pm-status-dot {
       background: #c84c42;
       animation: none;
@@ -490,16 +442,16 @@
     #north-america-pm25 .pm-timeline {
       position: relative;
       width: 100%;
-      padding: 10px 12px 8px;
+      padding: 11px 12px 8px;
       border-radius: 16px;
     }
 
     #north-america-pm25 .pm-timeline-top {
-      display: flex;
+      display: grid;
+      grid-template-columns: 204px minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 7px;
+      gap: 14px;
+      margin-bottom: 8px;
     }
 
     #north-america-pm25 .pm-valid-time {
@@ -559,13 +511,32 @@
     }
 
     #north-america-pm25 .pm-range-labels {
-      display: flex;
-      justify-content: space-between;
+      position: relative;
+      height: 9px;
       margin-top: -1px;
       color: var(--pm-muted);
       font-size: 9px;
       font-variant-numeric: tabular-nums;
       line-height: 1;
+    }
+
+    #north-america-pm25 .pm-range-labels span {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-range-labels span:first-child {
+      transform: none;
+    }
+
+    #north-america-pm25 .pm-range-labels span:last-child {
+      transform: translateX(-100%);
+    }
+
+    #north-america-pm25 .pm-range-labels span:only-child {
+      transform: none;
     }
 
     #north-america-pm25 .leaflet-top.leaflet-left {
@@ -603,6 +574,69 @@
       background: var(--pm-ui-hover);
     }
 
+    #north-america-pm25 .pm-locate-control {
+      margin: 8px 0 0 !important;
+    }
+
+    #north-america-pm25 .pm-locate-button {
+      width: 42px;
+      min-width: 42px;
+      height: 42px;
+      min-height: 42px;
+      padding: 0;
+      border-radius: 12px;
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="active"] {
+      color: #2878df;
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="loading"] svg {
+      animation: pm-spin 900ms linear infinite;
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="error"] {
+      color: #c84c42;
+    }
+
+    #north-america-pm25 .pm-location-icon {
+      border: 0;
+      background: transparent;
+    }
+
+    #north-america-pm25 .pm-location-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 17px;
+      height: 17px;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: #2f80ed;
+      box-shadow:
+        0 2px 8px rgb(20 70 135 / 32%),
+        0 0 0 6px rgb(47 128 237 / 18%);
+    }
+
+    #north-america-pm25 .pm-location-dot::after {
+      position: absolute;
+      inset: -8px;
+      border: 2px solid rgb(47 128 237 / 30%);
+      border-radius: 50%;
+      content: "";
+      animation: pm-location-pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes pm-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pm-location-pulse {
+      0% { opacity: .8; transform: scale(.55); }
+      75%, 100% { opacity: 0; transform: scale(1.25); }
+    }
+
     #north-america-pm25 .leaflet-control-attribution {
       max-width: calc(100vw - 12px);
       padding: 1px 4px;
@@ -633,6 +667,10 @@
       margin: 10px 13px;
     }
 
+    #north-america-pm25 .leaflet-popup-close-button {
+      display: none !important;
+    }
+
     #north-america-pm25 .pm-probe-popup strong,
     #north-america-pm25 .pm-probe-popup time {
       display: block;
@@ -652,16 +690,18 @@
     }
 
     @media (max-width: 760px) {
-      #north-america-pm25[data-time-mode="forecast"] .pm-bottom-dock {
-        display: flex;
+      #north-america-pm25 .pm-bottom-dock {
         width: calc(100% - 16px - var(--pm-safe-left) - var(--pm-safe-right));
-        flex-direction: column;
-        gap: 7px;
       }
 
-      #north-america-pm25[data-time-mode="forecast"] .pm-legend {
-        width: 194px;
-        max-width: calc(100% - 110px);
+      #north-america-pm25 .pm-timeline-top {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 7px 10px;
+      }
+
+      #north-america-pm25 .pm-legend {
+        width: 100%;
+        grid-column: 1 / -1;
       }
     }
 
@@ -677,18 +717,12 @@
         gap: 5px;
       }
 
-      #north-america-pm25 .pm-toolbar .pm-menu-label,
-      #north-america-pm25 .pm-time-mode [data-time-mode="forecast"] span {
+      #north-america-pm25 .pm-toolbar .pm-menu-label {
         display: none;
       }
 
       #north-america-pm25 .pm-toolbar summary.pm-button {
         padding-inline: 9px;
-      }
-
-      #north-america-pm25 .pm-time-mode .pm-button {
-        min-width: 36px;
-        padding-inline: 8px;
       }
 
       #north-america-pm25 .pm-popover {
@@ -703,18 +737,12 @@
         bottom: calc(20px + var(--pm-safe-bottom));
       }
 
-      #north-america-pm25 .pm-legend {
-        width: 194px;
-        max-width: calc(100vw - 110px);
-      }
-
       #north-america-pm25 .pm-timeline {
-        padding: 9px 10px 7px;
+        padding: 10px 10px 7px;
       }
 
       #north-america-pm25 .pm-timeline-top {
-        gap: 7px;
-        margin-bottom: 5px;
+        margin-bottom: 6px;
       }
 
       #north-america-pm25 .pm-time-copy {
@@ -742,19 +770,6 @@
     }
 
     @media (max-width: 350px) {
-      #north-america-pm25 .pm-toolbar .pm-time-mode [data-time-mode="now"] {
-        min-width: 38px;
-        font-size: 11px;
-      }
-
-      #north-america-pm25 .pm-legend {
-        width: 176px;
-      }
-
-      #north-america-pm25[data-time-mode="forecast"] .pm-legend {
-        width: 176px;
-      }
-
       #north-america-pm25 #pm-time-value {
         max-width: 118px;
         font-size: 12px;
@@ -769,18 +784,19 @@
         transition: none;
       }
 
-      #north-america-pm25 .pm-status-line[data-state="loading"] .pm-status-dot {
+      #north-america-pm25 .pm-frame-status[data-state="loading"] .pm-status-dot {
         animation: none;
       }
 
-      #north-america-pm25 .pm-frame-status[data-state="loading"] .pm-status-dot {
+      #north-america-pm25 .pm-locate-button[data-state="loading"] svg,
+      #north-america-pm25 .pm-location-dot::after {
         animation: none;
       }
     }
   </style>
 </head>
 <body>
-  <main id="north-america-pm25" data-particle="smoke" data-basemap="day" data-time-mode="now">
+  <main id="north-america-pm25" data-particle="smoke" data-basemap="day">
     <div class="pm-map-wrap">
       <div id="pm-map" role="region" aria-label="North American wildfire-smoke PM2.5 map"></div>
 
@@ -808,14 +824,6 @@
           </div>
         </details>
 
-        <div class="pm-time-mode pm-glass" role="group" aria-label="Time mode">
-          <button type="button" class="pm-button" data-time-mode="now" aria-pressed="true">Now</button>
-          <button type="button" class="pm-button" data-time-mode="forecast" aria-label="Forecast" aria-pressed="false">
-            <i data-lucide="clock-3" aria-hidden="true"></i>
-            <span>Forecast</span>
-          </button>
-        </div>
-
         <details class="pm-menu pm-map-menu" id="pm-map-menu">
           <summary class="pm-button" aria-label="Choose basemap">
             <i data-lucide="map" aria-hidden="true"></i>
@@ -839,22 +847,16 @@
       </nav>
 
       <div class="pm-bottom-dock">
-        <div class="pm-legend pm-glass" aria-label="Map color scale">
-          <div class="pm-legend-head">
-            <strong id="pm-legend-title">Smoke · Surface</strong>
-            <span id="pm-legend-unit">µg/m³</span>
-          </div>
-          <div class="pm-gradient" aria-hidden="true"></div>
-          <div class="pm-legend-ticks" id="pm-legend-ticks" aria-hidden="true"></div>
-        </div>
-
-        <div class="pm-status-line pm-glass" data-state="loading" aria-live="polite">
-          <span class="pm-status-dot" aria-hidden="true"></span>
-          <span id="pm-status">Loading current hour…</span>
-        </div>
-
-        <section class="pm-timeline pm-glass" id="pm-timeline" hidden aria-label="Forecast animation">
+        <section class="pm-timeline pm-glass" id="pm-timeline" aria-label="PM2.5 forecast timeline">
           <div class="pm-timeline-top">
+            <div class="pm-legend" aria-label="Map color scale">
+              <div class="pm-legend-head">
+                <strong id="pm-legend-title">Smoke · Surface</strong>
+                <span id="pm-legend-unit">µg/m³</span>
+              </div>
+              <div class="pm-gradient" aria-hidden="true"></div>
+              <div class="pm-legend-ticks" id="pm-legend-ticks" aria-hidden="true"></div>
+            </div>
             <div class="pm-valid-time">
               <span class="pm-frame-status" id="pm-frame-status" data-state="loading" role="status" aria-live="polite">
                 <span class="pm-status-dot" aria-hidden="true"></span>
@@ -880,9 +882,7 @@
           </div>
           <label class="sr-only" for="pm-time">Forecast hour</label>
           <input class="pm-range" id="pm-time" type="range" min="0" max="72" step="1" value="0">
-          <div class="pm-range-labels" aria-hidden="true">
-            <span>Now</span><span>+24</span><span>+48</span><span>+72 h</span>
-          </div>
+          <div class="pm-range-labels" id="pm-range-labels" aria-hidden="true"></div>
         </section>
       </div>
     </div>
@@ -900,16 +900,13 @@
       const mapElement = document.getElementById("pm-map");
       const particleSelect = document.getElementById("pm-particle");
       const extentSelect = document.getElementById("pm-extent");
-      const timeModeButtons = [...root.querySelectorAll("[data-time-mode]")];
       const basemapInputs = [...root.querySelectorAll('input[name="pm-basemap"]')];
       const menus = [...root.querySelectorAll(".pm-menu")];
-      const statusLine = root.querySelector(".pm-status-line");
-      const status = document.getElementById("pm-status");
       const legendTitle = document.getElementById("pm-legend-title");
       const legendUnit = document.getElementById("pm-legend-unit");
       const legendTicks = document.getElementById("pm-legend-ticks");
-      const timeline = document.getElementById("pm-timeline");
       const slider = document.getElementById("pm-time");
+      const rangeLabels = document.getElementById("pm-range-labels");
       const timeValue = document.getElementById("pm-time-value");
       const hourValue = document.getElementById("pm-hour-value");
       const frameStatus = document.getElementById("pm-frame-status");
@@ -919,8 +916,8 @@
       const nextButton = document.getElementById("pm-next");
 
       if (!window.L) {
-        status.textContent = "Map unavailable";
-        statusLine.dataset.state = "error";
+        frameStatus.dataset.state = "error";
+        frameStatusText.textContent = "Map unavailable";
         return;
       }
 
@@ -1051,10 +1048,11 @@
         0,
         Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR))
       );
+      const DEFAULT_CENTER = [window.innerWidth < 720 ? 49.5 : 46.5, -101];
+      const DEFAULT_ZOOM = window.innerWidth < 720 ? 3 : 4;
 
       let particle = "smoke";
       let extent = "surface";
-      let timeMode = "now";
       let selectedIndex = currentIndex;
       let activeKey = "";
       let standbyKey = "";
@@ -1068,6 +1066,10 @@
       let playing = false;
       let playbackGeneration = 0;
       let scrubTimer = null;
+      let locateButton;
+      let locateStatus;
+      let locationMarker;
+      let accuracyCircle;
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -1083,7 +1085,7 @@
         worldCopyJump: true
       });
 
-      map.setView([51, -111], window.innerWidth < 560 ? 2 : 3);
+      map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
       const BASEMAPS = {
         day: {
@@ -1113,13 +1115,94 @@
 
       let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
 
+      const LocateControl = L.Control.extend({
+        options: { position: "topleft" },
+        onAdd() {
+          const container = L.DomUtil.create("div", "leaflet-control pm-locate-control");
+          locateButton = L.DomUtil.create("button", "pm-button pm-icon-button pm-locate-button", container);
+          locateButton.type = "button";
+          locateButton.dataset.state = "idle";
+          locateButton.setAttribute("aria-label", "Show my location");
+          locateButton.innerHTML = '<i data-lucide="locate-fixed" aria-hidden="true"></i>';
+          locateStatus = L.DomUtil.create("span", "sr-only", locateButton);
+          locateStatus.setAttribute("aria-live", "polite");
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.on(locateButton, "click", () => requestLocation(true));
+          return container;
+        }
+      });
+
+      new LocateControl().addTo(map);
+
+      function setLocateState(state, message, iconName = "locate-fixed") {
+        locateButton.dataset.state = state;
+        locateButton.setAttribute("aria-busy", String(state === "loading"));
+        locateStatus.textContent = message;
+        const icon = locateButton.querySelector("[data-lucide], svg");
+        if (icon) {
+          icon.outerHTML = `<i data-lucide="${iconName}" aria-hidden="true"></i>`;
+          renderIcons();
+        }
+      }
+
+      function showLocation(position, focus) {
+        const latlng = [position.coords.latitude, position.coords.longitude];
+        const accuracy = Math.max(0, Math.min(position.coords.accuracy || 0, 10000));
+        if (accuracyCircle) accuracyCircle.remove();
+        accuracyCircle = L.circle(latlng, {
+          radius: accuracy,
+          color: "#2f80ed",
+          weight: 1,
+          opacity: 0.38,
+          fillColor: "#2f80ed",
+          fillOpacity: 0.08,
+          interactive: false
+        }).addTo(map);
+
+        if (locationMarker) locationMarker.remove();
+        locationMarker = L.marker(latlng, {
+          interactive: false,
+          zIndexOffset: 1000,
+          icon: L.divIcon({
+            className: "pm-location-icon",
+            html: '<span class="pm-location-dot" aria-hidden="true"></span>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          })
+        }).addTo(map);
+
+        setLocateState("active", "Current location shown");
+        if (focus) map.flyTo(latlng, Math.max(map.getZoom(), 8), { duration: reducedMotion ? 0 : 0.8 });
+      }
+
+      function requestLocation(focus = true) {
+        if (!navigator.geolocation) {
+          setLocateState("error", "Location is unavailable");
+          locateButton.disabled = true;
+          return;
+        }
+        setLocateState("loading", "Finding your location", "loader-circle");
+        navigator.geolocation.getCurrentPosition(
+          (position) => showLocation(position, focus),
+          (error) => {
+            const message = error.code === 1
+              ? "Location permission denied"
+              : error.code === 3
+                ? "Location request timed out"
+                : "Location is unavailable";
+            setLocateState("error", message);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      }
+
       function dataset() {
         return DATASETS[particle][extent];
       }
 
       function descriptor(index) {
         const data = dataset();
-        const safeIndex = Math.max(0, Math.min(72, Number(index)));
+        const safeIndex = Math.max(currentIndex, Math.min(72, Number(index)));
         return {
           key: `${particle}|${extent}|${safeIndex}`,
           index: safeIndex,
@@ -1398,7 +1481,6 @@
       }
 
       function warmAhead(index, count = 3) {
-        if (timeMode !== "forecast") return;
         for (let offset = 1; offset <= count; offset += 1) {
           const nextIndex = index + offset;
           if (nextIndex > 72) break;
@@ -1407,7 +1489,7 @@
       }
 
       function scheduleProcessedAhead(index) {
-        if (timeMode !== "forecast" || index > 72) return;
+        if (index > 72) return;
         const frame = descriptor(index);
         if (processedCache.has(frame.key) || scheduledProcessing.has(frame.key)) return;
         scheduledProcessing.add(frame.key);
@@ -1464,27 +1546,39 @@
         );
       }
 
+      function updateRangeLabels() {
+        const horizon = Math.max(0, 72 - currentIndex);
+        const offsets = [...new Set([0, 24, 48, horizon])]
+          .filter((offset) => offset >= 0 && offset <= horizon)
+          .sort((a, b) => a - b);
+        rangeLabels.replaceChildren(...offsets.map((offset) => {
+          const span = document.createElement("span");
+          span.textContent = offset === 0 ? "Now" : `+${offset} h`;
+          span.style.left = horizon === 0 ? "0%" : `${offset / horizon * 100}%`;
+          return span;
+        }));
+      }
+
       function updateLabels(index, pending = false) {
         const data = dataset();
         const valid = forecastTimes[index];
         const localTime = formatLocal.format(valid);
+        const hourOffset = index - currentIndex;
         slider.value = String(index);
+        slider.setAttribute(
+          "aria-valuetext",
+          `${hourOffset === 0 ? "Now" : `Plus ${hourOffset} hours`}, ${localTime}`
+        );
         timeValue.textContent = localTime;
-        hourValue.textContent = `+${index} h`;
-        if (timeMode === "now") {
-          setStatus(pending ? `Loading ${localTime}` : localTime, pending ? "loading" : "ready");
-        } else {
-          setFrameStatus(pending ? "loading" : "ready", pending ? "Loading forecast frame" : "Forecast frame loaded");
-        }
+        hourValue.textContent = hourOffset === 0 ? "Now" : `+${hourOffset} h`;
+        prevButton.disabled = index <= currentIndex;
+        nextButton.disabled = index >= 72;
+        playButton.disabled = currentIndex >= 72;
+        setFrameStatus(pending ? "loading" : "ready", pending ? "Loading forecast frame" : "Forecast frame loaded");
         mapElement.setAttribute(
           "aria-label",
           `${data.extentLabel} ${DATASETS[particle].label} valid ${localTime}`
         );
-      }
-
-      function setStatus(message, state = "ready") {
-        status.textContent = message;
-        statusLine.dataset.state = state;
       }
 
       function setFrameStatus(state = "ready", message = "Forecast frame loaded") {
@@ -1587,15 +1681,12 @@
         standbyGeneration += 1;
         const generation = standbyGeneration;
         standbyKey = frame.key;
-        if (!quiet && timeMode === "now") {
-          setStatus(`Loading ${formatLocal.format(frame.validTime)}`, "loading");
-        }
         standbyPromise = waitForStandby(frame, generation);
         return standbyPromise;
       }
 
       async function primeNext() {
-        if (timeMode !== "forecast" || selectedIndex >= 72) return;
+        if (selectedIndex >= 72) return;
         await prepare(descriptor(selectedIndex + 1), true);
       }
 
@@ -1622,8 +1713,7 @@
           return false;
         }
         if (!loaded.ok) {
-          if (timeMode === "now") setStatus("Time unavailable", "error");
-          else setFrameStatus("error", "Forecast frame unavailable");
+          setFrameStatus("error", "Forecast frame unavailable");
           return false;
         }
 
@@ -1659,8 +1749,7 @@
       }
 
       async function startPlayback() {
-        if (timeMode !== "forecast") setTimeMode("forecast");
-        if (selectedIndex >= 72) await showFrame(0, { prime: true, quiet: true });
+        if (selectedIndex >= 72) await showFrame(currentIndex, { prime: true, quiet: true });
         playing = true;
         playbackGeneration += 1;
         const generation = playbackGeneration;
@@ -1677,19 +1766,6 @@
         playbackLoop(generation);
       }
 
-      function setTimeMode(nextMode) {
-        stopPlayback();
-        timeMode = nextMode;
-        root.dataset.timeMode = timeMode;
-        timeModeButtons.forEach((button) => {
-          button.setAttribute("aria-pressed", String(button.dataset.timeMode === timeMode));
-        });
-        timeline.hidden = timeMode !== "forecast";
-        statusLine.hidden = timeMode === "forecast";
-        if (timeMode === "now") selectedIndex = currentIndex;
-        showFrame(selectedIndex, { prime: timeMode === "forecast", quiet: timeMode === "forecast" });
-      }
-
       function changeDataset() {
         stopPlayback();
         particle = particleSelect.value;
@@ -1699,10 +1775,7 @@
         standbyKey = "";
         standbyPromise = null;
         updateLegend();
-        showFrame(timeMode === "now" ? currentIndex : selectedIndex, {
-          prime: timeMode === "forecast",
-          quiet: timeMode === "forecast"
-        });
+        showFrame(selectedIndex, { prime: true, quiet: true });
         document.getElementById("pm-data-menu").open = false;
       }
 
@@ -1737,10 +1810,6 @@
         menus.forEach((menu) => {
           if (menu.open && !menu.contains(event.target)) menu.open = false;
         });
-      });
-
-      timeModeButtons.forEach((button) => {
-        button.addEventListener("click", () => setTimeMode(button.dataset.timeMode));
       });
 
       slider.addEventListener("input", () => {
@@ -1823,11 +1892,26 @@
         }
       }, { once: true });
 
+      slider.min = String(currentIndex);
+      slider.max = "72";
       slider.value = String(currentIndex);
+      updateRangeLabels();
       updateLegend();
       updateLabels(currentIndex, true);
-      showFrame(currentIndex, { prime: false });
+      showFrame(currentIndex, { prime: true, quiet: true });
       renderIcons();
+
+      if (navigator.permissions?.query) {
+        try {
+          navigator.permissions.query({ name: "geolocation" })
+            .then((permission) => {
+              if (permission.state === "granted") requestLocation(false);
+            })
+            .catch(() => {});
+        } catch {
+          // Some browsers expose Permissions without supporting geolocation queries.
+        }
+      }
     })();
   </script>
 </body>
