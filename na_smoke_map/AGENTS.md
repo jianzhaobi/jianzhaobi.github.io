@@ -2,7 +2,7 @@
 
 ## Project purpose
 
-This project provides a browser-based, mobile-friendly map for exploring current and forecast particulate pollution across North America. The primary deliverable is `north-america-smoke-forecast.html`.
+This project provides a browser-based, mobile-friendly map for exploring current and forecast particulate pollution across North America. The sole primary deliverable is `index.html`.
 
 The map must let users independently choose:
 
@@ -73,7 +73,7 @@ The user-facing data palette is intentionally different from the official ECCC m
 
 - Low concentrations should become fully or nearly transparent.
 - Wildfire-smoke concentrations should progress through light amber, orange, burnt orange, and dark reddish brown.
-- Total PM2.5 should use a clearly distinct but plausible air-pollution palette progressing through pale lavender, violet, deep purple, and dark plum.
+- Total PM2.5 should use a clearly distinct monochromatic smoky-blue palette. Vary only lightness and alpha within that single hue family; do not introduce purple, violet, or a second hue.
 - Even the darkest concentrations retain some alpha so geographic context remains visible.
 
 Request the artifact-free official WMS PNG, load it with CORS enabled, draw it to an offscreen canvas, infer each pixel's position along the official multi-hue ramp, and recolor it into the particle-specific alpha ramp. Use a blob URL for the processed PNG and revoke stale blob URLs when a buffer is reused.
@@ -116,7 +116,8 @@ Clicking or tapping inside the modeled North America bounds should open a compac
 - Keep a `Float32Array` value grid on each active/standby frame buffer.
 - Convert the clicked latitude/longitude through the same Web Mercator bounds used by the WMS image before indexing the grid.
 - Show the active frame's particle type, vertical extent, valid time, value, and correct unit.
-- Prefix numeric values with `≈` because they are reverse-mapped from rendered colors rather than read from the raw model field.
+- Show the inferred numeric value without an `≈` prefix. Keep the implementation and accessible context clear that values are inferred from rendered colors rather than read from the raw model field.
+- Show the popup's full valid date and time, including year, month, day, weekday, clock time, and time zone.
 - For transparent/no-data pixels, say “Below display threshold” rather than claiming the modeled concentration is exactly zero.
 
 ## Interface and visual preferences
@@ -131,12 +132,14 @@ Maintain these preferences:
 - Horizontal color scale rather than a tall official legend that consumes map space.
 - Keep the horizontal legend compact—roughly 320 px on desktop and narrower on phones—so it does not obscure a large portion of the map.
 - Forecast controls and time slider integrated as a floating bottom panel over the map.
+- Keep the legend and forecast panel inside one coordinated bottom dock: side by side on sufficiently wide screens and neatly stacked on narrow screens.
+- Keep a concise frame-status dot inside the forecast panel: green when the selected frame is ready, orange/pulsing while it loads, and red when unavailable.
 - Rounded corners, compact spacing, readable typography, and clear selected states.
 - Minimal explanatory chrome; keep the geographic data visually dominant.
 - Native, accessible selects and buttons with visible keyboard focus.
 - Clear loading, loaded, partial-failure, and unavailable states.
 
-The custom horizontal legend should use the same particle-specific progression as the processed data—orange/brown for wildfire smoke and violet/plum for total PM2.5—and track the appropriate surface or column scale and unit.
+The custom horizontal legend should use the same particle-specific progression as the processed data—orange/brown for wildfire smoke and monochromatic smoky blue for total PM2.5—and track the appropriate surface or column scale and unit.
 
 ## Responsive behavior
 
@@ -147,6 +150,7 @@ Cell-phone usability is a core requirement, not a later enhancement.
 - Touch targets should remain at least approximately 38 px high.
 - The legend must fit within the map width.
 - Closed Data and Map menus should be icon-led on phones; icon-only controls require accessible names.
+- Keep the basemap menu programmatically labeled, but do not display a visible “Basemap” heading inside the open menu.
 - Forecast controls must remain usable without covering all meaningful map content.
 - The map receives additional vertical height on phones to accommodate floating controls.
 - Labels may wrap, but controls and scale values must not be clipped.
@@ -160,12 +164,15 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Use `aria-live` for concise data-loading and valid-time feedback.
 - Use `aria-pressed` for Now/Forecast and Play/Pause states.
 - Keep previous and next controls labeled even if their visible content is only an arrow.
+- Keep Leaflet zoom controls vertically centered along the right edge of the map.
 - Do not rely on color alone to communicate selection or loading state.
 - Prefer plain-language labels such as “Entire atmosphere” and “Column loading.”
 
 ## Implementation conventions
 
-- Keep the application self-contained in `north-america-smoke-forecast.html` except for explicitly loaded Leaflet, CARTO, Esri, and ECCC web resources.
+- Keep the application self-contained in `index.html` except for explicitly loaded Leaflet, CARTO, Esri, and ECCC web resources.
+- Apply every future application, feature, design, and bug-fix update directly to `index.html`.
+- Do not create or maintain a duplicate standalone HTML entry point such as `north-america-smoke-forecast.html`.
 - Use plain HTML, CSS, and JavaScript; do not introduce a build step without a clear need.
 - Scope component styles beneath `#north-america-pm25` to avoid host-page collisions.
 - Use CSS custom properties for page and interface colors so the visualization can inherit a host theme.
@@ -198,9 +205,9 @@ Before handing off a material change:
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
-12. Confirm light concentrations remain transparent, wildfire smoke uses the orange/brown ramp, and total PM2.5 uses the violet/plum ramp without hiding the basemap completely.
+12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the monochromatic smoky-blue ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
-14. Click both a plume pixel and a transparent pixel; verify the popup uses the active layer's unit and describes the value as approximate or below threshold.
+14. Click both a plume pixel and a transparent pixel; verify the popup uses the active layer's unit, omits the approximation symbol, shows the full valid date/time/time zone, and says “Below display threshold” for transparent pixels.
 15. During playback, confirm both image buffers have a 720 ms opacity transition and visibly hold complementary intermediate opacities.
 16. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution overlay scale and settle together without visible lag.
 
@@ -213,6 +220,6 @@ Before handing off a material change:
 
 ## Primary artifact
 
-- `north-america-smoke-forecast.html`: standalone interactive map for users.
+- `index.html`: the only standalone interactive map and the only application file to update.
 
 If an inline Codex visualization is also generated, keep it as an HTML fragment without document-level `doctype`, `html`, `head`, or `body` tags, while keeping the standalone file functionally equivalent.
