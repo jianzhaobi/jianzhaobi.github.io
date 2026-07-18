@@ -123,7 +123,7 @@ This arrangement avoids user-device persistence, keeps Git history small, reduce
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
-- Apply high-quality bicubic spatial interpolation at approximately 1.5× plus a restrained 0.6 px blur to soften raster stair-stepping and grid-cell transitions. This is display smoothing, not a higher-resolution forecast.
+- Decode the rendered source colors into a scalar ramp-position field, then apply normalized high-quality bicubic interpolation at approximately 1.8× plus a restrained 1.1 px Gaussian blur to the weighted scalar field and coverage mask before recoloring. This reduces raster stair-stepping and produces visually continuous plume gradients without bleeding no-data pixels into the modeled field. It is display smoothing, not a higher-resolution forecast.
 - Keep the original 1000 × 625 WMS image as the scientific source grid; smoothing applies only to the displayed PNG. Direct-GeoMet fallback retains its original-grid value lookup, while prepared-cache frames use lazy palette sampling for the popup. Build-time preparation removes full-frame canvas recoloring and PNG encoding from normal client playback.
 - Linearly interpolate premultiplied pixel color and alpha in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
 - Keep the visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value, synchronously extract the two adjacent integer preview frames, and set the shader mix amount from the pointer's fractional position. On release, snap to the nearest integer hour and smoothly refine the preview to that hour's full-resolution frame.
@@ -218,6 +218,12 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Apply `will-change: transform` to the pollution canvas so the browser can keep zoom transforms on the compositor.
 
 When editing files in this workspace, use `apply_patch` for manual changes and preserve unrelated user work.
+
+## Version control handoff
+
+- After every completed project modification, commit the relevant changes and push the commit to the configured GitHub remote before handing the work back to the user.
+- Preserve unrelated user work and include only the files relevant to the requested change in the commit.
+- If a commit or push cannot be completed, report the exact blocker instead of implying that the remote repository is up to date.
 
 ## Verification checklist
 

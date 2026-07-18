@@ -84,12 +84,12 @@
     }
 
     #north-america-pm25 {
-      --pm-ramp-1: #fff0c2;
-      --pm-ramp-2: #ffc85f;
-      --pm-ramp-3: #f29b36;
-      --pm-ramp-4: #d86128;
-      --pm-ramp-5: #96391f;
-      --pm-ramp-6: #542317;
+      --pm-ramp-1: #fff3c4;
+      --pm-ramp-2: #fed98e;
+      --pm-ramp-3: #fdae48;
+      --pm-ramp-4: #f47b2a;
+      --pm-ramp-5: #c4471f;
+      --pm-ramp-6: #6f1d13;
       position: fixed;
       inset: 0;
       width: 100%;
@@ -103,12 +103,12 @@
     }
 
     #north-america-pm25[data-particle="total"] {
-      --pm-ramp-1: #fff7d6;
-      --pm-ramp-2: #f2df9b;
-      --pm-ramp-3: #d8bc61;
-      --pm-ramp-4: #b28b36;
-      --pm-ramp-5: #7e5c25;
-      --pm-ramp-6: #493315;
+      --pm-ramp-1: #fff7bc;
+      --pm-ramp-2: #fee391;
+      --pm-ramp-3: #fec44f;
+      --pm-ramp-4: #fe9929;
+      --pm-ramp-5: #cc4c02;
+      --pm-ramp-6: #662506;
     }
 
     #north-america-pm25[data-basemap="dark"] {
@@ -349,7 +349,7 @@
 
     #north-america-pm25 .pm-legend {
       position: relative;
-      width: 204px;
+      width: 260px;
       min-width: 0;
       opacity: .82;
       transition: opacity 150ms ease;
@@ -379,16 +379,16 @@
     }
 
     #north-america-pm25 .pm-gradient {
-      height: 4px;
+      height: 6px;
       border-radius: 999px;
       background: linear-gradient(
         90deg,
         transparent 0%,
-        color-mix(in srgb, var(--pm-ramp-1) 18%, transparent) 8%,
-        color-mix(in srgb, var(--pm-ramp-2) 38%, transparent) 26%,
-        color-mix(in srgb, var(--pm-ramp-3) 58%, transparent) 46%,
-        color-mix(in srgb, var(--pm-ramp-4) 72%, transparent) 67%,
-        color-mix(in srgb, var(--pm-ramp-5) 84%, transparent) 84%,
+        color-mix(in srgb, var(--pm-ramp-1) 12%, transparent) 12%,
+        color-mix(in srgb, var(--pm-ramp-2) 28%, transparent) 28%,
+        color-mix(in srgb, var(--pm-ramp-3) 48%, transparent) 48%,
+        color-mix(in srgb, var(--pm-ramp-4) 68%, transparent) 68%,
+        color-mix(in srgb, var(--pm-ramp-5) 82%, transparent) 84%,
         var(--pm-ramp-6) 100%
       );
     }
@@ -663,11 +663,30 @@
 
     #north-america-pm25 .leaflet-popup-content {
       min-width: 200px;
-      margin: 10px 13px;
+      margin: 11px 42px 11px 14px;
     }
 
     #north-america-pm25 .leaflet-popup-close-button {
-      display: none !important;
+      top: 4px !important;
+      right: 4px !important;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 34px !important;
+      height: 34px !important;
+      padding: 0 !important;
+      border-radius: 10px;
+      color: var(--pm-muted) !important;
+      font-size: 22px !important;
+      font-weight: 400 !important;
+      line-height: 1 !important;
+      text-decoration: none;
+    }
+
+    #north-america-pm25 .leaflet-popup-close-button:hover,
+    #north-america-pm25 .leaflet-popup-close-button:focus-visible {
+      color: var(--pm-text) !important;
+      background: var(--pm-ui-hover);
     }
 
     #north-america-pm25 .pm-probe-popup {
@@ -708,6 +727,11 @@
       #north-america-pm25 .pm-legend {
         width: 100%;
         grid-column: 1 / -1;
+      }
+
+      #north-america-pm25 .leaflet-popup-close-button {
+        width: 38px !important;
+        height: 38px !important;
       }
     }
 
@@ -937,7 +961,8 @@
       const PLAYBACK_FADE_MS = 900;
       const SCRUB_FADE_MS = 260;
       const IMAGE_SIZE = { width: 1000, height: 625 };
-      const SPATIAL_SCALE = 1.5;
+      const SPATIAL_SCALE = 1.8;
+      const SPATIAL_BLUR_RADIUS = 1.1;
       const DATA_BOUNDS = L.latLngBounds([[16, -170], [76, -52]]);
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const cacheLimit = window.innerWidth < 600 || (navigator.deviceMemory && navigator.deviceMemory <= 4) ? 3 : 5;
@@ -993,20 +1018,20 @@
 
       const COLOR_RAMPS = {
         smoke: [
-          [0.00, 255, 240, 194, 0.00],
-          [0.18, 255, 200, 95, 0.02],
-          [0.38, 242, 155, 54, 0.14],
-          [0.58, 216, 97, 40, 0.33],
-          [0.78, 150, 57, 31, 0.56],
-          [1.00, 84, 35, 23, 0.78]
+          [0.00, 255, 243, 196, 0.00],
+          [0.20, 254, 217, 142, 0.09],
+          [0.40, 253, 174, 72, 0.24],
+          [0.60, 244, 123, 42, 0.44],
+          [0.80, 196, 71, 31, 0.66],
+          [1.00, 111, 29, 19, 0.84]
         ],
         total: [
-          [0.00, 255, 247, 214, 0.00],
-          [0.18, 242, 223, 155, 0.02],
-          [0.38, 216, 188, 97, 0.14],
-          [0.58, 178, 139, 54, 0.33],
-          [0.78, 126, 92, 37, 0.56],
-          [1.00, 73, 51, 21, 0.78]
+          [0.00, 255, 247, 188, 0.00],
+          [0.20, 254, 227, 145, 0.09],
+          [0.40, 254, 196, 79, 0.24],
+          [0.60, 254, 153, 41, 0.44],
+          [0.80, 204, 76, 2, 0.66],
+          [1.00, 102, 37, 6, 0.84]
         ]
       };
 
@@ -1549,12 +1574,18 @@
         context.drawImage(image, 0, 0);
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
         const rgba = pixels.data;
+        const weightedPixels = context.createImageData(canvas.width, canvas.height);
+        const coveragePixels = context.createImageData(canvas.width, canvas.height);
+        const weightedRgba = weightedPixels.data;
+        const coverageRgba = coveragePixels.data;
         const values = new Float32Array(canvas.width * canvas.height);
         const lut = pixelLut(frame.particle, frame.scale);
         values.fill(-1);
 
         for (let offset = 0, valueIndex = 0; offset < rgba.length; offset += 4, valueIndex += 1) {
           const sourceAlpha = rgba[offset + 3];
+          weightedRgba[offset + 3] = 255;
+          coverageRgba[offset + 3] = 255;
           if (sourceAlpha <= 2) continue;
           const sourceIndex = (
             (rgba[offset] >> 3) << 10 |
@@ -1563,23 +1594,60 @@
           );
           const position = SOURCE_POSITION_LUT[sourceIndex];
           const colorIndex = Math.max(0, Math.min(1023, Math.round(position * 1023)));
-          rgba[offset] = lut.red[colorIndex];
-          rgba[offset + 1] = lut.green[colorIndex];
-          rgba[offset + 2] = lut.blue[colorIndex];
+          const weightedPosition = Math.round(position * sourceAlpha);
+          weightedRgba[offset] = weightedPosition;
+          weightedRgba[offset + 1] = weightedPosition;
+          weightedRgba[offset + 2] = weightedPosition;
+          coverageRgba[offset] = sourceAlpha;
+          coverageRgba[offset + 1] = sourceAlpha;
+          coverageRgba[offset + 2] = sourceAlpha;
           const displayAlpha = Math.round(sourceAlpha * lut.alpha[colorIndex]);
-          rgba[offset + 3] = displayAlpha;
           if (displayAlpha > 2) values[valueIndex] = lut.value[colorIndex];
         }
 
-        context.putImageData(pixels, 0, 0);
+        const weightedCanvas = document.createElement("canvas");
+        weightedCanvas.width = canvas.width;
+        weightedCanvas.height = canvas.height;
+        weightedCanvas.getContext("2d", { alpha: false }).putImageData(weightedPixels, 0, 0);
+        const coverageCanvas = document.createElement("canvas");
+        coverageCanvas.width = canvas.width;
+        coverageCanvas.height = canvas.height;
+        coverageCanvas.getContext("2d", { alpha: false }).putImageData(coveragePixels, 0, 0);
+
         const output = document.createElement("canvas");
         output.width = Math.round(canvas.width * SPATIAL_SCALE);
         output.height = Math.round(canvas.height * SPATIAL_SCALE);
+        const smoothField = (source) => {
+          const field = document.createElement("canvas");
+          field.width = output.width;
+          field.height = output.height;
+          const fieldContext = field.getContext("2d", { willReadFrequently: true, alpha: false });
+          fieldContext.imageSmoothingEnabled = true;
+          fieldContext.imageSmoothingQuality = "high";
+          fieldContext.filter = `blur(${SPATIAL_BLUR_RADIUS}px)`;
+          fieldContext.drawImage(source, 0, 0, field.width, field.height);
+          fieldContext.filter = "none";
+          return fieldContext.getImageData(0, 0, field.width, field.height).data;
+        };
+        const smoothedWeighted = smoothField(weightedCanvas);
+        const smoothedCoverage = smoothField(coverageCanvas);
         const outputContext = output.getContext("2d", { alpha: true });
-        outputContext.imageSmoothingEnabled = true;
-        outputContext.imageSmoothingQuality = "high";
-        outputContext.filter = "blur(0.6px)";
-        outputContext.drawImage(canvas, 0, 0, output.width, output.height);
+        const outputPixels = outputContext.createImageData(output.width, output.height);
+        const outputRgba = outputPixels.data;
+
+        for (let offset = 0; offset < outputRgba.length; offset += 4) {
+          const coverage = smoothedCoverage[offset];
+          if (coverage <= 2) continue;
+          const position = Math.max(0, Math.min(1, smoothedWeighted[offset] / coverage));
+          const colorIndex = Math.max(0, Math.min(1023, Math.round(position * 1023)));
+          const displayAlpha = Math.round(coverage * lut.alpha[colorIndex]);
+          if (displayAlpha <= 2) continue;
+          outputRgba[offset] = lut.red[colorIndex];
+          outputRgba[offset + 1] = lut.green[colorIndex];
+          outputRgba[offset + 2] = lut.blue[colorIndex];
+          outputRgba[offset + 3] = displayAlpha;
+        }
+        outputContext.putImageData(outputPixels, 0, 0);
 
         return {
           source: output,
@@ -2182,8 +2250,8 @@
       function updateLegend() {
         const data = dataset();
         const ticks = extent === "surface"
-          ? ["0", "10", "50", "100", "250+"]
-          : ["0", "5", "25", "100", "200+"];
+          ? ["1", "10", "28", "60", "120", "250+"]
+          : ["0.5", "3", "10", "50", "100", "200+"];
         root.dataset.particle = particle;
         legendTitle.textContent = `${particle === "smoke" ? "Smoke" : "Total PM2.5"} · ${
           extent === "surface" ? "Surface" : "Column"
@@ -2595,7 +2663,7 @@
         valueLine.textContent = valueText;
         content.append(particleLine, extentLine, valueLine);
 
-        L.popup({ maxWidth: 280, offset: [0, -4], closeButton: false })
+        L.popup({ maxWidth: 280, offset: [0, -4], closeButton: true })
           .setLatLng(event.latlng)
           .setContent(content)
           .openOn(map);

@@ -69,20 +69,20 @@ SOURCE_COLORS = (
 
 COLOR_RAMPS = {
     "smoke": (
-        (0.00, 255, 240, 194, 0.00),
-        (0.18, 255, 200, 95, 0.02),
-        (0.38, 242, 155, 54, 0.14),
-        (0.58, 216, 97, 40, 0.33),
-        (0.78, 150, 57, 31, 0.56),
-        (1.00, 84, 35, 23, 0.78),
+        (0.00, 255, 243, 196, 0.00),
+        (0.20, 254, 217, 142, 0.09),
+        (0.40, 253, 174, 72, 0.24),
+        (0.60, 244, 123, 42, 0.44),
+        (0.80, 196, 71, 31, 0.66),
+        (1.00, 111, 29, 19, 0.84),
     ),
     "total": (
-        (0.00, 255, 247, 214, 0.00),
-        (0.18, 242, 223, 155, 0.02),
-        (0.38, 216, 188, 97, 0.14),
-        (0.58, 178, 139, 54, 0.33),
-        (0.78, 126, 92, 37, 0.56),
-        (1.00, 73, 51, 21, 0.78),
+        (0.00, 255, 247, 188, 0.00),
+        (0.20, 254, 227, 145, 0.09),
+        (0.40, 254, 196, 79, 0.24),
+        (0.60, 254, 153, 41, 0.44),
+        (0.80, 204, 76, 2, 0.66),
+        (1.00, 102, 37, 6, 0.84),
     ),
 }
 
@@ -364,29 +364,54 @@ def prepare_display_frame(
         with Image.open(raw_path) as source:
             rgba = np.asarray(source.convert("RGBA"), dtype=np.uint8).copy()
 
-        source_alpha = rgba[:, :, 3].copy()
-        mask = source_alpha > 2
+        source_alpha = rgba[:, :, 3].astype(np.float32) / 255
+        mask = source_alpha > (2 / 255)
         source_indexes = (
             (rgba[:, :, 0].astype(np.uint16) >> 3) << 10
             | (rgba[:, :, 1].astype(np.uint16) >> 3) << 5
             | (rgba[:, :, 2].astype(np.uint16) >> 3)
         )
         positions = SOURCE_POSITION_LUT[source_indexes]
-        color_indexes = np.clip(np.rint(positions * 1023), 0, 1023).astype(np.uint16)
+        coverage = np.where(mask, source_alpha, 0).astype(np.float32)
+        weighted_position = positions * coverage
+        weighted_image = Image.fromarray(
+            np.rint(weighted_position * 255).astype(np.uint8),
+            mode="L",
+        ).resize(display_size, resample=Image.Resampling.BICUBIC)
+        coverage_image = Image.fromarray(
+            np.rint(coverage * 255).astype(np.uint8),
+            mode="L",
+        ).resize(display_size, resample=Image.Resampling.BICUBIC)
+        if blur_radius > 0:
+            weighted_image = weighted_image.filter(ImageFilter.GaussianBlur(blur_radius))
+            coverage_image = coverage_image.filter(ImageFilter.GaussianBlur(blur_radius))
+
+        display_coverage = np.asarray(coverage_image, dtype=np.float32) / 255
+        display_weighted = np.asarray(weighted_image, dtype=np.float32) / 255
+        display_positions = np.divide(
+            display_weighted,
+            display_coverage,
+            out=np.zeros_like(display_weighted),
+            where=display_coverage > (2 / 255),
+        )
+        color_indexes = np.clip(
+            np.rint(display_positions * 1023),
+            0,
+            1023,
+        ).astype(np.uint16)
         red, green, blue, alpha = pixel_lut(frame.particle)
-        rgba[:, :, 0][mask] = red[color_indexes[mask]]
-        rgba[:, :, 1][mask] = green[color_indexes[mask]]
-        rgba[:, :, 2][mask] = blue[color_indexes[mask]]
-        rgba[:, :, 3][mask] = np.rint(
-            source_alpha[mask].astype(np.float32) * alpha[color_indexes[mask]]
+        display_rgba = np.zeros((*display_coverage.shape, 4), dtype=np.uint8)
+        display_mask = display_coverage > (2 / 255)
+        display_rgba[:, :, 0][display_mask] = red[color_indexes[display_mask]]
+        display_rgba[:, :, 1][display_mask] = green[color_indexes[display_mask]]
+        display_rgba[:, :, 2][display_mask] = blue[color_indexes[display_mask]]
+        display_rgba[:, :, 3][display_mask] = np.rint(
+            255
+            * display_coverage[display_mask]
+            * alpha[color_indexes[display_mask]]
         ).astype(np.uint8)
 
-        prepared = Image.fromarray(rgba, mode="RGBA").resize(
-            display_size,
-            resample=Image.Resampling.BICUBIC,
-        )
-        if blur_radius > 0:
-            prepared = prepared.filter(ImageFilter.GaussianBlur(blur_radius))
+        prepared = Image.fromarray(display_rgba, mode="RGBA")
         destination.parent.mkdir(parents=True, exist_ok=True)
         prepared.save(temporary, format="PNG", compress_level=6)
         if not valid_png(temporary, display_size):
@@ -505,8 +530,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--forecast-hours", type=int, default=64)
     parser.add_argument("--width", type=int, default=1000)
     parser.add_argument("--height", type=int, default=625)
-    parser.add_argument("--spatial-scale", type=float, default=1.5)
-    parser.add_argument("--blur-radius", type=float, default=0.6)
+    parser.add_argument("--spatial-scale", type=float, default=1.8)
+    parser.add_argument("--blur-radius", type=float, default=1.1)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--process-jobs", type=int, default=4)
     parser.add_argument("--retries", type=int, default=3)
