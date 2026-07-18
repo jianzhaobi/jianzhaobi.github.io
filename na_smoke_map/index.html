@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src blob: data: https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'none'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -103,12 +103,12 @@
     }
 
     #north-america-pm25[data-particle="total"] {
-      --pm-ramp-1: #edf1f5;
-      --pm-ramp-2: #ced9e4;
-      --pm-ramp-3: #9fb3c8;
-      --pm-ramp-4: #718aa5;
-      --pm-ramp-5: #4b6179;
-      --pm-ramp-6: #293746;
+      --pm-ramp-1: #fff7d6;
+      --pm-ramp-2: #f2df9b;
+      --pm-ramp-3: #d8bc61;
+      --pm-ramp-4: #b28b36;
+      --pm-ramp-5: #7e5c25;
+      --pm-ramp-6: #493315;
     }
 
     #north-america-pm25[data-basemap="dark"] {
@@ -459,6 +459,7 @@
       min-width: 0;
       align-items: center;
       gap: 7px;
+      overflow: hidden;
     }
 
     #north-america-pm25 .pm-time-copy {
@@ -469,6 +470,7 @@
     }
 
     #north-america-pm25 #pm-time-value {
+      display: block;
       overflow: hidden;
       font-size: 13px;
       font-weight: 650;
@@ -671,11 +673,26 @@
       display: none !important;
     }
 
-    #north-america-pm25 .pm-probe-popup strong {
-      display: block;
+    #north-america-pm25 .pm-probe-popup {
+      display: grid;
+      gap: 2px;
     }
 
-    #north-america-pm25 .pm-probe-popup strong {
+    #north-america-pm25 .pm-probe-particle {
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-probe-extent {
+      color: var(--pm-muted);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-probe-value {
+      margin-top: 2px;
       font-size: 15px;
       font-weight: 700;
       line-height: 1.25;
@@ -763,7 +780,7 @@
 
     @media (max-width: 350px) {
       #north-america-pm25 #pm-time-value {
-        max-width: 118px;
+        max-width: 96px;
         font-size: 12px;
       }
     }
@@ -860,6 +877,9 @@
               </div>
             </div>
             <div class="pm-transport" aria-label="Animation controls">
+              <button type="button" class="pm-button pm-icon-button" id="pm-reset" aria-label="Reset to now">
+                <i data-lucide="rotate-ccw" aria-hidden="true"></i>
+              </button>
               <button type="button" class="pm-button pm-icon-button" id="pm-prev" aria-label="Previous forecast hour">
                 <i data-lucide="step-back" aria-hidden="true"></i>
               </button>
@@ -904,6 +924,7 @@
       const frameStatus = document.getElementById("pm-frame-status");
       const frameStatusText = document.getElementById("pm-frame-status-text");
       const playButton = document.getElementById("pm-play");
+      const resetButton = document.getElementById("pm-reset");
       const prevButton = document.getElementById("pm-prev");
       const nextButton = document.getElementById("pm-next");
 
@@ -917,7 +938,7 @@
       const HOUR = 60 * 60 * 1000;
       const DATA_OPACITY = 0.9;
       const FADE_MS = 720;
-      const IMAGE_SIZE = { width: 1600, height: 1000 };
+      const IMAGE_SIZE = { width: 1000, height: 625 };
       const SPATIAL_SCALE = 1.15;
       const DATA_BOUNDS = L.latLngBounds([[16, -170], [76, -52]]);
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -982,12 +1003,12 @@
           [1.00, 84, 35, 23, 0.78]
         ],
         total: [
-          [0.00, 237, 241, 245, 0.00],
-          [0.18, 206, 217, 228, 0.02],
-          [0.38, 159, 179, 200, 0.14],
-          [0.58, 113, 138, 165, 0.33],
-          [0.78, 75, 97, 121, 0.56],
-          [1.00, 41, 55, 70, 0.78]
+          [0.00, 255, 247, 214, 0.00],
+          [0.18, 242, 223, 155, 0.02],
+          [0.38, 216, 188, 97, 0.14],
+          [0.58, 178, 139, 54, 0.33],
+          [0.78, 126, 92, 37, 0.56],
+          [1.00, 73, 51, 21, 0.78]
         ]
       };
 
@@ -998,6 +1019,7 @@
 
       const formatLocal = new Intl.DateTimeFormat(undefined, {
         weekday: "short",
+        year: "numeric",
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -1020,6 +1042,16 @@
         ));
       }
 
+      function latestRunAtOrBefore(date) {
+        const hour = date.getUTCHours() >= 12 ? 12 : 0;
+        return new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          hour
+        ));
+      }
+
       const now = new Date();
       const referenceTime = latestLikelyRun(now);
       const forecastTimes = Array.from(
@@ -1030,12 +1062,16 @@
         0,
         Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR))
       );
+      const currentValidTime = forecastTimes[currentIndex];
+      const timelineRadius = Math.max(0, 72 - currentIndex);
+      const minimumHour = -timelineRadius;
+      const maximumHour = timelineRadius;
       const DEFAULT_CENTER = [window.innerWidth < 720 ? 49.5 : 46.5, -101];
       const DEFAULT_ZOOM = window.innerWidth < 720 ? 3 : 4;
 
       let particle = "smoke";
       let extent = "surface";
-      let selectedIndex = currentIndex;
+      let selectedHour = 0;
       let activeKey = "";
       let standbyKey = "";
       let activeLayer;
@@ -1047,6 +1083,7 @@
       let zIndex = 420;
       let playing = false;
       let playbackGeneration = 0;
+      let datasetGeneration = 0;
       let scrubTimer = null;
       let locateButton;
       let locateStatus;
@@ -1056,6 +1093,21 @@
       const rawCache = new Map();
       const processedCache = new Map();
       const scheduledProcessing = new Set();
+      const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
+      const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
+        .then((response) => {
+          if (!response.ok) throw new Error("Static cache manifest unavailable");
+          return response.json();
+        })
+        .then((manifest) => (
+          manifest &&
+          manifest.schemaVersion === 1 &&
+          manifest.frames &&
+          typeof manifest.frames === "object"
+            ? manifest
+            : null
+        ))
+        .catch(() => null);
 
       const map = L.map(mapElement, {
         zoomControl: true,
@@ -1182,12 +1234,22 @@
         return DATASETS[particle][extent];
       }
 
-      function descriptor(index) {
+      function descriptor(hour) {
         const data = dataset();
-        const safeIndex = Math.max(currentIndex, Math.min(72, Number(index)));
+        const safeHour = Math.max(minimumHour, Math.min(maximumHour, Number(hour)));
+        const validTime = new Date(currentValidTime.getTime() + safeHour * HOUR);
+        const currentRunIndex = currentIndex + safeHour;
+        const frameReferenceTime = currentRunIndex >= 0 && currentRunIndex <= 72
+          ? referenceTime
+          : latestRunAtOrBefore(validTime);
         return {
-          key: `${particle}|${extent}|${safeIndex}`,
-          index: safeIndex,
+          key: [
+            particle,
+            extent,
+            isoHour(frameReferenceTime),
+            isoHour(validTime)
+          ].join("|"),
+          hour: safeHour,
           particle,
           extent,
           layer: data.layer,
@@ -1196,7 +1258,8 @@
           label: DATASETS[particle].label,
           extentLabel: data.extentLabel,
           unit: data.unit,
-          validTime: forecastTimes[safeIndex]
+          referenceTime: frameReferenceTime,
+          validTime
         };
       }
 
@@ -1227,7 +1290,7 @@
           format: "image/png",
           transparent: "true",
           TIME: isoHour(frame.validTime),
-          DIM_REFERENCE_TIME: isoHour(referenceTime)
+          DIM_REFERENCE_TIME: isoHour(frame.referenceTime)
         });
         return `${WMS}?${params.toString()}`;
       }
@@ -1337,14 +1400,8 @@
         cache.set(key, value);
       }
 
-      function loadRawFrame(frame) {
-        const existing = rawCache.get(frame.key);
-        if (existing) {
-          touchCache(rawCache, frame.key, existing);
-          return existing;
-        }
-
-        const promise = new Promise((resolve, reject) => {
+      function loadImage(url) {
+        return new Promise((resolve, reject) => {
           const image = new Image();
           let settled = false;
           const timeout = window.setTimeout(() => finish(false), 15000);
@@ -1354,14 +1411,34 @@
             settled = true;
             window.clearTimeout(timeout);
             if (ok) resolve(image);
-            else reject(new Error("Unable to load ECCC image"));
+            else reject(new Error("Unable to load map image"));
           }
 
           image.crossOrigin = "anonymous";
           image.decoding = "async";
           image.onload = () => finish(true);
           image.onerror = () => finish(false);
-          image.src = frameUrl(frame);
+          image.src = url;
+        });
+      }
+
+      function loadRawFrame(frame) {
+        const existing = rawCache.get(frame.key);
+        if (existing) {
+          touchCache(rawCache, frame.key, existing);
+          return existing;
+        }
+
+        const promise = cacheManifestPromise.then(async (manifest) => {
+          const cachedPath = manifest?.frames?.[frame.key];
+          if (typeof cachedPath === "string" && cachedPath) {
+            try {
+              return await loadImage(new URL(cachedPath, cacheManifestUrl).href);
+            } catch {
+              // A missing or partially published cache entry falls back to GeoMet.
+            }
+          }
+          return loadImage(frameUrl(frame));
         });
 
         promise.catch(() => rawCache.delete(frame.key));
@@ -1463,17 +1540,19 @@
         return entry.promise;
       }
 
-      function warmAhead(index, count = 3) {
+      function warmAhead(hour, count = 3) {
         for (let offset = 1; offset <= count; offset += 1) {
-          const nextIndex = index + offset;
-          if (nextIndex > 72) break;
-          loadRawFrame(descriptor(nextIndex)).catch(() => {});
+          const candidate = hour + offset;
+          const nextHour = candidate > maximumHour
+            ? Math.min(maximumHour, candidate - maximumHour - 1)
+            : candidate;
+          loadRawFrame(descriptor(nextHour)).catch(() => {});
         }
       }
 
-      function scheduleProcessedAhead(index) {
-        if (index > 72) return;
-        const frame = descriptor(index);
+      function scheduleProcessedAhead(hour) {
+        const nextHour = hour > maximumHour ? 0 : hour;
+        const frame = descriptor(nextHour);
         if (processedCache.has(frame.key) || scheduledProcessing.has(frame.key)) return;
         scheduledProcessing.add(frame.key);
         const run = () => {
@@ -1530,33 +1609,49 @@
       }
 
       function updateRangeLabels() {
-        const horizon = Math.max(0, 72 - currentIndex);
-        const offsets = [...new Set([0, 24, 48, horizon])]
-          .filter((offset) => offset >= 0 && offset <= horizon)
+        const midpoint = Math.floor(timelineRadius / 2);
+        const offsets = [...new Set([
+          minimumHour,
+          -midpoint,
+          0,
+          midpoint,
+          maximumHour
+        ])]
+          .filter((offset) => offset >= minimumHour && offset <= maximumHour)
           .sort((a, b) => a - b);
         rangeLabels.replaceChildren(...offsets.map((offset) => {
           const span = document.createElement("span");
-          span.textContent = offset === 0 ? "Now" : `+${offset} h`;
-          span.style.left = horizon === 0 ? "0%" : `${offset / horizon * 100}%`;
+          span.textContent = offset === 0
+            ? "Now"
+            : `${offset < 0 ? "−" : "+"}${Math.abs(offset)} h`;
+          span.style.left = timelineRadius === 0
+            ? "0%"
+            : `${(offset - minimumHour) / (maximumHour - minimumHour) * 100}%`;
           return span;
         }));
       }
 
-      function updateLabels(index, pending = false) {
+      function updateLabels(hour, pending = false) {
         const data = dataset();
-        const valid = forecastTimes[index];
+        const valid = descriptor(hour).validTime;
         const localTime = formatLocal.format(valid);
-        const hourOffset = index - currentIndex;
-        slider.value = String(index);
+        slider.value = String(hour);
         slider.setAttribute(
           "aria-valuetext",
-          `${hourOffset === 0 ? "Now" : `Plus ${hourOffset} hours`}, ${localTime}`
+          `${
+            hour === 0
+              ? "Now"
+              : `${hour < 0 ? "Minus" : "Plus"} ${Math.abs(hour)} hours`
+          }, ${localTime}`
         );
         timeValue.textContent = localTime;
-        hourValue.textContent = hourOffset === 0 ? "Now" : `+${hourOffset} h`;
-        prevButton.disabled = index <= currentIndex;
-        nextButton.disabled = index >= 72;
-        playButton.disabled = currentIndex >= 72;
+        hourValue.textContent = hour === 0
+          ? "Now"
+          : `${hour < 0 ? "−" : "+"}${Math.abs(hour)} h`;
+        prevButton.disabled = hour <= minimumHour;
+        nextButton.disabled = hour >= maximumHour;
+        playButton.disabled = maximumHour <= 0;
+        resetButton.disabled = hour === 0 && !playing;
         setFrameStatus(pending ? "loading" : "ready", pending ? "Loading forecast frame" : "Forecast frame loaded");
         mapElement.setAttribute(
           "aria-label",
@@ -1577,6 +1672,7 @@
         playing = false;
         playbackGeneration += 1;
         transitionGeneration += 1;
+        resetButton.disabled = selectedHour === 0;
         playButton.setAttribute("aria-pressed", "false");
         playButton.setAttribute("aria-label", "Play forecast animation");
         playButton.querySelector(".pm-play-label").textContent = "Play";
@@ -1669,20 +1765,20 @@
       }
 
       async function primeNext() {
-        if (selectedIndex >= 72) return;
-        await prepare(descriptor(selectedIndex + 1), true);
+        const nextHour = selectedHour >= maximumHour ? 0 : selectedHour + 1;
+        await prepare(descriptor(nextHour), true);
       }
 
-      async function showFrame(index, options = {}) {
-        const frame = descriptor(index);
+      async function showFrame(hour, options = {}) {
+        const frame = descriptor(hour);
         const transition = ++transitionGeneration;
-        selectedIndex = frame.index;
-        updateLabels(frame.index, frame.key !== activeKey);
+        selectedHour = frame.hour;
+        updateLabels(frame.hour, frame.key !== activeKey);
         if (frame.key !== activeKey) map.closePopup();
 
         if (frame.key === activeKey) {
-          updateLabels(frame.index, false);
-          warmAhead(frame.index);
+          updateLabels(frame.hour, false);
+          warmAhead(frame.hour);
           if (options.prime !== false) primeNext();
           return true;
         }
@@ -1702,8 +1798,8 @@
 
         const oldActive = activeLayer;
         standbyLayer.setZIndex(++zIndex);
-        warmAhead(frame.index);
-        scheduleProcessedAhead(frame.index + 1);
+        warmAhead(frame.hour);
+        scheduleProcessedAhead(frame.hour + 1);
         await nextPaint();
         standbyLayer.setOpacity(DATA_OPACITY);
         oldActive.setOpacity(0);
@@ -1714,8 +1810,8 @@
         activeKey = frame.key;
         standbyKey = "";
         standbyPromise = null;
-        selectedIndex = frame.index;
-        updateLabels(frame.index, false);
+        selectedHour = frame.hour;
+        updateLabels(frame.hour, false);
         trimProcessedCache();
 
         if (options.prime !== false) primeNext();
@@ -1723,19 +1819,20 @@
       }
 
       async function playbackLoop(generation) {
-        while (playing && generation === playbackGeneration && selectedIndex < 72) {
-          const ok = await showFrame(selectedIndex + 1, { prime: true, quiet: true });
+        while (playing && generation === playbackGeneration) {
+          const nextHour = selectedHour >= maximumHour ? 0 : selectedHour + 1;
+          const ok = await showFrame(nextHour, { prime: true, quiet: true });
           if (!ok || !playing || generation !== playbackGeneration) break;
           await delay(reducedMotion ? 1400 : 45);
         }
-        if (generation === playbackGeneration) stopPlayback();
+        if (playing && generation === playbackGeneration) stopPlayback();
       }
 
       async function startPlayback() {
-        if (selectedIndex >= 72) await showFrame(currentIndex, { prime: true, quiet: true });
         playing = true;
         playbackGeneration += 1;
         const generation = playbackGeneration;
+        updateLabels(selectedHour, activeKey !== descriptor(selectedHour).key);
         playButton.setAttribute("aria-pressed", "true");
         playButton.setAttribute("aria-label", "Pause forecast animation");
         playButton.querySelector(".pm-play-label").textContent = "Pause";
@@ -1744,13 +1841,15 @@
           icon.outerHTML = '<i data-lucide="pause" aria-hidden="true"></i>';
           renderIcons();
         }
-        warmAhead(selectedIndex, 4);
-        scheduleProcessedAhead(selectedIndex + 1);
+        warmAhead(selectedHour, 4);
+        scheduleProcessedAhead(selectedHour + 1);
         playbackLoop(generation);
       }
 
-      function changeDataset() {
-        stopPlayback();
+      async function changeDataset() {
+        const resumePlayback = playing;
+        const change = ++datasetGeneration;
+        playbackGeneration += 1;
         particle = particleSelect.value;
         extent = extentSelect.value;
         transitionGeneration += 1;
@@ -1758,7 +1857,15 @@
         standbyKey = "";
         standbyPromise = null;
         updateLegend();
-        showFrame(selectedIndex, { prime: true, quiet: true });
+        const ok = await showFrame(selectedHour, { prime: true, quiet: true });
+        if (change === datasetGeneration && resumePlayback && playing) {
+          if (!ok) {
+            stopPlayback();
+          } else {
+            playbackGeneration += 1;
+            playbackLoop(playbackGeneration);
+          }
+        }
         document.getElementById("pm-data-menu").open = false;
       }
 
@@ -1797,12 +1904,12 @@
 
       slider.addEventListener("input", () => {
         stopPlayback();
-        selectedIndex = Number(slider.value);
-        updateLabels(selectedIndex, true);
+        selectedHour = Number(slider.value);
+        updateLabels(selectedHour, true);
         if (scrubTimer !== null) window.clearTimeout(scrubTimer);
         scrubTimer = window.setTimeout(() => {
           scrubTimer = null;
-          showFrame(selectedIndex, { prime: true, quiet: true });
+          showFrame(selectedHour, { prime: true, quiet: true });
         }, 80);
       });
 
@@ -1814,12 +1921,17 @@
 
       prevButton.addEventListener("click", () => {
         stopPlayback();
-        showFrame(selectedIndex - 1, { prime: true, quiet: true });
+        showFrame(selectedHour - 1, { prime: true, quiet: true });
       });
 
       nextButton.addEventListener("click", () => {
         stopPlayback();
-        showFrame(selectedIndex + 1, { prime: true, quiet: true });
+        showFrame(selectedHour + 1, { prime: true, quiet: true });
+      });
+
+      resetButton.addEventListener("click", () => {
+        stopPlayback();
+        showFrame(0, { prime: true, quiet: true });
       });
 
       playButton.addEventListener("click", () => {
@@ -1848,10 +1960,20 @@
         const valueText = `${value.toFixed(value < 10 ? 1 : 0)} ${frame.unit}`;
         const content = document.createElement("div");
         content.className = "pm-probe-popup";
-        content.setAttribute("aria-label", `${frame.label}, ${valueText}`);
-        const primary = document.createElement("strong");
-        primary.textContent = `${frame.label} · ${valueText}`;
-        content.append(primary);
+        content.setAttribute(
+          "aria-label",
+          `${frame.label}, ${frame.extentLabel}, ${valueText}`
+        );
+        const particleLine = document.createElement("strong");
+        particleLine.className = "pm-probe-particle";
+        particleLine.textContent = frame.label;
+        const extentLine = document.createElement("span");
+        extentLine.className = "pm-probe-extent";
+        extentLine.textContent = frame.extentLabel;
+        const valueLine = document.createElement("span");
+        valueLine.className = "pm-probe-value";
+        valueLine.textContent = valueText;
+        content.append(particleLine, extentLine, valueLine);
 
         L.popup({ maxWidth: 280, offset: [0, -4], closeButton: false })
           .setLatLng(event.latlng)
@@ -1868,13 +1990,13 @@
         }
       }, { once: true });
 
-      slider.min = String(currentIndex);
-      slider.max = "72";
-      slider.value = String(currentIndex);
+      slider.min = String(minimumHour);
+      slider.max = String(maximumHour);
+      slider.value = "0";
       updateRangeLabels();
       updateLegend();
-      updateLabels(currentIndex, true);
-      showFrame(currentIndex, { prime: true, quiet: true });
+      updateLabels(0, true);
+      showFrame(0, { prime: true, quiet: true });
       renderIcons();
 
       if (navigator.permissions?.query) {

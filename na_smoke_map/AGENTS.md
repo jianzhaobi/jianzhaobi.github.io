@@ -8,7 +8,7 @@ The map must let users independently choose:
 
 - Wildfire-smoke PM2.5 or total PM2.5.
 - Surface concentration or entire-atmosphere column loading.
-- A single always-visible timeline that starts at the current model hour and continues hourly through the last available hour of the 72-hour model run.
+- A single always-visible timeline centered on the current model hour, with a symmetric recent-history and forecast window limited by the model run's remaining forecast horizon.
 
 The experience should make the map the dominant visual element and make time exploration fast, smooth, and understandable on both desktop and mobile devices.
 
@@ -75,7 +75,7 @@ The user-facing data palette is intentionally different from the official ECCC m
 
 - Low concentrations should become fully or nearly transparent.
 - Wildfire-smoke concentrations should progress through light amber, orange, burnt orange, and dark reddish brown.
-- Total PM2.5 should use a clearly distinct monochromatic smoky-blue palette. Vary only lightness and alpha within that single hue family; do not introduce purple, violet, or a second hue.
+- Total PM2.5 should use a clearly distinct monochromatic yellow-brown palette. Vary only lightness and alpha within that single hue family; do not introduce purple, violet, blue, or a second hue.
 - Even the darkest concentrations retain some alpha so geographic context remains visible.
 
 Request the artifact-free official WMS PNG, load it with CORS enabled, draw it to an offscreen canvas, infer each pixel's position along the official multi-hue ramp, and recolor it into the particle-specific alpha ramp. Use a blob URL for the processed PNG and revoke stale blob URLs when a buffer is reused.
@@ -94,16 +94,29 @@ Preserve the double-buffered animation design:
 - On a failed or timed-out frame, retain the previous visible map and show a concise status message.
 - Never clear or remove the active frame before its replacement has loaded.
 
-Playback should advance through the 73 hourly frames without a vacant flash between frames. Respect `prefers-reduced-motion` by removing or reducing transitions and slowing automated playback appropriately.
+Playback should advance without a vacant flash between frames. At the end of the available forecast, return to the current model hour and continue playing. Switching particle type or vertical extent during playback must preserve the selected hour and resume playback after the replacement dataset has loaded; keep the previous visible frame in place during that load. The Reset control stops playback and returns to the current model hour. Respect `prefers-reduced-motion` by removing or reducing transitions and slowing automated playback appropriately.
 
 The likely model reference time is selected conservatively by allowing roughly seven hours for a run to become available, then choosing the latest 00 or 12 UTC cycle. Forecast requests include both `TIME` and `DIM_REFERENCE_TIME`.
+
+### Static Pages frame cache
+
+The production cache is a same-origin GitHub Pages deployment artifact, not browser storage and not committed binary data:
+
+- `.github/workflows/deploy-pages-with-smoke-cache.yml` runs after the expected 00 and 12 UTC model publication windows and on pushes or manual dispatch.
+- `scripts/build_static_cache.py` downloads the latest bounded set of raw, transparent WMS PNGs for all four particle/extent combinations.
+- Cache the prior 72 valid hours and every forecast hour still available through model hour 72. The UI exposes a symmetric window around Now using the smaller available future radius, so Now remains centered and every shown future position is scientifically available.
+- Publish the generated `cache/manifest.json` and `cache/frames/` only inside the Pages artifact. Do not commit generated PNG frames to Git history.
+- At runtime, consult the same-origin manifest and load a matching static PNG first. If the manifest, entry, or cached image is missing, stale, partial, or unavailable, fall back to the direct GeoMet WMS request without clearing the currently visible frame.
+- Keep the raw cached PNGs in the official GeoMet palette. Particle-specific recoloring and value inference remain in the browser's existing preparation path.
+
+This arrangement avoids user-device persistence, keeps Git history small, reduces GeoMet latency during normal use, and allows a partial cache to degrade safely.
 
 ### Spatial and temporal interpolation
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
 - Apply high-quality bilinear canvas upscaling at approximately 1.15× plus a restrained sub-pixel blur to soften raster stair-stepping and make plume edges visually finer.
-- Keep the original 1600 × 1000 value grid for lookup and scientific labeling; smoothing applies only to the displayed PNG.
+- Keep the original 1000 × 625 value grid for lookup and scientific labeling; smoothing applies only to the displayed PNG. This remains close to the source model's approximate spatial resolution while substantially reducing download, canvas, and recoloring work.
 - Linearly cross-fade the active and standby hourly frames over approximately 720 ms. This creates visible intermediate blends between hourly products while preserving their actual valid times.
 - Keep automated-playback dwell short after each cross-fade so animation motion remains continuous.
 - Disable visual interpolation transitions when `prefers-reduced-motion` is active.
@@ -117,7 +130,7 @@ Clicking or tapping a visibly rendered concentration pixel inside the modeled No
 - Infer an approximate displayed value from the original ECCC rendered color ramp before the pixel is recolored.
 - Keep a `Float32Array` value grid on each active/standby frame buffer.
 - Convert the clicked latitude/longitude through the same Web Mercator bounds used by the WMS image before indexing the grid.
-- Show only the active frame's particle type, inferred value, and correct unit. Do not display the valid time or vertical extent in the popup.
+- Show the active frame's particle type, vertical extent, and inferred value with the correct unit on three separate lines. Do not display the valid time.
 - Show the inferred numeric value without an `≈` prefix. Keep the implementation and accessible context clear that values are inferred from rendered colors rather than read from the raw model field.
 - Do not show a popup close “×”; clicking elsewhere on the map is sufficient to dismiss or replace the popup.
 - Treat pixels whose processed display alpha is effectively transparent as below the display threshold.
@@ -142,7 +155,7 @@ Maintain these preferences:
 - Native, accessible selects and buttons with visible keyboard focus.
 - Clear loading, loaded, partial-failure, and unavailable states.
 
-The custom horizontal legend should use the same particle-specific progression as the processed data—orange/brown for wildfire smoke and monochromatic smoky blue for total PM2.5—and track the appropriate surface or column scale and unit.
+The custom horizontal legend should use the same particle-specific progression as the processed data—orange/brown for wildfire smoke and monochromatic yellow-brown for total PM2.5—and track the appropriate surface or column scale and unit.
 
 ## Responsive behavior
 
@@ -176,16 +189,17 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 
 ## Implementation conventions
 
-- Keep the application self-contained in `index.html` except for explicitly loaded Leaflet, CARTO, Esri, and ECCC web resources.
+- Keep all application markup, styling, and runtime logic in `index.html`. The only local runtime companions are the generated static cache manifest and frames; build and deployment automation live outside the application file.
 - Apply every future application, feature, design, and bug-fix update directly to `index.html`.
 - Do not create or maintain a duplicate standalone HTML entry point such as `north-america-smoke-forecast.html`.
 - Use plain HTML, CSS, and JavaScript; do not introduce a build step without a clear need.
 - Scope component styles beneath `#north-america-pm25` to avoid host-page collisions.
 - Use CSS custom properties for page and interface colors so the visualization can inherit a host theme.
 - Keep external resource URLs HTTPS-only.
+- Keep the static cache manifest and frame URLs relative to the deployed `na_smoke_map/` path so they work on the `jianzhaobi.github.io` project site.
 - Preserve the current particle/extent dataset matrix as a single source of truth in JavaScript.
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
-- Clamp forecast indices to the range from the current model hour through model hour 72. Present the first slider position as “Now” and later positions as hours relative to it.
+- Clamp timeline offsets to the symmetric available range around the current model hour. Present the centered slider position as “Now,” earlier positions with negative relative hours, and later positions with positive relative hours.
 - Use generation counters or an equivalent cancellation mechanism so stale asynchronous image loads cannot replace a newer user selection.
 - Preserve the default `day` basemap and the `day`, `dark`, and `satellite` basemap option values.
 - Keep canvas recoloring inside the existing double-buffer preparation step so the visible frame is never cleared while recoloring occurs.
@@ -204,29 +218,35 @@ Before handing off a material change:
 2. Load the standalone HTML through a local HTTP server rather than relying only on a `file:` URL.
 3. Confirm all four particle/extent combinations reach the loaded state.
 4. Visually inspect wildfire smoke + entire atmosphere for yellow projection wedges, rectangles, or other model-domain artifacts.
-5. Scrub the always-visible forecast slider, use previous/next, and play several frames.
+5. Scrub both sides of the centered Now position, use previous/next, Reset, and play several frames.
 6. Confirm the previous frame remains visible while the next frame loads and that there is no vacant flash.
 7. Confirm the horizontal legend title, scale, and units update correctly.
-8. Confirm the timeline is always visible, begins at “Now,” and has correct Play/Pause pressed states and accessible labels.
+8. Confirm the timeline is always visible, centers “Now,” and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
-12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the monochromatic smoky-blue ramp without hiding the basemap completely.
+12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
-14. Click a plume pixel and verify the popup shows only the pollutant type and inferred concentration with the active layer's unit, without an approximation symbol or time. Then click a transparent or no-data pixel and verify that no popup remains.
+14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Then click a transparent or no-data pixel and verify that no popup remains.
 15. During playback, confirm both image buffers have a 720 ms opacity transition and visibly hold complementary intermediate opacities.
 16. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution overlay scale and settle together without visible lag.
 17. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
+18. Confirm playback loops from the final forecast frame to Now and continues, and switch pollutant or vertical extent during playback to verify the current hour is preserved and animation resumes without a blank map.
+19. Validate a generated cache manifest and PNG set, then confirm the page loads matching frames from same-origin cache paths and falls back to GeoMet when an entry is absent.
 
 ## Known tradeoffs
 
-- A single 1600 × 1000 WMS image per frame avoids tile artifacts and is well matched to the approximate 10 km model resolution, but it will become pixelated at unusually deep zoom levels.
+- A single 1000 × 625 WMS image per frame avoids tile artifacts, stays close to the approximate 10 km model resolution, and lowers client processing cost, but it will become pixelated at unusually deep zoom levels.
 - Loading full-frame PNGs can use more bandwidth per time step than a small set of visible tiles. The two-buffer design limits simultaneous frame memory and prioritizes visual continuity.
 - Canvas recoloring adds CPU work before each frame becomes ready. It belongs in the standby-frame preparation path so it does not create a blank frame.
+- The Pages cache is refreshed on a schedule rather than continuously. Runtime GeoMet fallback is required for gaps between publication and the next successful deployment.
 - The fixed image bounds intentionally focus the product on North America. Expanding coverage requires recalculating the matching Web Mercator WMS bounding box and validating the image overlay alignment.
 
-## Primary artifact
+## Primary artifacts
 
-- `index.html`: the only standalone interactive map and the only application file to update.
+- `index.html`: the only standalone interactive map and the only application file to update for interface or runtime behavior.
+- `scripts/build_static_cache.py`: the bounded static-frame cache generator.
+- `cache/manifest.json`: an empty development fallback; production deployment replaces it with the generated manifest.
+- `.github/workflows/deploy-pages-with-smoke-cache.yml`: repository-root Pages build and scheduled cache deployment workflow.
 
 If an inline Codex visualization is also generated, keep it as an HTML fragment without document-level `doctype`, `html`, `head`, or `body` tags, while keeping the standalone file functionally equivalent.
