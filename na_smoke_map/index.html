@@ -1144,7 +1144,6 @@
       });
       const formatCompactLocalParts = new Intl.DateTimeFormat(undefined, {
         weekday: "short",
-        year: "2-digit",
         month: "short",
         day: "numeric",
         hour: "numeric",
@@ -1159,8 +1158,7 @@
         });
         const dateLabel = [
           parts.month,
-          parts.day ? `${parts.day},` : "",
-          parts.year ? `’${parts.year.slice(-2)}` : ""
+          parts.day
         ].filter(Boolean).join(" ");
         const clock = [
           [parts.hour, parts.minute].filter(Boolean).join(":"),

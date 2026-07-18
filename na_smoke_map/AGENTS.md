@@ -160,7 +160,7 @@ Maintain these preferences:
 - Keep the horizontal legend compact—roughly 320 px on desktop and narrower on phones—so it does not obscure a large portion of the map.
 - Forecast controls and time slider integrated as a floating bottom panel over the map.
 - Keep the legend, valid time, frame status, playback controls, and forecast slider fused into one coordinated bottom panel.
-- Keep the visible valid-time line compact while preserving weekday, date, year, time, and timezone; prefer a form such as `Sat · Jul 18, ’26 · 12:00 PM EDT`. Keep the fully expanded localized timestamp in accessible labels.
+- Keep the visible valid-time line compact while preserving weekday, month/day, time, and timezone while omitting the year; prefer a form such as `Sat · Jul 18 · 12:00 PM EDT`. Keep the fully expanded localized timestamp, including the year, in accessible labels.
 - Keep a concise frame-status dot inside the forecast panel: green when the selected frame is ready, orange/pulsing while it loads, and red when unavailable.
 - Rounded corners, compact spacing, readable typography, and clear selected states.
 - Minimal explanatory chrome; keep the geographic data visually dominant.
