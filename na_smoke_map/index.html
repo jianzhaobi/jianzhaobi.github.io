@@ -1,0 +1,2229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Distinct Pm25 Map</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:0;background:inherit}iframe{display:block;width:100%;max-width:none;height:100vh;margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Distinct Pm25 Map" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Distinct Pm25 Map&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://unpkg.com/leaflet@1.9.4/dist/leaflet.css&quot;&gt;
+
+&lt;div id=&quot;north-america-pm25&quot; data-version=&quot;distinct-pm25-palette&quot; data-particle=&quot;smoke&quot;&gt;
+  &lt;div class=&quot;pm-map-wrap&quot;&gt;
+    &lt;div id=&quot;pm-map&quot; role=&quot;region&quot; aria-label=&quot;North American PM2.5 map&quot;&gt;&lt;/div&gt;
+
+    &lt;div class=&quot;pm-toolbar viz-row&quot; aria-label=&quot;Map controls&quot;&gt;
+      &lt;details class=&quot;pm-menu&quot; id=&quot;pm-data-menu&quot;&gt;
+        &lt;summary class=&quot;btn&quot; aria-label=&quot;Choose particles and vertical extent&quot;&gt;
+          &lt;i data-lucide=&quot;layers-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+          &lt;span&gt;Data&lt;/span&gt;
+        &lt;/summary&gt;
+        &lt;div class=&quot;pm-popover card&quot;&gt;
+          &lt;label class=&quot;form-label&quot; for=&quot;pm-particle&quot;&gt;
+            Particles
+            &lt;select class=&quot;form-select&quot; id=&quot;pm-particle&quot;&gt;
+              &lt;option value=&quot;smoke&quot;&gt;Wildfire smoke&lt;/option&gt;
+              &lt;option value=&quot;total&quot;&gt;Total PM2.5&lt;/option&gt;
+            &lt;/select&gt;
+          &lt;/label&gt;
+          &lt;label class=&quot;form-label&quot; for=&quot;pm-extent&quot;&gt;
+            Vertical extent
+            &lt;select class=&quot;form-select&quot; id=&quot;pm-extent&quot;&gt;
+              &lt;option value=&quot;surface&quot;&gt;Surface&lt;/option&gt;
+              &lt;option value=&quot;column&quot;&gt;Entire atmosphere&lt;/option&gt;
+            &lt;/select&gt;
+          &lt;/label&gt;
+        &lt;/div&gt;
+      &lt;/details&gt;
+
+      &lt;div class=&quot;pm-segmented&quot; role=&quot;group&quot; aria-label=&quot;Time mode&quot;&gt;
+        &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-time-mode=&quot;now&quot; aria-pressed=&quot;true&quot;&gt;Now&lt;/button&gt;
+        &lt;button type=&quot;button&quot; class=&quot;btn&quot; data-time-mode=&quot;forecast&quot; aria-label=&quot;Forecast&quot; aria-pressed=&quot;false&quot;&gt;
+          &lt;i data-lucide=&quot;clock-3&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+          &lt;span&gt;Forecast&lt;/span&gt;
+        &lt;/button&gt;
+      &lt;/div&gt;
+
+      &lt;details class=&quot;pm-menu pm-map-menu&quot; id=&quot;pm-map-menu&quot;&gt;
+        &lt;summary class=&quot;btn&quot; aria-label=&quot;Choose basemap&quot;&gt;
+          &lt;i data-lucide=&quot;map&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+          &lt;span&gt;Map&lt;/span&gt;
+        &lt;/summary&gt;
+        &lt;fieldset class=&quot;pm-popover card&quot;&gt;
+          &lt;legend&gt;Basemap&lt;/legend&gt;
+          &lt;label class=&quot;form-check&quot;&gt;
+            &lt;input class=&quot;form-check-input&quot; type=&quot;radio&quot; name=&quot;pm-basemap&quot; value=&quot;day&quot; checked&gt;
+            &lt;span class=&quot;form-check-label&quot;&gt;&lt;i data-lucide=&quot;sun&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Day&lt;/span&gt;
+          &lt;/label&gt;
+          &lt;label class=&quot;form-check&quot;&gt;
+            &lt;input class=&quot;form-check-input&quot; type=&quot;radio&quot; name=&quot;pm-basemap&quot; value=&quot;dark&quot;&gt;
+            &lt;span class=&quot;form-check-label&quot;&gt;&lt;i data-lucide=&quot;moon&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Dark&lt;/span&gt;
+          &lt;/label&gt;
+          &lt;label class=&quot;form-check&quot;&gt;
+            &lt;input class=&quot;form-check-input&quot; type=&quot;radio&quot; name=&quot;pm-basemap&quot; value=&quot;satellite&quot;&gt;
+            &lt;span class=&quot;form-check-label&quot;&gt;&lt;i data-lucide=&quot;satellite&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt; Satellite&lt;/span&gt;
+          &lt;/label&gt;
+        &lt;/fieldset&gt;
+      &lt;/details&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;pm-legend card&quot; aria-label=&quot;Map color scale&quot;&gt;
+      &lt;div class=&quot;pm-legend-head&quot;&gt;
+        &lt;strong id=&quot;pm-legend-title&quot;&gt;Surface concentration&lt;/strong&gt;
+        &lt;span id=&quot;pm-legend-unit&quot;&gt;µg/m³&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;pm-gradient&quot; aria-hidden=&quot;true&quot;&gt;&lt;/div&gt;
+      &lt;div class=&quot;pm-legend-ticks&quot; id=&quot;pm-legend-ticks&quot; aria-hidden=&quot;true&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;pm-status-line viz-badge&quot; aria-live=&quot;polite&quot;&gt;
+      &lt;span class=&quot;pm-status-dot&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt;
+      &lt;span id=&quot;pm-status&quot;&gt;Connecting to ECCC…&lt;/span&gt;
+      &lt;span aria-hidden=&quot;true&quot;&gt;·&lt;/span&gt;
+      &lt;span id=&quot;pm-detail&quot;&gt;&lt;/span&gt;
+    &lt;/div&gt;
+
+    &lt;section class=&quot;pm-timeline card&quot; id=&quot;pm-timeline&quot; hidden aria-label=&quot;Forecast animation&quot;&gt;
+      &lt;div class=&quot;pm-timeline-head&quot;&gt;
+        &lt;div&gt;
+          &lt;span class=&quot;form-label&quot;&gt;Forecast valid time&lt;/span&gt;
+          &lt;strong id=&quot;pm-time-value&quot;&gt;&lt;/strong&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;pm-transport&quot; aria-label=&quot;Animation controls&quot;&gt;
+          &lt;button type=&quot;button&quot; class=&quot;btn btn-icon&quot; id=&quot;pm-prev&quot; aria-label=&quot;Previous forecast hour&quot;&gt;
+            &lt;i data-lucide=&quot;step-back&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+          &lt;/button&gt;
+          &lt;button type=&quot;button&quot; class=&quot;btn btn-primary&quot; id=&quot;pm-play&quot; aria-label=&quot;Play forecast animation&quot; aria-pressed=&quot;false&quot;&gt;
+            &lt;i data-lucide=&quot;play&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+            &lt;span&gt;Play&lt;/span&gt;
+          &lt;/button&gt;
+          &lt;button type=&quot;button&quot; class=&quot;btn btn-icon&quot; id=&quot;pm-next&quot; aria-label=&quot;Next forecast hour&quot;&gt;
+            &lt;i data-lucide=&quot;step-forward&quot; aria-hidden=&quot;true&quot;&gt;&lt;/i&gt;
+          &lt;/button&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;label class=&quot;sr-only&quot; for=&quot;pm-time&quot;&gt;Forecast hour&lt;/label&gt;
+      &lt;input class=&quot;form-range&quot; id=&quot;pm-time&quot; type=&quot;range&quot; min=&quot;0&quot; max=&quot;72&quot; step=&quot;1&quot; value=&quot;0&quot; aria-describedby=&quot;pm-run-label&quot;&gt;
+      &lt;div class=&quot;pm-range-labels text-small text-muted&quot; aria-hidden=&quot;true&quot;&gt;
+        &lt;span&gt;Now&lt;/span&gt;&lt;span&gt;+24 h&lt;/span&gt;&lt;span&gt;+48 h&lt;/span&gt;&lt;span&gt;+72 h&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div class=&quot;pm-run-label text-small text-muted&quot; id=&quot;pm-run-label&quot;&gt;&lt;/div&gt;
+    &lt;/section&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;pm-source text-small text-muted&quot;&gt;
+    ECCC RAQDPS · 10 km · hourly to 72 h · Click the map for an approximate value
+  &lt;/div&gt;
+
+  &lt;noscript&gt;This map requires JavaScript to display the ECCC PM2.5 layers and forecast timeline.&lt;/noscript&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+  #north-america-pm25 {
+    --pm-ramp-1: #fff2c7;
+    --pm-ramp-2: #ffd16b;
+    --pm-ramp-3: #f7a23b;
+    --pm-ramp-4: #df6b22;
+    --pm-ramp-5: #a73b16;
+    --pm-ramp-6: #64200e;
+    width: 100%;
+    color: var(--foreground, CanvasText);
+    background: transparent;
+    font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+    font-size: var(--font-size-base, 14px);
+  }
+
+  #north-america-pm25[data-particle=&quot;total&quot;] {
+    --pm-ramp-1: #ede9fe;
+    --pm-ramp-2: #ddd6fe;
+    --pm-ramp-3: #c4b5fd;
+    --pm-ramp-4: #8b5cf6;
+    --pm-ramp-5: #6d28d9;
+    --pm-ramp-6: #3b0764;
+  }
+
+  #north-america-pm25 .pm-map-wrap {
+    position: relative;
+    width: 100%;
+    height: clamp(500px, 62vw, 680px);
+    overflow: hidden;
+    border-radius: var(--radius, 12px);
+    background: var(--muted, Field);
+  }
+
+  #north-america-pm25 #pm-map {
+    width: 100%;
+    height: 100%;
+  }
+
+  #north-america-pm25 .leaflet-image-layer {
+    transition: opacity 720ms linear;
+    will-change: opacity, transform;
+  }
+
+  #north-america-pm25 .leaflet-zoom-anim .leaflet-image-layer.leaflet-zoom-animated {
+    transition:
+      transform 250ms cubic-bezier(0, 0, 0.25, 1),
+      opacity 720ms linear;
+  }
+
+  #north-america-pm25 .pm-toolbar {
+    position: absolute;
+    z-index: 700;
+    top: 10px;
+    left: 52px;
+    right: 10px;
+    align-items: flex-start;
+    gap: 6px;
+    pointer-events: none;
+  }
+
+  #north-america-pm25 .pm-toolbar &gt; * {
+    pointer-events: auto;
+  }
+
+  #north-america-pm25 details {
+    position: relative;
+  }
+
+  #north-america-pm25 summary {
+    list-style: none;
+  }
+
+  #north-america-pm25 summary::-webkit-details-marker {
+    display: none;
+  }
+
+  #north-america-pm25 .pm-segmented {
+    display: flex;
+    gap: 4px;
+  }
+
+  #north-america-pm25 .pm-map-menu {
+    margin-left: auto;
+  }
+
+  #north-america-pm25 .pm-popover {
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 0;
+    width: min(280px, calc(100vw - 24px));
+    padding: 12px;
+    color: var(--popover-foreground, CanvasText);
+    background: color-mix(in srgb, var(--popover, Canvas) 96%, transparent);
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+  }
+
+  #north-america-pm25 .pm-popover .form-label + .form-label {
+    margin-top: 10px;
+  }
+
+  #north-america-pm25 .pm-map-menu .pm-popover {
+    right: 0;
+    left: auto;
+    width: 180px;
+  }
+
+  #north-america-pm25 fieldset.pm-popover {
+    margin: 0;
+  }
+
+  #north-america-pm25 fieldset.pm-popover legend {
+    padding: 0;
+    margin-bottom: 8px;
+  }
+
+  #north-america-pm25 .form-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+  }
+
+  #north-america-pm25 .form-check-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #north-america-pm25 .form-select {
+    width: 100%;
+    margin-top: 5px;
+  }
+
+  #north-america-pm25 .pm-legend {
+    position: absolute;
+    z-index: 620;
+    top: 10px;
+    left: 50%;
+    width: min(320px, 30%);
+    padding: 6px 8px 5px;
+    transform: translateX(-50%);
+    background: color-mix(in srgb, var(--popover, Canvas) 84%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  #north-america-pm25 .pm-legend-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+    font-size: var(--font-size-small, 12px);
+  }
+
+  #north-america-pm25 .pm-gradient {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--pm-ramp-1) 20%, transparent) 10%,
+      color-mix(in srgb, var(--pm-ramp-2) 38%, transparent) 28%,
+      color-mix(in srgb, var(--pm-ramp-3) 58%, transparent) 48%,
+      color-mix(in srgb, var(--pm-ramp-4) 72%, transparent) 68%,
+      color-mix(in srgb, var(--pm-ramp-5) 84%, transparent) 84%,
+      var(--pm-ramp-6) 100%);
+  }
+
+  #north-america-pm25 .pm-legend-ticks,
+  #north-america-pm25 .pm-range-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  #north-america-pm25 .pm-legend-ticks {
+    font-size: var(--font-size-small, 12px);
+  }
+
+  #north-america-pm25 .pm-status-line {
+    position: absolute;
+    z-index: 610;
+    left: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+    gap: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  #north-america-pm25 .pm-status-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--primary, AccentColor);
+  }
+
+  #north-america-pm25 .pm-timeline {
+    position: absolute;
+    z-index: 650;
+    right: 10px;
+    bottom: 10px;
+    width: min(650px, calc(100% - 20px));
+    padding: 12px;
+  }
+
+  #north-america-pm25 .pm-timeline-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  #north-america-pm25 #pm-time-value {
+    display: block;
+    margin-top: 3px;
+  }
+
+  #north-america-pm25 .pm-transport {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  #north-america-pm25 .btn-icon {
+    min-width: 38px;
+    padding-inline: 8px;
+  }
+
+  #north-america-pm25 .form-range {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--primary, AccentColor);
+  }
+
+  #north-america-pm25 .pm-run-label {
+    margin-top: 5px;
+  }
+
+  #north-america-pm25 .pm-source {
+    margin-top: 7px;
+  }
+
+  #north-america-pm25 .leaflet-container {
+    background: var(--muted, Field);
+    cursor: crosshair;
+    font-family: inherit;
+  }
+
+  #north-america-pm25 .leaflet-tile-container img.leaflet-tile {
+    outline: 1px solid transparent;
+  }
+
+  #north-america-pm25 .leaflet-control-zoom {
+    margin-top: 10px;
+    margin-left: 10px;
+  }
+
+  #north-america-pm25 .leaflet-control-attribution {
+    color: var(--muted-foreground, GrayText);
+    background: color-mix(in srgb, var(--background, Canvas) 76%, transparent);
+  }
+
+  #north-america-pm25 .leaflet-control-attribution a {
+    color: var(--foreground, CanvasText);
+  }
+
+  #north-america-pm25 .pm-probe-popup strong,
+  #north-america-pm25 .pm-probe-popup span {
+    display: block;
+  }
+
+  #north-america-pm25 .pm-probe-popup span {
+    color: var(--muted-foreground, GrayText);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #north-america-pm25 .leaflet-image-layer,
+    #north-america-pm25 .leaflet-zoom-anim .leaflet-image-layer.leaflet-zoom-animated {
+      transition: none;
+    }
+  }
+
+  @media (max-width: 900px) {
+    #north-america-pm25 .pm-legend {
+      top: 58px;
+      width: min(320px, calc(100% - 74px));
+    }
+  }
+
+  @media (max-width: 520px) {
+    #north-america-pm25 .pm-map-wrap {
+      height: 620px;
+    }
+
+    #north-america-pm25 .pm-toolbar {
+      left: 46px;
+    }
+
+    #north-america-pm25 .pm-toolbar .btn span {
+      display: none;
+    }
+
+    #north-america-pm25 .pm-legend {
+      top: 58px;
+      width: calc(100% - 74px);
+    }
+
+    #north-america-pm25 .pm-status-line {
+      right: 10px;
+      max-width: none;
+    }
+
+    #north-america-pm25 .pm-status-line #pm-detail,
+    #north-america-pm25 .pm-status-line &gt; span[aria-hidden=&quot;true&quot;]:not(.pm-status-dot) {
+      display: none;
+    }
+
+    #north-america-pm25 .pm-timeline {
+      left: 10px;
+      right: 10px;
+      width: auto;
+    }
+
+    #north-america-pm25 .pm-timeline-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-transport {
+      width: 100%;
+    }
+
+    #north-america-pm25 .pm-transport .btn-primary {
+      flex: 1;
+    }
+  }
+&lt;/style&gt;
+
+&lt;script src=&quot;https://unpkg.com/leaflet@1.9.4/dist/leaflet.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+  (() =&gt; {
+    const root = document.getElementById(&quot;north-america-pm25&quot;);
+    if (!root) return;
+
+    const particleSelect = root.querySelector(&quot;#pm-particle&quot;);
+    const extentSelect = root.querySelector(&quot;#pm-extent&quot;);
+    const timeModeButtons = [...root.querySelectorAll(&quot;[data-time-mode]&quot;)];
+    const basemapInputs = [...root.querySelectorAll(&#x27;input[name=&quot;pm-basemap&quot;]&#x27;)];
+    const menus = [...root.querySelectorAll(&quot;.pm-menu&quot;)];
+    const status = root.querySelector(&quot;#pm-status&quot;);
+    const statusLine = root.querySelector(&quot;.pm-status-line&quot;);
+    const detail = root.querySelector(&quot;#pm-detail&quot;);
+    const legendTitle = root.querySelector(&quot;#pm-legend-title&quot;);
+    const legendUnit = root.querySelector(&quot;#pm-legend-unit&quot;);
+    const legendTicks = root.querySelector(&quot;#pm-legend-ticks&quot;);
+    const timeline = root.querySelector(&quot;#pm-timeline&quot;);
+    const slider = root.querySelector(&quot;#pm-time&quot;);
+    const timeValue = root.querySelector(&quot;#pm-time-value&quot;);
+    const runLabel = root.querySelector(&quot;#pm-run-label&quot;);
+    const playButton = root.querySelector(&quot;#pm-play&quot;);
+    const prevButton = root.querySelector(&quot;#pm-prev&quot;);
+    const nextButton = root.querySelector(&quot;#pm-next&quot;);
+
+    if (!window.L) {
+      status.textContent = &quot;Map library unavailable&quot;;
+      detail.textContent = &quot;Check your internet connection and reload the page.&quot;;
+      return;
+    }
+
+    const WMS = &quot;https://geo.weather.gc.ca/geomet&quot;;
+    const HOUR = 60 * 60 * 1000;
+    const DATA_OPACITY = 0.9;
+    const FADE_MS = 720;
+    const DATA_BOUNDS = L.latLngBounds([[16, -170], [76, -52]]);
+    const IMAGE_SIZE = { width: 1600, height: 1000 };
+    const SPATIAL_SCALE = 1.15;
+    const reducedMotion = window.matchMedia(&quot;(prefers-reduced-motion: reduce)&quot;).matches;
+
+    const DATASETS = {
+      smoke: {
+        label: &quot;Wildfire-smoke PM2.5&quot;,
+        surface: {
+          layer: &quot;RAQDPS.Sfc_PM2.5-WildfireSmokePlume&quot;,
+          style: &quot;PM2.5_1to250ugm3&quot;,
+          scale: &quot;surface&quot;,
+          unit: &quot;µg/m³&quot;,
+          extentLabel: &quot;Surface&quot;
+        },
+        column: {
+          layer: &quot;RAQDPS.EAtm_PM2.5-WildfireSmokePlume&quot;,
+          style: &quot;PM2.5_EAtm_1e-7to2e-4kgm2&quot;,
+          scale: &quot;column&quot;,
+          unit: &quot;mg/m²&quot;,
+          extentLabel: &quot;Entire atmosphere&quot;
+        }
+      },
+      total: {
+        label: &quot;Total PM2.5&quot;,
+        surface: {
+          layer: &quot;RAQDPS.SFC_PM2.5&quot;,
+          style: &quot;PM2.5_1to250ugm3&quot;,
+          scale: &quot;surface&quot;,
+          unit: &quot;µg/m³&quot;,
+          extentLabel: &quot;Surface&quot;
+        },
+        column: {
+          layer: &quot;RAQDPS.EATM_PM2.5&quot;,
+          style: &quot;PM2.5_EAtm_1e-7to2e-4kgm2&quot;,
+          scale: &quot;column&quot;,
+          unit: &quot;mg/m²&quot;,
+          extentLabel: &quot;Entire atmosphere&quot;
+        }
+      }
+    };
+
+    const formatLocal = new Intl.DateTimeFormat(undefined, {
+      weekday: &quot;short&quot;,
+      month: &quot;short&quot;,
+      day: &quot;numeric&quot;,
+      hour: &quot;numeric&quot;,
+      minute: &quot;2-digit&quot;,
+      timeZoneName: &quot;short&quot;
+    });
+    const formatUtc = new Intl.DateTimeFormat(&quot;en-CA&quot;, {
+      month: &quot;short&quot;,
+      day: &quot;numeric&quot;,
+      hour: &quot;2-digit&quot;,
+      minute: &quot;2-digit&quot;,
+      hour12: false,
+      timeZone: &quot;UTC&quot;
+    });
+
+    function isoHour(date) {
+      return new Date(Math.floor(date.getTime() / HOUR) * HOUR).toISOString().replace(&quot;.000&quot;, &quot;&quot;);
+    }
+
+    function displayTime(date) {
+      return `${formatLocal.format(date)} · ${formatUtc.format(date)} UTC`;
+    }
+
+    function latestLikelyRun(now) {
+      const conservative = new Date(now.getTime() - 7 * HOUR);
+      const hour = conservative.getUTCHours() &gt;= 12 ? 12 : 0;
+      return new Date(Date.UTC(
+        conservative.getUTCFullYear(),
+        conservative.getUTCMonth(),
+        conservative.getUTCDate(),
+        hour
+      ));
+    }
+
+    const now = new Date();
+    const referenceTime = latestLikelyRun(now);
+    const forecastTimes = Array.from({ length: 73 }, (_, index) =&gt; new Date(referenceTime.getTime() + index * HOUR));
+    const currentIndex = Math.max(0, Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR)));
+
+    let particle = &quot;smoke&quot;;
+    let extent = &quot;surface&quot;;
+    let timeMode = &quot;now&quot;;
+    let selectedIndex = currentIndex;
+    let activeKey = &quot;&quot;;
+    let activeLayer;
+    let standbyLayer;
+    let standbyKey = &quot;&quot;;
+    let standbyPromise = null;
+    let standbyCleanup = null;
+    let standbyGeneration = 0;
+    let transitionGeneration = 0;
+    let zIndex = 420;
+    let playing = false;
+    let playbackGeneration = 0;
+    let scrubTimer = null;
+
+    const map = L.map(root.querySelector(&quot;#pm-map&quot;), {
+      zoomControl: true,
+      minZoom: 2,
+      maxZoom: 10,
+      zoomSnap: 1,
+      zoomDelta: 1,
+      worldCopyJump: true
+    });
+
+    const mapWidth = root.querySelector(&quot;.pm-map-wrap&quot;).clientWidth;
+    const initialZoom = mapWidth &lt; 560 ? 2 : 3;
+    map.setView([51, -111], initialZoom);
+
+    const BASEMAPS = {
+      day: {
+        url: &quot;https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png&quot;,
+        options: {
+          subdomains: &quot;abcd&quot;,
+          maxZoom: 20,
+          attribution: &quot;&amp;copy; OpenStreetMap contributors &amp;copy; CARTO&quot;
+        }
+      },
+      dark: {
+        url: &quot;https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png&quot;,
+        options: {
+          subdomains: &quot;abcd&quot;,
+          maxZoom: 20,
+          attribution: &quot;&amp;copy; OpenStreetMap contributors &amp;copy; CARTO&quot;
+        }
+      },
+      satellite: {
+        url: &quot;https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}&quot;,
+        options: {
+          maxZoom: 19,
+          attribution: &quot;Tiles &amp;copy; Esri&quot;
+        }
+      }
+    };
+
+    let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
+
+    function dataset() {
+      return DATASETS[particle][extent];
+    }
+
+    function descriptor(index) {
+      const data = dataset();
+      const safeIndex = Math.max(0, Math.min(72, Number(index)));
+      return {
+        key: `${particle}|${extent}|${safeIndex}`,
+        index: safeIndex,
+        particle,
+        extent,
+        layer: data.layer,
+        style: data.style,
+        scale: data.scale,
+        label: DATASETS[particle].label,
+        extentLabel: data.extentLabel,
+        unit: data.unit,
+        validTime: forecastTimes[safeIndex]
+      };
+    }
+
+    function mercatorPoint(latitude, longitude) {
+      const limit = Math.min(85.05112878, Math.max(-85.05112878, latitude));
+      const radius = 6378137;
+      return {
+        x: radius * longitude * Math.PI / 180,
+        y: radius * Math.log(Math.tan(Math.PI / 4 + limit * Math.PI / 360))
+      };
+    }
+
+    const southWest = mercatorPoint(DATA_BOUNDS.getSouth(), DATA_BOUNDS.getWest());
+    const northEast = mercatorPoint(DATA_BOUNDS.getNorth(), DATA_BOUNDS.getEast());
+    const DATA_BBOX = [southWest.x, southWest.y, northEast.x, northEast.y].join(&quot;,&quot;);
+
+    function frameUrl(frame) {
+      const params = new URLSearchParams({
+        service: &quot;WMS&quot;,
+        request: &quot;GetMap&quot;,
+        version: &quot;1.3.0&quot;,
+        layers: frame.layer,
+        styles: frame.style,
+        crs: &quot;EPSG:3857&quot;,
+        bbox: DATA_BBOX,
+        width: String(IMAGE_SIZE.width),
+        height: String(IMAGE_SIZE.height),
+        format: &quot;image/png&quot;,
+        transparent: &quot;true&quot;,
+        TIME: isoHour(frame.validTime),
+        DIM_REFERENCE_TIME: isoHour(referenceTime)
+      });
+      return `${WMS}?${params.toString()}`;
+    }
+
+    const SOURCE_COLORS = [
+      [0.00, 238, 236, 255],
+      [0.12, 93, 85, 231],
+      [0.27, 19, 107, 232],
+      [0.40, 17, 189, 215],
+      [0.52, 87, 212, 122],
+      [0.65, 241, 230, 76],
+      [0.77, 255, 155, 36],
+      [0.89, 238, 57, 40],
+      [1.00, 92, 0, 16]
+    ];
+    const COLOR_RAMPS = {
+      smoke: [
+        [0.00, 255, 242, 199, 0.00],
+        [0.18, 255, 209, 103, 0.02],
+        [0.38, 247, 162, 59, 0.14],
+        [0.58, 223, 107, 34, 0.32],
+        [0.78, 167, 59, 22, 0.54],
+        [1.00, 100, 32, 14, 0.76]
+      ],
+      total: [
+        [0.00, 237, 233, 254, 0.00],
+        [0.18, 221, 214, 254, 0.02],
+        [0.38, 196, 181, 253, 0.14],
+        [0.58, 139, 92, 246, 0.32],
+        [0.78, 109, 40, 217, 0.54],
+        [1.00, 59, 7, 100, 0.76]
+      ]
+    };
+    const CONCENTRATION_VALUES = {
+      surface: [0, 1, 5, 10, 25, 50, 100, 180, 250],
+      column: [0, 0.5, 1, 3, 5, 10, 50, 100, 200]
+    };
+
+    function sourcePosition(red, green, blue) {
+      let bestDistance = Infinity;
+      let bestPosition = 0;
+      for (let index = 0; index &lt; SOURCE_COLORS.length - 1; index += 1) {
+        const start = SOURCE_COLORS[index];
+        const end = SOURCE_COLORS[index + 1];
+        const dr = end[1] - start[1];
+        const dg = end[2] - start[2];
+        const db = end[3] - start[3];
+        const lengthSquared = dr * dr + dg * dg + db * db;
+        const projection = ((red - start[1]) * dr + (green - start[2]) * dg + (blue - start[3]) * db) / lengthSquared;
+        const amount = Math.max(0, Math.min(1, projection));
+        const rr = start[1] + dr * amount;
+        const gg = start[2] + dg * amount;
+        const bb = start[3] + db * amount;
+        const distance = (red - rr) ** 2 + (green - gg) ** 2 + (blue - bb) ** 2;
+        if (distance &lt; bestDistance) {
+          bestDistance = distance;
+          bestPosition = start[0] + (end[0] - start[0]) * amount;
+        }
+      }
+      return bestPosition;
+    }
+
+    function paletteColor(position, particleType) {
+      const colors = COLOR_RAMPS[particleType] || COLOR_RAMPS.smoke;
+      for (let index = 0; index &lt; colors.length - 1; index += 1) {
+        const start = colors[index];
+        const end = colors[index + 1];
+        if (position &gt; end[0]) continue;
+        const amount = Math.max(0, Math.min(1, (position - start[0]) / (end[0] - start[0])));
+        return [
+          Math.round(start[1] + (end[1] - start[1]) * amount),
+          Math.round(start[2] + (end[2] - start[2]) * amount),
+          Math.round(start[3] + (end[3] - start[3]) * amount),
+          start[4] + (end[4] - start[4]) * amount
+        ];
+      }
+      return colors[colors.length - 1].slice(1);
+    }
+
+    function concentrationAtPosition(position, scale) {
+      const values = CONCENTRATION_VALUES[scale];
+      for (let index = 0; index &lt; SOURCE_COLORS.length - 1; index += 1) {
+        const startPosition = SOURCE_COLORS[index][0];
+        const endPosition = SOURCE_COLORS[index + 1][0];
+        if (position &gt; endPosition) continue;
+        const amount = Math.max(0, Math.min(1, (position - startPosition) / (endPosition - startPosition)));
+        return values[index] + (values[index + 1] - values[index]) * amount;
+      }
+      return values[values.length - 1];
+    }
+
+    function recolorFrame(frame) {
+      return new Promise((resolve, reject) =&gt; {
+        const image = new Image();
+        image.crossOrigin = &quot;anonymous&quot;;
+        image.onload = () =&gt; {
+          try {
+            const canvas = document.createElement(&quot;canvas&quot;);
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+            const context = canvas.getContext(&quot;2d&quot;, { willReadFrequently: true });
+            context.drawImage(image, 0, 0);
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+            const data = pixels.data;
+            const values = new Float32Array(canvas.width * canvas.height);
+            values.fill(-1);
+            for (let offset = 0; offset &lt; data.length; offset += 4) {
+              const sourceAlpha = data[offset + 3];
+              if (sourceAlpha &lt;= 2) continue;
+              const position = sourcePosition(data[offset], data[offset + 1], data[offset + 2]);
+              values[offset / 4] = concentrationAtPosition(position, frame.scale);
+              const [red, green, blue, alpha] = paletteColor(position, frame.particle);
+              data[offset] = red;
+              data[offset + 1] = green;
+              data[offset + 2] = blue;
+              data[offset + 3] = Math.round(sourceAlpha * alpha);
+            }
+            context.putImageData(pixels, 0, 0);
+            const output = document.createElement(&quot;canvas&quot;);
+            output.width = Math.round(canvas.width * SPATIAL_SCALE);
+            output.height = Math.round(canvas.height * SPATIAL_SCALE);
+            const outputContext = output.getContext(&quot;2d&quot;);
+            outputContext.imageSmoothingEnabled = true;
+            outputContext.imageSmoothingQuality = &quot;high&quot;;
+            outputContext.filter = &quot;blur(0.45px)&quot;;
+            outputContext.drawImage(canvas, 0, 0, output.width, output.height);
+            output.toBlob((blob) =&gt; {
+              if (blob) {
+                resolve({
+                  objectUrl: URL.createObjectURL(blob),
+                  values,
+                  width: canvas.width,
+                  height: canvas.height,
+                  frame
+                });
+              }
+              else reject(new Error(&quot;Unable to create map image&quot;));
+            }, &quot;image/png&quot;);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        image.onerror = () =&gt; reject(new Error(&quot;Unable to load ECCC image&quot;));
+        image.src = frameUrl(frame);
+      });
+    }
+
+    function makeLayer(frame, opacity) {
+      return L.imageOverlay(&quot;data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=&quot;, DATA_BOUNDS, {
+        opacity,
+        pane: &quot;overlayPane&quot;,
+        interactive: false
+      });
+    }
+
+    function delay(milliseconds) {
+      return new Promise((resolve) =&gt; window.setTimeout(resolve, milliseconds));
+    }
+
+    function updateLegend() {
+      const data = dataset();
+      const ticks = extent === &quot;surface&quot;
+        ? [&quot;0&quot;, &quot;1&quot;, &quot;10&quot;, &quot;25&quot;, &quot;50&quot;, &quot;100&quot;, &quot;250+&quot;]
+        : [&quot;0&quot;, &quot;1&quot;, &quot;5&quot;, &quot;10&quot;, &quot;25&quot;, &quot;50&quot;, &quot;100&quot;, &quot;200+&quot;];
+      root.dataset.particle = particle;
+      legendTitle.textContent = `${particle === &quot;smoke&quot; ? &quot;Smoke&quot; : &quot;Total PM2.5&quot;} · ${
+        extent === &quot;surface&quot; ? &quot;Surface&quot; : &quot;Column&quot;
+      }`;
+      legendUnit.textContent = data.unit;
+      legendTicks.replaceChildren(...ticks.map((tick) =&gt; {
+        const span = document.createElement(&quot;span&quot;);
+        span.textContent = tick;
+        return span;
+      }));
+      root.querySelector(&quot;.pm-legend&quot;).setAttribute(
+        &quot;aria-label&quot;,
+        `${DATASETS[particle].label}, ${data.extentLabel}, color scale in ${data.unit}`
+      );
+    }
+
+    function updateLabels(index, pending = false) {
+      const data = dataset();
+      const valid = forecastTimes[index];
+      slider.value = String(index);
+      timeValue.textContent = displayTime(valid);
+      runLabel.textContent = `Model run ${formatUtc.format(referenceTime)} UTC · forecast hour +${index}`;
+      const prefix = pending ? &quot;Preparing&quot; : timeMode === &quot;now&quot; ? &quot;Current model hour&quot; : &quot;Forecast&quot;;
+      detail.textContent = `${prefix} · ${data.extentLabel} ${DATASETS[particle].label} · valid ${displayTime(valid)} · ${data.unit}.`;
+      root.querySelector(&quot;#pm-map&quot;).setAttribute(
+        &quot;aria-label&quot;,
+        `${data.extentLabel} ${DATASETS[particle].label} valid ${displayTime(valid)}`
+      );
+    }
+
+    function setStatus(message) {
+      status.textContent = message;
+    }
+
+    function stopPlayback() {
+      playing = false;
+      playbackGeneration += 1;
+      transitionGeneration += 1;
+      playButton.setAttribute(&quot;aria-pressed&quot;, &quot;false&quot;);
+      playButton.setAttribute(&quot;aria-label&quot;, &quot;Play forecast animation&quot;);
+      playButton.querySelector(&quot;span&quot;).textContent = &quot;Play&quot;;
+      const icon = playButton.querySelector(&quot;[data-lucide]&quot;);
+      if (icon) icon.setAttribute(&quot;data-lucide&quot;, &quot;play&quot;);
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+    }
+
+    function waitForStandby(frame, generation) {
+      if (standbyCleanup) standbyCleanup();
+
+      return new Promise((resolve) =&gt; {
+        let settled = false;
+        let imageErrors = 0;
+        const timeout = window.setTimeout(() =&gt; finish(false), 12000);
+
+        function finish(ok) {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          standbyLayer.off(&quot;load&quot;, onLoad);
+          standbyLayer.off(&quot;error&quot;, onError);
+          if (generation === standbyGeneration) standbyCleanup = null;
+          resolve({ ok, frame, generation, tileErrors: imageErrors });
+        }
+
+        function onLoad() {
+          finish(true);
+        }
+
+        function onError() {
+          imageErrors += 1;
+          finish(false);
+        }
+
+        standbyLayer.on(&quot;load&quot;, onLoad);
+        standbyLayer.on(&quot;error&quot;, onError);
+        standbyCleanup = () =&gt; finish(false);
+
+        standbyLayer.setOpacity(0);
+        standbyLayer.setZIndex(++zIndex);
+        recolorFrame(frame).then((processed) =&gt; {
+          if (generation !== standbyGeneration) {
+            URL.revokeObjectURL(processed.objectUrl);
+            finish(false);
+            return;
+          }
+          if (standbyLayer._pmObjectUrl) URL.revokeObjectURL(standbyLayer._pmObjectUrl);
+          standbyLayer._pmObjectUrl = processed.objectUrl;
+          standbyLayer._pmValues = processed.values;
+          standbyLayer._pmWidth = processed.width;
+          standbyLayer._pmHeight = processed.height;
+          standbyLayer._pmFrame = processed.frame;
+          standbyLayer.setUrl(processed.objectUrl);
+          if (!map.hasLayer(standbyLayer)) standbyLayer.addTo(map);
+        }).catch(onError);
+      });
+    }
+
+    function prepare(frame, quiet = false) {
+      if (frame.key === activeKey) {
+        return Promise.resolve({ ok: true, frame, generation: standbyGeneration, alreadyActive: true });
+      }
+      if (frame.key === standbyKey &amp;&amp; standbyPromise) return standbyPromise;
+
+      standbyGeneration += 1;
+      const generation = standbyGeneration;
+      standbyKey = frame.key;
+      if (!quiet) setStatus(&quot;Preparing next frame…&quot;);
+      standbyPromise = waitForStandby(frame, generation);
+      return standbyPromise;
+    }
+
+    async function primeNext() {
+      if (selectedIndex &gt;= 72 || playing === false &amp;&amp; timeMode !== &quot;forecast&quot;) return;
+      const nextFrame = descriptor(selectedIndex + 1);
+      await prepare(nextFrame, true);
+    }
+
+    async function showFrame(index, options = {}) {
+      const frame = descriptor(index);
+      const transition = ++transitionGeneration;
+      selectedIndex = frame.index;
+      updateLabels(frame.index, frame.key !== activeKey);
+      if (frame.key !== activeKey) map.closePopup();
+
+      if (frame.key === activeKey) {
+        setStatus(&quot;ECCC data loaded&quot;);
+        if (options.prime !== false) primeNext();
+        return true;
+      }
+
+      const loaded = await prepare(frame, options.quiet === true);
+      if (transition !== transitionGeneration || loaded.generation !== standbyGeneration || loaded.frame.key !== frame.key) {
+        return false;
+      }
+      if (!loaded.ok) {
+        setStatus(&quot;Next frame unavailable&quot;);
+        detail.textContent = &quot;Requested frame unavailable; the previous map remains visible.&quot;;
+        return false;
+      }
+
+      const oldActive = activeLayer;
+      standbyLayer.setZIndex(++zIndex);
+      standbyLayer.setOpacity(DATA_OPACITY);
+      oldActive.setOpacity(0);
+      if (!reducedMotion) await delay(FADE_MS);
+
+      activeLayer = standbyLayer;
+      standbyLayer = oldActive;
+      activeKey = frame.key;
+      standbyKey = &quot;&quot;;
+      standbyPromise = null;
+      selectedIndex = frame.index;
+      updateLabels(frame.index, false);
+      setStatus(loaded.tileErrors ? &quot;Loaded with missing tiles&quot; : &quot;ECCC data loaded&quot;);
+
+      if (options.prime !== false) primeNext();
+      return true;
+    }
+
+    async function playbackLoop(generation) {
+      while (playing &amp;&amp; generation === playbackGeneration &amp;&amp; selectedIndex &lt; 72) {
+        const ok = await showFrame(selectedIndex + 1, { prime: true });
+        if (!ok || !playing || generation !== playbackGeneration) break;
+        await delay(reducedMotion ? 1300 : 80);
+      }
+      if (generation === playbackGeneration) stopPlayback();
+    }
+
+    async function startPlayback() {
+      if (timeMode !== &quot;forecast&quot;) setTimeMode(&quot;forecast&quot;);
+      if (selectedIndex &gt;= 72) await showFrame(0, { prime: true });
+      playing = true;
+      playbackGeneration += 1;
+      const generation = playbackGeneration;
+      playButton.setAttribute(&quot;aria-pressed&quot;, &quot;true&quot;);
+      playButton.setAttribute(&quot;aria-label&quot;, &quot;Pause forecast animation&quot;);
+      playButton.querySelector(&quot;span&quot;).textContent = &quot;Pause&quot;;
+      const icon = playButton.querySelector(&quot;[data-lucide]&quot;);
+      if (icon) icon.setAttribute(&quot;data-lucide&quot;, &quot;pause&quot;);
+      if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      playbackLoop(generation);
+    }
+
+    function setTimeMode(nextMode) {
+      stopPlayback();
+      timeMode = nextMode;
+      timeModeButtons.forEach((button) =&gt; {
+        button.setAttribute(&quot;aria-pressed&quot;, String(button.dataset.timeMode === timeMode));
+      });
+      timeline.hidden = timeMode !== &quot;forecast&quot;;
+      statusLine.hidden = timeMode === &quot;forecast&quot;;
+      detail.hidden = timeMode === &quot;forecast&quot;;
+      if (timeMode === &quot;now&quot;) selectedIndex = currentIndex;
+      showFrame(selectedIndex, { prime: timeMode === &quot;forecast&quot; });
+    }
+
+    function changeDataset() {
+      stopPlayback();
+      particle = particleSelect.value;
+      extent = extentSelect.value;
+      transitionGeneration += 1;
+      standbyGeneration += 1;
+      standbyKey = &quot;&quot;;
+      standbyPromise = null;
+      updateLegend();
+      showFrame(timeMode === &quot;now&quot; ? currentIndex : selectedIndex, { prime: timeMode === &quot;forecast&quot; });
+      root.querySelector(&quot;#pm-data-menu&quot;).open = false;
+    }
+
+    function changeBasemap(event) {
+      const choice = BASEMAPS[event.target.value] || BASEMAPS.day;
+      map.removeLayer(baseLayer);
+      baseLayer = L.tileLayer(choice.url, choice.options).addTo(map);
+      baseLayer.bringToBack();
+      root.querySelector(&quot;#pm-map-menu&quot;).open = false;
+    }
+
+    const initialFrame = descriptor(currentIndex);
+    activeLayer = makeLayer(initialFrame, DATA_OPACITY).addTo(map);
+    standbyLayer = makeLayer(initialFrame, 0);
+    activeKey = &quot;&quot;;
+    activeLayer.setZIndex(++zIndex);
+
+    [activeLayer, standbyLayer].forEach((layer) =&gt; {
+      layer.on(&quot;load&quot;, () =&gt; {
+        if (layer === activeLayer) {
+          setStatus(&quot;ECCC data loaded&quot;);
+          updateLabels(selectedIndex, false);
+          if (timeMode === &quot;forecast&quot;) primeNext();
+        }
+      });
+      layer.on(&quot;error&quot;, () =&gt; {
+        if (layer === activeLayer) setStatus(&quot;Data image unavailable&quot;);
+      });
+    });
+
+    particleSelect.addEventListener(&quot;change&quot;, changeDataset);
+    extentSelect.addEventListener(&quot;change&quot;, changeDataset);
+    basemapInputs.forEach((input) =&gt; input.addEventListener(&quot;change&quot;, changeBasemap));
+
+    menus.forEach((menu) =&gt; {
+      menu.addEventListener(&quot;toggle&quot;, () =&gt; {
+        if (!menu.open) return;
+        menus.forEach((other) =&gt; {
+          if (other !== menu) other.open = false;
+        });
+      });
+    });
+
+    timeModeButtons.forEach((button) =&gt; {
+      button.addEventListener(&quot;click&quot;, () =&gt; setTimeMode(button.dataset.timeMode));
+    });
+
+    slider.addEventListener(&quot;input&quot;, () =&gt; {
+      stopPlayback();
+      selectedIndex = Number(slider.value);
+      updateLabels(selectedIndex, true);
+      if (scrubTimer !== null) window.clearTimeout(scrubTimer);
+      scrubTimer = window.setTimeout(() =&gt; {
+        scrubTimer = null;
+        showFrame(selectedIndex, { prime: true });
+      }, 140);
+    });
+
+    prevButton.addEventListener(&quot;click&quot;, () =&gt; {
+      stopPlayback();
+      showFrame(selectedIndex - 1, { prime: true });
+    });
+
+    nextButton.addEventListener(&quot;click&quot;, () =&gt; {
+      stopPlayback();
+      showFrame(selectedIndex + 1, { prime: true });
+    });
+
+    playButton.addEventListener(&quot;click&quot;, () =&gt; {
+      if (playing) stopPlayback();
+      else startPlayback();
+    });
+
+    map.on(&quot;click&quot;, (event) =&gt; {
+      const values = activeLayer?._pmValues;
+      const frame = activeLayer?._pmFrame;
+      const width = activeLayer?._pmWidth;
+      const height = activeLayer?._pmHeight;
+      if (!values || !frame || !width || !height || !DATA_BOUNDS.contains(event.latlng)) return;
+
+      const point = mercatorPoint(event.latlng.lat, event.latlng.lng);
+      const x = Math.max(0, Math.min(width - 1, Math.floor(
+        (point.x - southWest.x) / (northEast.x - southWest.x) * width
+      )));
+      const y = Math.max(0, Math.min(height - 1, Math.floor(
+        (northEast.y - point.y) / (northEast.y - southWest.y) * height
+      )));
+      const value = values[y * width + x];
+      const content = document.createElement(&quot;div&quot;);
+      content.className = &quot;pm-probe-popup&quot;;
+      const primary = document.createElement(&quot;strong&quot;);
+      const context = document.createElement(&quot;span&quot;);
+
+      if (value &lt; 0) {
+        primary.textContent = &quot;Below display threshold&quot;;
+      } else {
+        const decimals = value &lt; 10 ? 1 : 0;
+        primary.textContent = `≈ ${value.toFixed(decimals)} ${frame.unit}`;
+      }
+      context.textContent = `${frame.extentLabel} ${frame.label} · ${displayTime(frame.validTime)}`;
+      content.append(primary, context);
+
+      L.popup({ maxWidth: 280, offset: [0, -4] })
+        .setLatLng(event.latlng)
+        .setContent(content)
+        .openOn(map);
+    });
+
+    const resizeObserver = new ResizeObserver(() =&gt; map.invalidateSize({ pan: false }));
+    resizeObserver.observe(root.querySelector(&quot;.pm-map-wrap&quot;));
+
+    slider.value = String(currentIndex);
+    updateLegend();
+    updateLabels(currentIndex, true);
+    showFrame(currentIndex, { prime: false });
+    if (window.lucide) window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
+  })();
+&lt;/script&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
