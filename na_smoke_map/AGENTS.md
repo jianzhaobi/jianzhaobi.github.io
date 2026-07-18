@@ -123,7 +123,7 @@ This arrangement avoids user-device persistence, keeps Git history small, reduce
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
-- Apply high-quality bicubic spatial interpolation at approximately 1.5× plus a restrained 0.6 px blur to soften raster stair-stepping and grid-cell transitions. This is display smoothing, not a higher-resolution forecast.
+- Infer the scalar ramp position first, then apply high-quality alpha-weighted bicubic interpolation at approximately 1.5× plus a restrained 1.0 px blur before recoloring. Smoothing the scalar field rather than already-colored pixels removes high-concentration stair steps while preserving a continuous plume. This is display smoothing, not a higher-resolution forecast.
 - Keep the original 1000 × 625 WMS image as the scientific source grid; smoothing applies only to the displayed PNG. Direct-GeoMet fallback retains its original-grid value lookup, while prepared-cache frames use lazy palette sampling for the popup. Build-time preparation removes full-frame canvas recoloring and PNG encoding from normal client playback.
 - Linearly interpolate premultiplied pixel color and alpha in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
 - Keep the visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value, synchronously extract the two adjacent integer preview frames, and set the shader mix amount from the pointer's fractional position. On release, snap to the nearest integer hour and smoothly refine the preview to that hour's full-resolution frame.
@@ -141,7 +141,7 @@ Clicking or tapping a visibly rendered concentration pixel inside the modeled No
 - Convert the clicked latitude/longitude through the same Web Mercator bounds used by the WMS image before indexing the grid.
 - Show the active frame's particle type, vertical extent, and inferred value with the correct unit on three separate lines. Do not display the valid time.
 - Show the inferred numeric value without an `≈` prefix. Keep the implementation and accessible context clear that values are inferred from rendered colors rather than read from the raw model field.
-- Do not show a popup close “×”; clicking elsewhere on the map is sufficient to dismiss or replace the popup.
+- Show a compact popup close “×” on desktop and mobile so users can dismiss the concentration reading deliberately. Clicking elsewhere on the map should still dismiss or replace the popup.
 - Treat pixels whose processed display alpha is effectively transparent as below the display threshold.
 - Clicking a transparent, below-threshold, no-data, or out-of-bounds location should show nothing and close any existing concentration popup.
 
@@ -177,6 +177,7 @@ Cell-phone usability is a core requirement, not a later enhancement.
 - Closed Data and Map menus should be icon-led on phones; icon-only controls require accessible names.
 - Keep the basemap menu programmatically labeled, but do not display a visible “Basemap” heading inside the open menu.
 - Keep the zoom controls vertically centered along the right edge and place a compact location control directly beneath them.
+- Render the range track explicitly instead of relying on platform-native styling. The elapsed side uses the coral accent and the future side uses the same light neutral gray on desktop and mobile.
 - After location permission is granted, show the user's current location as a modern blue dot with a restrained accuracy halo. Each location-button press should refresh the position and zoom to it; if permission was already granted, show the dot without prompting or changing the initial map view.
 - Forecast controls must remain usable without covering all meaningful map content.
 - The map receives additional vertical height on phones to accommodate floating controls.
@@ -236,7 +237,7 @@ Before handing off a material change:
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
-14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Then click a transparent or no-data pixel and verify that no popup remains.
+14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
 15. During playback, confirm there is exactly one pollution canvas and no pollution `<img>` overlays. Inspect several transition midpoints for brightness pulses or vacant flashes.
 16. Drag the slider slowly forward and backward, then rapidly across random positions. The thumb and preview plume must track continuously during pointer movement, visible hour labels and release positions must remain integer hours, and release must refine to the full-resolution integer frame without a temporal jump.
 17. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution canvas scale and settle together without visible lag.

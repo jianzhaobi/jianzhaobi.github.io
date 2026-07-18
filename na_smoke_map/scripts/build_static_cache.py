@@ -8,6 +8,7 @@ import concurrent.futures
 import datetime as dt
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.parse
@@ -26,6 +27,7 @@ UTC = dt.timezone.utc
 HOUR = dt.timedelta(hours=1)
 WMS = "https://geo.weather.gc.ca/geomet"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+DISPLAY_PREPARATION_VERSION = 2
 BOUNDS = (-18924313.434856508, 1804722.766257292, -5788613.521250226, 13377019.784465117)
 
 DATASETS = {
@@ -69,20 +71,24 @@ SOURCE_COLORS = (
 
 COLOR_RAMPS = {
     "smoke": (
-        (0.00, 255, 240, 194, 0.00),
-        (0.18, 255, 200, 95, 0.02),
-        (0.38, 242, 155, 54, 0.14),
-        (0.58, 216, 97, 40, 0.33),
-        (0.78, 150, 57, 31, 0.56),
-        (1.00, 84, 35, 23, 0.78),
+        (0.00, 255, 248, 221, 0.00),
+        (0.08, 255, 231, 180, 0.06),
+        (0.22, 250, 193, 124, 0.16),
+        (0.40, 239, 143, 87, 0.32),
+        (0.58, 211, 94, 57, 0.48),
+        (0.74, 164, 62, 43, 0.64),
+        (0.88, 111, 41, 33, 0.78),
+        (1.00, 61, 25, 23, 0.88),
     ),
     "total": (
-        (0.00, 255, 247, 214, 0.00),
-        (0.18, 242, 223, 155, 0.02),
-        (0.38, 216, 188, 97, 0.14),
-        (0.58, 178, 139, 54, 0.33),
-        (0.78, 126, 92, 37, 0.56),
-        (1.00, 73, 51, 21, 0.78),
+        (0.00, 255, 250, 222, 0.00),
+        (0.08, 250, 235, 181, 0.06),
+        (0.22, 239, 208, 125, 0.16),
+        (0.40, 216, 172, 78, 0.32),
+        (0.58, 181, 129, 47, 0.48),
+        (0.74, 137, 91, 34, 0.64),
+        (0.88, 91, 56, 25, 0.78),
+        (1.00, 50, 31, 19, 0.88),
     ),
 }
 
@@ -371,22 +377,52 @@ def prepare_display_frame(
             | (rgba[:, :, 1].astype(np.uint16) >> 3) << 5
             | (rgba[:, :, 2].astype(np.uint16) >> 3)
         )
-        positions = SOURCE_POSITION_LUT[source_indexes]
-        color_indexes = np.clip(np.rint(positions * 1023), 0, 1023).astype(np.uint16)
-        red, green, blue, alpha = pixel_lut(frame.particle)
-        rgba[:, :, 0][mask] = red[color_indexes[mask]]
-        rgba[:, :, 1][mask] = green[color_indexes[mask]]
-        rgba[:, :, 2][mask] = blue[color_indexes[mask]]
-        rgba[:, :, 3][mask] = np.rint(
-            source_alpha[mask].astype(np.float32) * alpha[color_indexes[mask]]
+        positions = np.where(mask, SOURCE_POSITION_LUT[source_indexes], 0.0)
+
+        # Smooth the inferred scalar field before applying the display palette.
+        # Filtering already-colored pixels preserves visible cell boundaries;
+        # filtering the alpha-weighted scalar produces a continuous plume while
+        # keeping the work entirely in the scheduled Pages cache build.
+        weighted_source = np.rint(
+            positions * source_alpha.astype(np.float32)
         ).astype(np.uint8)
 
-        prepared = Image.fromarray(rgba, mode="RGBA").resize(
-            display_size,
-            resample=Image.Resampling.BICUBIC,
+        def smooth_channel(channel: np.ndarray) -> np.ndarray:
+            image = Image.fromarray(channel).resize(
+                display_size,
+                resample=Image.Resampling.BICUBIC,
+            )
+            if blur_radius > 0:
+                image = image.filter(ImageFilter.GaussianBlur(blur_radius))
+            return np.asarray(image, dtype=np.float32)
+
+        smooth_weighted = smooth_channel(weighted_source)
+        smooth_coverage = smooth_channel(source_alpha)
+        smooth_positions = np.divide(
+            smooth_weighted,
+            smooth_coverage,
+            out=np.zeros_like(smooth_weighted),
+            where=smooth_coverage > 0.5,
         )
-        if blur_radius > 0:
-            prepared = prepared.filter(ImageFilter.GaussianBlur(blur_radius))
+        color_indexes = np.clip(
+            np.rint(smooth_positions * 1023),
+            0,
+            1023,
+        ).astype(np.uint16)
+        red, green, blue, alpha = pixel_lut(frame.particle)
+        display_rgba = np.zeros(
+            (display_size[1], display_size[0], 4),
+            dtype=np.uint8,
+        )
+        visible = smooth_coverage > 0.5
+        display_rgba[:, :, 0][visible] = red[color_indexes[visible]]
+        display_rgba[:, :, 1][visible] = green[color_indexes[visible]]
+        display_rgba[:, :, 2][visible] = blue[color_indexes[visible]]
+        display_rgba[:, :, 3][visible] = np.rint(
+            smooth_coverage[visible] * alpha[color_indexes[visible]]
+        ).astype(np.uint8)
+
+        prepared = Image.fromarray(display_rgba)
         destination.parent.mkdir(parents=True, exist_ok=True)
         prepared.save(temporary, format="PNG", compress_level=6)
         if not valid_png(temporary, display_size):
@@ -497,6 +533,19 @@ def prune_stale_previews(output: Path, retained: set[Path]) -> None:
                 pass
 
 
+def reset_stale_display_cache(output: Path) -> None:
+    manifest_path = output / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        manifest = {}
+    if manifest.get("displayPreparationVersion") == DISPLAY_PREPARATION_VERSION:
+        return
+    shutil.rmtree(output / "frames", ignore_errors=True)
+    shutil.rmtree(output / "previews", ignore_errors=True)
+    manifest_path.unlink(missing_ok=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("cache"))
@@ -506,7 +555,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=1000)
     parser.add_argument("--height", type=int, default=625)
     parser.add_argument("--spatial-scale", type=float, default=1.5)
-    parser.add_argument("--blur-radius", type=float, default=0.6)
+    parser.add_argument("--blur-radius", type=float, default=1.0)
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--process-jobs", type=int, default=4)
     parser.add_argument("--retries", type=int, default=3)
@@ -543,6 +592,7 @@ def main() -> int:
     args = parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     args.raw_output.mkdir(parents=True, exist_ok=True)
+    reset_stale_display_cache(args.output)
     frames, metadata = build_frames(args)
     download_failures: dict[str, str] = {}
     downloaded: list[Frame] = []
@@ -639,6 +689,7 @@ def main() -> int:
         "schemaVersion": 3,
         **metadata,
         "displayPrepared": True,
+        "displayPreparationVersion": DISPLAY_PREPARATION_VERSION,
         "frameIntervalMinutes": 60,
         "visualInterpolation": "premultiplied-alpha",
         "timelineHours": available_hours,

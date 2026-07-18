@@ -21,6 +21,7 @@
       --pm-ui-hover: #f6f4f2;
       --pm-text: #252729;
       --pm-muted: #666b70;
+      --pm-track-rest: #dfe2e5;
       --pm-line: rgb(30 33 36 / 11%);
       --pm-shadow: 0 10px 30px rgb(31 35 39 / 14%), 0 2px 7px rgb(31 35 39 / 8%);
       --pm-radius: 14px;
@@ -84,12 +85,14 @@
     }
 
     #north-america-pm25 {
-      --pm-ramp-1: #fff0c2;
-      --pm-ramp-2: #ffc85f;
-      --pm-ramp-3: #f29b36;
-      --pm-ramp-4: #d86128;
-      --pm-ramp-5: #96391f;
-      --pm-ramp-6: #542317;
+      --pm-ramp-1: #fff8dd;
+      --pm-ramp-2: #ffe7b4;
+      --pm-ramp-3: #fac17c;
+      --pm-ramp-4: #ef8f57;
+      --pm-ramp-5: #d35e39;
+      --pm-ramp-6: #a43e2b;
+      --pm-ramp-7: #6f2921;
+      --pm-ramp-8: #3d1917;
       position: fixed;
       inset: 0;
       width: 100%;
@@ -103,12 +106,14 @@
     }
 
     #north-america-pm25[data-particle="total"] {
-      --pm-ramp-1: #fff7d6;
-      --pm-ramp-2: #f2df9b;
-      --pm-ramp-3: #d8bc61;
-      --pm-ramp-4: #b28b36;
-      --pm-ramp-5: #7e5c25;
-      --pm-ramp-6: #493315;
+      --pm-ramp-1: #fffade;
+      --pm-ramp-2: #faebb5;
+      --pm-ramp-3: #efd07d;
+      --pm-ramp-4: #d8ac4e;
+      --pm-ramp-5: #b5812f;
+      --pm-ramp-6: #895b22;
+      --pm-ramp-7: #5b3819;
+      --pm-ramp-8: #321f13;
     }
 
     #north-america-pm25[data-basemap="dark"] {
@@ -117,6 +122,7 @@
       --pm-ui-hover: #31343a;
       --pm-text: #f5f5f3;
       --pm-muted: #b6b9bd;
+      --pm-track-rest: #5b6067;
       --pm-line: rgb(255 255 255 / 12%);
       --pm-accent-soft: #4b2d25;
       --pm-shadow: 0 12px 34px rgb(0 0 0 / 36%), 0 2px 8px rgb(0 0 0 / 24%);
@@ -384,12 +390,14 @@
       background: linear-gradient(
         90deg,
         transparent 0%,
-        color-mix(in srgb, var(--pm-ramp-1) 18%, transparent) 8%,
-        color-mix(in srgb, var(--pm-ramp-2) 38%, transparent) 26%,
-        color-mix(in srgb, var(--pm-ramp-3) 58%, transparent) 46%,
-        color-mix(in srgb, var(--pm-ramp-4) 72%, transparent) 67%,
-        color-mix(in srgb, var(--pm-ramp-5) 84%, transparent) 84%,
-        var(--pm-ramp-6) 100%
+        color-mix(in srgb, var(--pm-ramp-1) 22%, transparent) 5%,
+        color-mix(in srgb, var(--pm-ramp-2) 34%, transparent) 12%,
+        color-mix(in srgb, var(--pm-ramp-3) 48%, transparent) 26%,
+        color-mix(in srgb, var(--pm-ramp-4) 62%, transparent) 42%,
+        color-mix(in srgb, var(--pm-ramp-5) 74%, transparent) 58%,
+        color-mix(in srgb, var(--pm-ramp-6) 84%, transparent) 74%,
+        color-mix(in srgb, var(--pm-ramp-7) 92%, transparent) 88%,
+        var(--pm-ramp-8) 100%
       );
     }
 
@@ -501,12 +509,65 @@
     }
 
     #north-america-pm25 .pm-range {
+      --pm-range-progress: 50%;
       display: block;
       width: 100%;
       height: 18px;
       margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
       accent-color: var(--pm-accent);
+      background: transparent;
       cursor: pointer;
+    }
+
+    #north-america-pm25 .pm-range::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 5px;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        var(--pm-accent) 0%,
+        var(--pm-accent) var(--pm-range-progress),
+        var(--pm-track-rest) var(--pm-range-progress),
+        var(--pm-track-rest) 100%
+      );
+    }
+
+    #north-america-pm25 .pm-range::-webkit-slider-thumb {
+      width: 18px;
+      height: 18px;
+      margin-top: -6.5px;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid var(--pm-line);
+      border-radius: 50%;
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-track {
+      width: 100%;
+      height: 5px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--pm-track-rest);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-progress {
+      height: 5px;
+      border-radius: 999px;
+      background: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--pm-line);
+      border-radius: 50%;
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
     }
 
     #north-america-pm25 .pm-range-labels {
@@ -663,11 +724,28 @@
 
     #north-america-pm25 .leaflet-popup-content {
       min-width: 200px;
-      margin: 10px 13px;
+      margin: 11px 38px 11px 14px;
     }
 
     #north-america-pm25 .leaflet-popup-close-button {
-      display: none !important;
+      top: 5px !important;
+      right: 5px !important;
+      display: flex !important;
+      width: 28px !important;
+      height: 28px !important;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      color: var(--pm-muted) !important;
+      font-size: 20px !important;
+      font-weight: 400 !important;
+      line-height: 1 !important;
+    }
+
+    #north-america-pm25 .leaflet-popup-close-button:hover,
+    #north-america-pm25 .leaflet-popup-close-button:focus-visible {
+      color: var(--pm-text) !important;
+      background: var(--pm-ui-hover);
     }
 
     #north-america-pm25 .pm-probe-popup {
@@ -993,20 +1071,24 @@
 
       const COLOR_RAMPS = {
         smoke: [
-          [0.00, 255, 240, 194, 0.00],
-          [0.18, 255, 200, 95, 0.02],
-          [0.38, 242, 155, 54, 0.14],
-          [0.58, 216, 97, 40, 0.33],
-          [0.78, 150, 57, 31, 0.56],
-          [1.00, 84, 35, 23, 0.78]
+          [0.00, 255, 248, 221, 0.00],
+          [0.08, 255, 231, 180, 0.06],
+          [0.22, 250, 193, 124, 0.16],
+          [0.40, 239, 143, 87, 0.32],
+          [0.58, 211, 94, 57, 0.48],
+          [0.74, 164, 62, 43, 0.64],
+          [0.88, 111, 41, 33, 0.78],
+          [1.00, 61, 25, 23, 0.88]
         ],
         total: [
-          [0.00, 255, 247, 214, 0.00],
-          [0.18, 242, 223, 155, 0.02],
-          [0.38, 216, 188, 97, 0.14],
-          [0.58, 178, 139, 54, 0.33],
-          [0.78, 126, 92, 37, 0.56],
-          [1.00, 73, 51, 21, 0.78]
+          [0.00, 255, 250, 222, 0.00],
+          [0.08, 250, 235, 181, 0.06],
+          [0.22, 239, 208, 125, 0.16],
+          [0.40, 216, 172, 78, 0.32],
+          [0.58, 181, 129, 47, 0.48],
+          [0.74, 137, 91, 34, 0.64],
+          [0.88, 91, 56, 25, 0.78],
+          [1.00, 50, 31, 19, 0.88]
         ]
       };
 
@@ -1549,6 +1631,8 @@
         context.drawImage(image, 0, 0);
         const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
         const rgba = pixels.data;
+        const fieldPixels = context.createImageData(canvas.width, canvas.height);
+        const fieldRgba = fieldPixels.data;
         const values = new Float32Array(canvas.width * canvas.height);
         const lut = pixelLut(frame.particle, frame.scale);
         values.fill(-1);
@@ -1563,23 +1647,58 @@
           );
           const position = SOURCE_POSITION_LUT[sourceIndex];
           const colorIndex = Math.max(0, Math.min(1023, Math.round(position * 1023)));
-          rgba[offset] = lut.red[colorIndex];
-          rgba[offset + 1] = lut.green[colorIndex];
-          rgba[offset + 2] = lut.blue[colorIndex];
           const displayAlpha = Math.round(sourceAlpha * lut.alpha[colorIndex]);
-          rgba[offset + 3] = displayAlpha;
           if (displayAlpha > 2) values[valueIndex] = lut.value[colorIndex];
+          const fieldValue = Math.round(position * 255);
+          fieldRgba[offset] = fieldValue;
+          fieldRgba[offset + 1] = fieldValue;
+          fieldRgba[offset + 2] = fieldValue;
+          fieldRgba[offset + 3] = sourceAlpha;
         }
 
-        context.putImageData(pixels, 0, 0);
+        context.putImageData(fieldPixels, 0, 0);
         const output = document.createElement("canvas");
         output.width = Math.round(canvas.width * SPATIAL_SCALE);
         output.height = Math.round(canvas.height * SPATIAL_SCALE);
-        const outputContext = output.getContext("2d", { alpha: true });
+        const outputContext = output.getContext("2d", {
+          alpha: true,
+          willReadFrequently: true
+        });
         outputContext.imageSmoothingEnabled = true;
         outputContext.imageSmoothingQuality = "high";
-        outputContext.filter = "blur(0.6px)";
+        outputContext.filter = "blur(1px)";
         outputContext.drawImage(canvas, 0, 0, output.width, output.height);
+        outputContext.filter = "none";
+
+        const smoothPixels = outputContext.getImageData(
+          0,
+          0,
+          output.width,
+          output.height
+        );
+        const smoothRgba = smoothPixels.data;
+        for (let offset = 0; offset < smoothRgba.length; offset += 4) {
+          const coverage = smoothRgba[offset + 3];
+          if (coverage <= 2) {
+            smoothRgba[offset] = 0;
+            smoothRgba[offset + 1] = 0;
+            smoothRgba[offset + 2] = 0;
+            smoothRgba[offset + 3] = 0;
+            continue;
+          }
+          const position = smoothRgba[offset] / 255;
+          const colorIndex = Math.max(
+            0,
+            Math.min(1023, Math.round(position * 1023))
+          );
+          smoothRgba[offset] = lut.red[colorIndex];
+          smoothRgba[offset + 1] = lut.green[colorIndex];
+          smoothRgba[offset + 2] = lut.blue[colorIndex];
+          smoothRgba[offset + 3] = Math.round(
+            coverage * lut.alpha[colorIndex]
+          );
+        }
+        outputContext.putImageData(smoothPixels, 0, 0);
 
         return {
           source: output,
@@ -2229,6 +2348,14 @@
         const valid = new Date(currentValidTime.getTime() + displayedHour * HOUR);
         const localTime = formatLocal.format(valid);
         slider.value = String(hour);
+        const rangeSpan = maximumHour - minimumHour;
+        const progress = rangeSpan > 0
+          ? (hour - minimumHour) / rangeSpan * 100
+          : 0;
+        slider.style.setProperty(
+          "--pm-range-progress",
+          `${Math.max(0, Math.min(100, progress))}%`
+        );
         slider.setAttribute(
           "aria-valuetext",
           `${
@@ -2595,7 +2722,7 @@
         valueLine.textContent = valueText;
         content.append(particleLine, extentLine, valueLine);
 
-        L.popup({ maxWidth: 280, offset: [0, -4], closeButton: false })
+        L.popup({ maxWidth: 280, offset: [0, -4], closeButton: true })
           .setLatLng(event.latlng)
           .setContent(content)
           .openOn(map);
