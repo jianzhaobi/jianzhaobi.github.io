@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https://geo.weather.gc.ca https://*.basemaps.cartocdn.com https://server.arcgisonline.com; connect-src 'self'; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self'; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <meta
@@ -1223,6 +1223,7 @@
       let locationMarker;
       let accuracyCircle;
       let activeTimelineManifest = null;
+      let timelineInteractionLocked = true;
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -1231,7 +1232,6 @@
       let scrubGeneration = 0;
       let scrubRenderFrame = 0;
       let scrubTargetHour = null;
-      let scrubLoadingGeneration = -1;
       let scrubPairKey = "";
       let fieldRenderingFailed = false;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
@@ -1242,9 +1242,12 @@
         })
         .then((manifest) => (
           manifest &&
-          [1, 2, 3, 4].includes(manifest.schemaVersion) &&
-          manifest.frames &&
-          typeof manifest.frames === "object"
+          [1, 2, 3, 4, 5].includes(manifest.schemaVersion) &&
+          (
+            manifest.schemaVersion === 5
+              ? manifest.fieldTimeline && typeof manifest.fieldTimeline === "object"
+              : manifest.frames && typeof manifest.frames === "object"
+          )
             ? manifest
             : null
         ))
@@ -1385,7 +1388,7 @@
       function applyManifestTimeline(manifest) {
         activeTimelineManifest = null;
         if (
-          ![2, 3, 4].includes(manifest?.schemaVersion) ||
+          ![2, 3, 4, 5].includes(manifest?.schemaVersion) ||
           !Array.isArray(manifest.timelineHours)
         ) return false;
         const generatedAt = new Date(manifest.generatedAt);
@@ -1866,10 +1869,18 @@
 
         const entry = { value: null, promise: null };
         entry.promise = cacheManifestPromise.then(async (manifest) => {
-          const timeline = manifest === activeTimelineManifest && manifest?.schemaVersion === 4
-            ? manifest.smoothTimeline
+          const schemaVersion = manifest?.schemaVersion;
+          const timeline = manifest === activeTimelineManifest
+            ? (
+                schemaVersion === 5
+                  ? manifest.fieldTimeline
+                  : schemaVersion === 4
+                    ? manifest.smoothTimeline
+                    : null
+              )
             : null;
           const packs = timeline?.packs?.[datasetName];
+          const schemaFive = schemaVersion === 5;
           if (
             !timeline ||
             timeline.frameWidth !== IMAGE_SIZE.width ||
@@ -1878,28 +1889,66 @@
             !Array.isArray(packs) ||
             packs.length === 0 ||
             !packs.every((pack) => (
-              typeof pack.weightedPath === "string" &&
-              pack.weightedPath.length > 0 &&
-              typeof pack.coveragePath === "string" &&
-              pack.coveragePath.length > 0 &&
+              (
+                schemaFive
+                  ? (
+                      typeof pack.path === "string" &&
+                      pack.path.length > 0 &&
+                      Array.isArray(pack.channels) &&
+                      pack.channels.length === pack.hours?.length &&
+                      pack.channels.every((channel) => (
+                        Number.isInteger(Number(channel)) &&
+                        Number(channel) >= 0 &&
+                        Number(channel) < 3
+                      ))
+                    )
+                  : (
+                      typeof pack.weightedPath === "string" &&
+                      pack.weightedPath.length > 0 &&
+                      typeof pack.coveragePath === "string" &&
+                      pack.coveragePath.length > 0
+                    )
+              ) &&
               Array.isArray(pack.hours) &&
               pack.hours.length > 0 &&
               pack.hours.length <= 3 &&
               pack.hours.every((hour) => Number.isInteger(Number(hour)))
             ))
           ) return null;
+          if (
+            schemaFive &&
+            (
+              timeline.encoding !== "lossless-webp-rgba" ||
+              timeline.atlasLayout !== "weighted-over-coverage"
+            )
+          ) return null;
+
+          const assetBase = timeline.assetBaseUrl
+            ? new URL(timeline.assetBaseUrl, cacheManifestUrl)
+            : cacheManifestUrl;
 
           const value = {
             frameWidth: timeline.frameWidth,
             frameHeight: timeline.frameHeight,
             packs: packs.map((pack) => ({
               hours: Array.isArray(pack.hours) ? pack.hours.map(Number) : [],
-              weightedUrl: new URL(pack.weightedPath, cacheManifestUrl).href,
-              coverageUrl: new URL(pack.coveragePath, cacheManifestUrl).href,
+              channels: schemaFive
+                ? pack.channels.map(Number)
+                : pack.hours.map((_, channel) => channel),
+              atlasUrl: schemaFive
+                ? new URL(pack.path, assetBase).href
+                : "",
+              weightedUrl: schemaFive
+                ? ""
+                : new URL(pack.weightedPath, cacheManifestUrl).href,
+              coverageUrl: schemaFive
+                ? ""
+                : new URL(pack.coveragePath, cacheManifestUrl).href,
               weightedImage: null,
               coverageImage: null,
               frameWidth: timeline.frameWidth,
               frameHeight: timeline.frameHeight,
+              schemaFive,
               promise: null
             })),
             frames: new Map(),
@@ -1907,11 +1956,14 @@
           };
           entry.value = value;
           value.packs.forEach((pack) => {
-            pack.hours.forEach((hour, channel) => {
+            pack.hours.forEach((hour, index) => {
               if (value.frames.has(hour)) {
                 throw new Error("Duplicate smooth timeline field hour");
               }
-              value.frames.set(hour, { pack, channel });
+              value.frames.set(hour, {
+                pack,
+                channel: pack.channels[index]
+              });
             });
           });
           for (let hour = minimumHour; hour <= maximumHour; hour += 1) {
@@ -1924,6 +1976,17 @@
               previewAtlasDistance(left, selectedHour) -
               previewAtlasDistance(right, selectedHour)
           );
+          const priorityPack = queue.shift();
+          if (!priorityPack || !await loadPreviewAtlas(priorityPack)) {
+            throw new Error("Current smooth timeline field pack unavailable");
+          }
+          if (
+            datasetName === cacheDatasetName() &&
+            renderLayer?.supportsFieldRendering()
+          ) {
+            renderScrubPreview(selectedHour, { allowPartial: true });
+            setFrameStatus("loading", "Map ready · preparing full timeline");
+          }
           let cursor = 0;
           const worker = async () => {
             while (cursor < queue.length) {
@@ -1942,13 +2005,15 @@
             const oldestKey = previewCache.keys().next().value;
             const oldest = previewCache.get(oldestKey)?.value;
             oldest?.packs?.forEach((pack) => {
-              if (pack.weightedImage) pack.weightedImage.src = "";
-              if (pack.coverageImage) pack.coverageImage.src = "";
+              releaseFieldPack(pack);
             });
             previewCache.delete(oldestKey);
           }
           return value;
         }).catch(() => {
+          entry.value?.packs?.forEach((pack) => {
+            releaseFieldPack(pack);
+          });
           previewCache.delete(datasetName);
           return null;
         });
@@ -1960,8 +2025,62 @@
         if (pack?.weightedImage && pack?.coverageImage) {
           return Promise.resolve(pack);
         }
-        if (!pack?.weightedUrl || !pack?.coverageUrl) return Promise.resolve(null);
         if (pack.promise) return pack.promise;
+        if (pack.schemaFive) {
+          if (!pack.atlasUrl) return Promise.resolve(null);
+          pack.promise = loadImage(pack.atlasUrl)
+            .then((atlasImage) => {
+              if (
+                atlasImage.naturalWidth !== pack.frameWidth ||
+                atlasImage.naturalHeight !== pack.frameHeight * 2
+              ) {
+                throw new Error("Smooth timeline atlas dimensions do not match");
+              }
+              const weightedCanvas = document.createElement("canvas");
+              const coverageCanvas = document.createElement("canvas");
+              weightedCanvas.width = coverageCanvas.width = pack.frameWidth;
+              weightedCanvas.height = coverageCanvas.height = pack.frameHeight;
+              const weightedContext = weightedCanvas.getContext("2d", { alpha: false });
+              const coverageContext = coverageCanvas.getContext("2d", { alpha: false });
+              if (!weightedContext || !coverageContext) {
+                throw new Error("Unable to decode smooth timeline atlas");
+              }
+              weightedContext.imageSmoothingEnabled = false;
+              coverageContext.imageSmoothingEnabled = false;
+              weightedContext.drawImage(
+                atlasImage,
+                0,
+                0,
+                pack.frameWidth,
+                pack.frameHeight,
+                0,
+                0,
+                pack.frameWidth,
+                pack.frameHeight
+              );
+              coverageContext.drawImage(
+                atlasImage,
+                0,
+                pack.frameHeight,
+                pack.frameWidth,
+                pack.frameHeight,
+                0,
+                0,
+                pack.frameWidth,
+                pack.frameHeight
+              );
+              atlasImage.src = "";
+              pack.weightedImage = weightedCanvas;
+              pack.coverageImage = coverageCanvas;
+              return pack;
+            })
+            .catch(() => {
+              pack.promise = null;
+              return null;
+            });
+          return pack.promise;
+        }
+        if (!pack?.weightedUrl || !pack?.coverageUrl) return Promise.resolve(null);
         pack.promise = Promise.all([
           loadImage(pack.weightedUrl),
           loadImage(pack.coverageUrl)
@@ -1986,6 +2105,23 @@
         return pack.promise;
       }
 
+      function releaseFieldPack(pack) {
+        for (const source of [pack?.weightedImage, pack?.coverageImage]) {
+          if (!source) continue;
+          if (source instanceof HTMLCanvasElement) {
+            source.width = 0;
+            source.height = 0;
+          } else {
+            source.src = "";
+          }
+        }
+        if (pack) {
+          pack.weightedImage = null;
+          pack.coverageImage = null;
+          pack.promise = null;
+        }
+      }
+
       function previewAtlasDistance(pack, hour) {
         if (!pack.hours.length) return Infinity;
         const first = pack.hours[0];
@@ -1995,35 +2131,32 @@
         return 0;
       }
 
-      function ensurePreviewHour(preview, hour) {
-        if (!preview?.ready) return Promise.resolve(false);
+      function ensurePreviewHour(preview, hour, allowPartial = false) {
+        if (!preview || (!preview.ready && !allowPartial)) return false;
         const lowerHour = Math.max(minimumHour, Math.floor(hour));
         const upperHour = Math.min(maximumHour, Math.ceil(hour));
-        return Promise.resolve(
-          Boolean(
-            preview.frames.get(lowerHour)?.pack?.weightedImage &&
-            preview.frames.get(lowerHour)?.pack?.coverageImage &&
-            preview.frames.get(upperHour)?.pack?.weightedImage &&
-            preview.frames.get(upperHour)?.pack?.coverageImage
-          )
+        return Boolean(
+          preview.frames.get(lowerHour)?.pack?.weightedImage &&
+          preview.frames.get(lowerHour)?.pack?.coverageImage &&
+          preview.frames.get(upperHour)?.pack?.weightedImage &&
+          preview.frames.get(upperHour)?.pack?.coverageImage
         );
       }
 
       function clearSmoothTimelineCache() {
         previewCache.forEach((entry) => {
           entry.value?.packs?.forEach((pack) => {
-            if (pack.weightedImage) pack.weightedImage.src = "";
-            if (pack.coverageImage) pack.coverageImage.src = "";
+            releaseFieldPack(pack);
           });
         });
         previewCache.clear();
       }
 
-      function renderScrubPreview(hour) {
+      function renderScrubPreview(hour, options = {}) {
         const datasetName = cacheDatasetName();
         const preview = previewCache.get(datasetName)?.value;
         if (
-          !preview?.ready ||
+          !ensurePreviewHour(preview, hour, options.allowPartial === true) ||
           fieldRenderingFailed ||
           !renderLayer.supportsFieldRendering()
         ) return false;
@@ -2097,33 +2230,9 @@
           setFrameStatus("ready", "Interpolated forecast frame");
           return;
         }
-        if (
-          fieldRenderingFailed ||
-          !renderLayer.supportsFieldRendering()
-        ) {
-          setFrameStatus("loading", "Release to load forecast frame");
-          return;
-        }
-
-        setFrameStatus("loading", "Loading smooth forecast timeline");
-        const generation = scrubGeneration;
-        if (scrubLoadingGeneration === generation) return;
-        scrubLoadingGeneration = generation;
-        loadPreviewDataset()
-          .then((preview) => ensurePreviewHour(preview, targetHour))
-          .then((ready) => {
-            if (
-              generation !== scrubGeneration ||
-              scrubTargetHour === null
-            ) return;
-            if (ready) queueScrubPreview(scrubTargetHour);
-            else setFrameStatus("loading", "Release to load forecast frame");
-          })
-          .finally(() => {
-            if (scrubLoadingGeneration === generation) {
-              scrubLoadingGeneration = -1;
-            }
-          });
+        timelineInteractionLocked = true;
+        updateControlAvailability();
+        setFrameStatus("error", "Smooth timeline unavailable");
       }
 
       const ContinuousImageOverlay = L.ImageOverlay.extend({
@@ -2136,6 +2245,8 @@
           this._animationResolve = null;
           this._renderMode = "color";
           this._fieldState = null;
+          this._fieldPixelCache = new WeakMap();
+          this._fieldFallbackCanvas = null;
         },
 
         _initImage() {
@@ -2470,7 +2581,10 @@
 
         _draw(progress) {
           if (!this._gl) {
-            if (this._renderMode === "field") return;
+            if (this._renderMode === "field") {
+              this._drawFieldFallback(progress);
+              return;
+            }
             const context = this._fallbackContext;
             if (!context || !this._currentSource) return;
             context.clearRect(0, 0, this._image.width, this._image.height);
@@ -2504,7 +2618,12 @@
           gl.activeTexture(gl.TEXTURE0);
           gl.bindTexture(gl.TEXTURE_2D, this._textures[this._currentTexture]);
           gl.activeTexture(gl.TEXTURE1);
-          gl.bindTexture(gl.TEXTURE_2D, this._textures[this._nextTexture]);
+          gl.bindTexture(
+            gl.TEXTURE_2D,
+            this._fieldState?.sharedSource
+              ? this._textures[this._currentTexture]
+              : this._textures[this._nextTexture]
+          );
           if (this._renderMode === "field") {
             gl.activeTexture(gl.TEXTURE2);
             gl.bindTexture(
@@ -2514,7 +2633,9 @@
             gl.activeTexture(gl.TEXTURE3);
             gl.bindTexture(
               gl.TEXTURE_2D,
-              this._coverageTextures[this._nextTexture]
+              this._fieldState.sharedSource
+                ? this._coverageTextures[this._currentTexture]
+                : this._coverageTextures[this._nextTexture]
             );
             gl.activeTexture(gl.TEXTURE4);
             gl.bindTexture(gl.TEXTURE_2D, this._paletteTexture);
@@ -2534,6 +2655,128 @@
           gl.drawArrays(gl.TRIANGLES, 0, 6);
         },
 
+        _fieldPixels(source) {
+          const cached = this._fieldPixelCache.get(source);
+          if (cached) return cached;
+          const { width, height } = this._sourceSize(source);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d", {
+            alpha: false,
+            willReadFrequently: true
+          });
+          if (!context) throw new Error("Unable to sample fallback field");
+          context.drawImage(source, 0, 0);
+          const pixels = context.getImageData(0, 0, width, height).data;
+          const value = { width, height, pixels };
+          this._fieldPixelCache.set(source, value);
+          return value;
+        },
+
+        _drawFieldFallback(progress) {
+          const context = this._fallbackContext;
+          const field = this._fieldState;
+          if (!context || !field) return;
+          const fromWeighted = this._fieldPixels(field.fromWeighted);
+          const fromCoverage = this._fieldPixels(field.fromCoverage);
+          const toWeighted = this._fieldPixels(field.toWeighted);
+          const toCoverage = this._fieldPixels(field.toCoverage);
+          const width = fromWeighted.width;
+          const height = fromWeighted.height;
+          if (
+            fromCoverage.width !== width ||
+            toWeighted.width !== width ||
+            toCoverage.width !== width ||
+            fromCoverage.height !== height ||
+            toWeighted.height !== height ||
+            toCoverage.height !== height
+          ) throw new Error("Fallback field dimensions do not match");
+
+          if (
+            !this._fieldFallbackCanvas ||
+            this._fieldFallbackCanvas.width !== width ||
+            this._fieldFallbackCanvas.height !== height
+          ) {
+            this._fieldFallbackCanvas = document.createElement("canvas");
+            this._fieldFallbackCanvas.width = width;
+            this._fieldFallbackCanvas.height = height;
+          }
+          const scratchContext = this._fieldFallbackCanvas.getContext("2d", {
+            alpha: true,
+            willReadFrequently: true
+          });
+          const output = scratchContext.createImageData(width, height);
+          const rgba = output.data;
+          const lut = pixelLut(field.particleType, field.scale);
+          const amount = Math.max(0, Math.min(1, progress));
+
+          for (let pixel = 0; pixel < width * height; pixel += 1) {
+            const offset = pixel * 4;
+            const fromCoverageValue = (
+              fromCoverage.pixels[offset + field.fromChannel] / 255
+            );
+            const toCoverageValue = (
+              toCoverage.pixels[offset + field.toChannel] / 255
+            );
+            const fromPosition = fromCoverageValue > 0.002
+              ? Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    fromWeighted.pixels[offset + field.fromChannel] /
+                    fromCoverage.pixels[offset + field.fromChannel]
+                  )
+                )
+              : 0;
+            const toPosition = toCoverageValue > 0.002
+              ? Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    toWeighted.pixels[offset + field.toChannel] /
+                    toCoverage.pixels[offset + field.toChannel]
+                  )
+                )
+              : 0;
+            const fromIndex = Math.round(fromPosition * 1023);
+            const toIndex = Math.round(toPosition * 1023);
+            const fromAlpha = lut.alpha[fromIndex] * fromCoverageValue;
+            const toAlpha = lut.alpha[toIndex] * toCoverageValue;
+            const alpha = (
+              fromAlpha + (toAlpha - fromAlpha) * amount
+            ) * DATA_OPACITY;
+            if (alpha <= 0.002) continue;
+            const red = (
+              lut.red[fromIndex] * fromAlpha * (1 - amount) +
+              lut.red[toIndex] * toAlpha * amount
+            ) * DATA_OPACITY;
+            const green = (
+              lut.green[fromIndex] * fromAlpha * (1 - amount) +
+              lut.green[toIndex] * toAlpha * amount
+            ) * DATA_OPACITY;
+            const blue = (
+              lut.blue[fromIndex] * fromAlpha * (1 - amount) +
+              lut.blue[toIndex] * toAlpha * amount
+            ) * DATA_OPACITY;
+            rgba[offset] = Math.round(red / alpha);
+            rgba[offset + 1] = Math.round(green / alpha);
+            rgba[offset + 2] = Math.round(blue / alpha);
+            rgba[offset + 3] = Math.round(alpha * 255);
+          }
+          scratchContext.putImageData(output, 0, 0);
+          context.clearRect(0, 0, this._image.width, this._image.height);
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = "high";
+          context.drawImage(
+            this._fieldFallbackCanvas,
+            0,
+            0,
+            this._image.width,
+            this._image.height
+          );
+        },
+
         _channelMask(channel) {
           const mask = new Float32Array(4);
           mask[Math.max(0, Math.min(2, channel))] = 1;
@@ -2541,7 +2784,10 @@
         },
 
         supportsFieldRendering() {
-          return Boolean(this._gl && !this._contextLost);
+          return Boolean(
+            (this._gl && !this._contextLost) ||
+            this._fallbackContext
+          );
         },
 
         setFrame(source) {
@@ -2580,7 +2826,7 @@
           scale
         ) {
           this.finishTransition();
-          if (!this._gl) return false;
+          if (!this._gl && !this._fallbackContext) return false;
           this._renderMode = "field";
           this._currentTexture = 0;
           this._nextTexture = 1;
@@ -2595,13 +2841,21 @@
             toChannel,
             progress,
             particleType,
-            scale
+            scale,
+            sharedSource: (
+              fromWeighted === toWeighted &&
+              fromCoverage === toCoverage
+            )
           };
-          this._upload(this._currentTexture, fromWeighted);
-          this._upload(this._nextTexture, toWeighted);
-          this._uploadCoverage(this._currentTexture, fromCoverage);
-          this._uploadCoverage(this._nextTexture, toCoverage);
-          this._uploadPalette(particleType, scale);
+          if (this._gl) {
+            this._upload(this._currentTexture, fromWeighted);
+            this._uploadCoverage(this._currentTexture, fromCoverage);
+            if (!this._fieldState.sharedSource) {
+              this._upload(this._nextTexture, toWeighted);
+              this._uploadCoverage(this._nextTexture, toCoverage);
+            }
+            this._uploadPalette(particleType, scale);
+          }
           this._draw(Math.max(0, Math.min(1, progress)));
           return true;
         },
@@ -2784,10 +3038,7 @@
         hourValue.textContent = displayedHour === 0
           ? "Now"
           : `${displayedHour < 0 ? "−" : "+"}${Math.abs(displayedHour)} h`;
-        prevButton.disabled = hour <= minimumHour;
-        nextButton.disabled = hour >= maximumHour;
-        playButton.disabled = maximumHour <= 0;
-        resetButton.disabled = hour === 0 && !playing;
+        updateControlAvailability(hour);
         setFrameStatus(pending ? "loading" : "ready", pending ? "Loading forecast frame" : "Forecast frame loaded");
         mapElement.setAttribute(
           "aria-label",
@@ -2798,6 +3049,26 @@
       function setFrameStatus(state = "ready", message = "Forecast frame loaded") {
         frameStatus.dataset.state = state;
         frameStatusText.textContent = message;
+      }
+
+      function updateControlAvailability(hour = selectedHour) {
+        slider.disabled = timelineInteractionLocked;
+        prevButton.disabled = (
+          timelineInteractionLocked ||
+          hour <= minimumHour
+        );
+        nextButton.disabled = (
+          timelineInteractionLocked ||
+          hour >= maximumHour
+        );
+        playButton.disabled = (
+          timelineInteractionLocked ||
+          maximumHour <= 0
+        );
+        resetButton.disabled = (
+          timelineInteractionLocked ||
+          (Math.round(hour) === 0 && !playing)
+        );
       }
 
       function renderIcons() {
@@ -2825,7 +3096,6 @@
             updateLabels(selectedHour, false);
           }
         }
-        resetButton.disabled = selectedHour === 0;
         playButton.setAttribute("aria-pressed", "false");
         playButton.setAttribute("aria-label", "Play forecast animation");
         playButton.querySelector(".pm-play-label").textContent = "Play";
@@ -2834,6 +3104,7 @@
           icon.outerHTML = '<i data-lucide="play" aria-hidden="true"></i>';
           renderIcons();
         }
+        updateControlAvailability(selectedHour);
       }
 
       function primeNext() {
@@ -3029,11 +3300,8 @@
         transitionGeneration += 1;
         renderLayer.finishTransition();
         updateLegend();
-        slider.disabled = true;
-        playButton.disabled = true;
-        prevButton.disabled = true;
-        nextButton.disabled = true;
-        resetButton.disabled = true;
+        timelineInteractionLocked = true;
+        updateControlAvailability();
         setFrameStatus("loading", "Preparing smooth forecast timeline");
         const smoothTimeline = !fieldRenderingFailed && renderLayer.supportsFieldRendering()
           ? await loadPreviewDataset(cacheDatasetName())
@@ -3041,11 +3309,23 @@
         if (change !== datasetGeneration) return;
         scrubPairKey = "";
         const ok = await showFrame(selectedHour, { prime: true, quiet: true });
-        slider.disabled = false;
+        timelineInteractionLocked = !(
+          ok &&
+          smoothTimeline &&
+          smoothTimelineReady()
+        );
+        updateControlAvailability();
         updateLabels(selectedHour, !ok);
-        if (!ok) setFrameStatus("error", "Forecast frame unavailable");
+        if (timelineInteractionLocked) {
+          setFrameStatus(
+            "error",
+            ok
+              ? "Smooth timeline unavailable"
+              : "Forecast frame unavailable"
+          );
+        }
         if (change === datasetGeneration && resumePlayback && playing) {
-          if (!ok) {
+          if (!ok || timelineInteractionLocked) {
             stopPlayback();
           } else {
             playbackGeneration += 1;
@@ -3098,21 +3378,19 @@
         );
         slider.value = String(snappedHour);
         selectedHour = snappedHour;
+        if (smoothTimelineReady() && renderScrubPreview(snappedHour)) {
+          activeKey = descriptor(snappedHour).key;
+          updateLabels(snappedHour, false);
+          setFrameStatus("ready", "Forecast frame loaded");
+          return;
+        }
+        timelineInteractionLocked = true;
         updateLabels(snappedHour, true);
-        showFrame(snappedHour, { prime: true, quiet: true });
+        setFrameStatus("error", "Smooth timeline unavailable");
       }
 
-      slider.addEventListener("pointerdown", (event) => {
+      slider.addEventListener("pointerdown", () => {
         cancelScrubPreview();
-        const bounds = slider.getBoundingClientRect();
-        const progress = bounds.width > 0
-          ? Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
-          : 0;
-        const pointerHour = minimumHour + progress * (maximumHour - minimumHour);
-        if (!fieldRenderingFailed && renderLayer.supportsFieldRendering()) {
-          loadPreviewDataset()
-            .then((preview) => ensurePreviewHour(preview, pointerHour));
-        }
       });
 
       slider.addEventListener("input", () => {
@@ -3315,7 +3593,8 @@
       renderIcons();
 
       async function initialize() {
-        slider.disabled = true;
+        timelineInteractionLocked = true;
+        updateControlAvailability(0);
         setFrameStatus("loading", "Loading available forecast frames");
         const manifest = await cacheManifestPromise;
         applyManifestTimeline(manifest);
@@ -3325,19 +3604,28 @@
         updateRangeLabels();
         updateLegend();
         updateLabels(0, true);
-        slider.disabled = true;
-        playButton.disabled = true;
-        prevButton.disabled = true;
-        nextButton.disabled = true;
-        resetButton.disabled = true;
+        updateControlAvailability(0);
         setFrameStatus("loading", "Preparing smooth forecast timeline");
+        let smoothTimeline = null;
         if (!fieldRenderingFailed && renderLayer.supportsFieldRendering()) {
-          await loadPreviewDataset();
+          smoothTimeline = await loadPreviewDataset();
         }
         const ready = await showFrame(0, { prime: true, quiet: true });
-        slider.disabled = false;
+        timelineInteractionLocked = !(
+          ready &&
+          smoothTimeline &&
+          smoothTimelineReady()
+        );
+        updateControlAvailability(0);
         updateLabels(0, !ready);
-        if (!ready) setFrameStatus("error", "Forecast frame unavailable");
+        if (timelineInteractionLocked) {
+          setFrameStatus(
+            "error",
+            ready
+              ? "Smooth timeline unavailable"
+              : "Forecast frame unavailable"
+          );
+        }
       }
 
       initialize();

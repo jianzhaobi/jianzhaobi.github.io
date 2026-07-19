@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import datetime as dt
+import hashlib
 import json
 import os
 import shutil
@@ -27,8 +28,7 @@ UTC = dt.timezone.utc
 HOUR = dt.timedelta(hours=1)
 WMS = "https://geo.weather.gc.ca/geomet"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-DISPLAY_PREPARATION_VERSION = 2
-FIELD_PREPARATION_VERSION = 1
+FIELD_PREPARATION_VERSION = 2
 BOUNDS = (-18924313.434856508, 1804722.766257292, -5788613.521250226, 13377019.784465117)
 
 DATASETS = {
@@ -103,6 +103,8 @@ class Frame:
     hour: int
     relative_path: str
     url: str
+    reference_time: dt.datetime
+    valid_time: dt.datetime
 
 
 def parse_time(value: str) -> dt.datetime:
@@ -215,6 +217,8 @@ def build_frames(args: argparse.Namespace) -> tuple[list[Frame], dict[str, objec
                         args.width,
                         args.height,
                     ),
+                    reference_time=reference_time,
+                    valid_time=valid_time,
                 )
             )
 
@@ -232,15 +236,39 @@ def build_frames(args: argparse.Namespace) -> tuple[list[Frame], dict[str, objec
     return frames, metadata
 
 
-def valid_png(path: Path, expected_size: tuple[int, int]) -> bool:
+def valid_image(
+    path: Path,
+    expected_size: tuple[int, int],
+    expected_format: str,
+) -> bool:
     try:
         if path.stat().st_size <= len(PNG_SIGNATURE):
             return False
         with Image.open(path) as image:
-            if image.format != "PNG" or image.size != expected_size:
+            if image.format != expected_format or image.size != expected_size:
                 return False
             image.verify()
         return True
+    except (OSError, ValueError):
+        return False
+
+
+def valid_png(path: Path, expected_size: tuple[int, int]) -> bool:
+    return valid_image(path, expected_size, "PNG")
+
+
+def valid_webp(path: Path, expected_size: tuple[int, int]) -> bool:
+    return valid_image(path, expected_size, "WEBP")
+
+
+def lossless_webp_matches(path: Path, expected_rgba: np.ndarray) -> bool:
+    try:
+        with Image.open(path) as image:
+            decoded = np.asarray(image.convert("RGBA"), dtype=np.uint8)
+        return decoded.shape == expected_rgba.shape and np.array_equal(
+            decoded,
+            expected_rgba,
+        )
     except (OSError, ValueError):
         return False
 
@@ -464,12 +492,11 @@ def timeline_hours(frames: list[Frame], successful_keys: set[str], datasets: lis
 
 def build_field_packs(
     frames: list[Frame],
-    prepared: dict[str, str],
+    successful_keys: set[str],
     raw_output: Path,
     output: Path,
     datasets: list[str],
-    hours: list[int],
-    anchor: str,
+    timeline: list[int],
     frame_size: tuple[int, int],
     blur_radius: float = 0.55,
     pack_size: int = 3,
@@ -477,27 +504,51 @@ def build_field_packs(
     frame_by_dataset_hour = {
         (frame.dataset, frame.hour): frame
         for frame in frames
-        if frame.key in prepared
+        if frame.key in successful_keys
     }
     packs: dict[str, list[dict[str, object]]] = {dataset: [] for dataset in datasets}
     retained: set[Path] = set()
 
     for dataset in datasets:
-        for pack_index in range(0, len(hours), pack_size):
-            pack_hours = hours[pack_index:pack_index + pack_size]
+        dataset_frames = {
+            frame.hour: frame
+            for frame in frames
+            if frame.dataset == dataset and frame.key in successful_keys
+        }
+        timeline_groups: dict[dt.datetime, list[int]] = {}
+        for hour in timeline:
+            frame = frame_by_dataset_hour[(dataset, hour)]
+            absolute_hour = int(
+                frame.valid_time.timestamp() // HOUR.total_seconds()
+            )
+            group_start = dt.datetime.fromtimestamp(
+                (absolute_hour // pack_size) * pack_size * HOUR.total_seconds(),
+                UTC,
+            )
+            timeline_groups.setdefault(group_start, []).append(hour)
+
+        for group_start, active_hours in sorted(timeline_groups.items()):
             weighted_pack = np.zeros(
                 (frame_size[1], frame_size[0], 4),
                 dtype=np.uint8,
             )
             coverage_pack = np.zeros_like(weighted_pack)
-            # Keep PNG alpha opaque. Browser image decoders may premultiply or
-            # discard RGB values behind transparent alpha, so the alpha channel
-            # cannot safely carry an independent forecast hour.
+            # Keep alpha opaque. Browser decoders may discard RGB values behind
+            # transparent alpha, so alpha cannot safely carry another hour.
             weighted_pack[:, :, 3] = 255
             coverage_pack[:, :, 3] = 255
 
-            for channel, hour in enumerate(pack_hours):
-                frame = frame_by_dataset_hour[(dataset, hour)]
+            group_absolute_hour = int(
+                group_start.timestamp() // HOUR.total_seconds()
+            )
+            channel_by_hour: dict[int, int] = {}
+            for hour, frame in dataset_frames.items():
+                absolute_hour = int(
+                    frame.valid_time.timestamp() // HOUR.total_seconds()
+                )
+                channel = absolute_hour - group_absolute_hour
+                if not 0 <= channel < pack_size:
+                    continue
                 raw_path = raw_output / frame.relative_path
                 if not valid_png(raw_path, frame_size):
                     raise ValueError(f"raw frame unavailable for field pack: {frame.key}")
@@ -531,34 +582,54 @@ def build_field_packs(
                     )
                 weighted_pack[:, :, channel] = weighted
                 coverage_pack[:, :, channel] = coverage
+                channel_by_hour[hour] = channel
 
-            base_path = (
-                f"fields/{dataset}/{anchor}/"
-                f"{pack_index // pack_size:02d}"
-            )
-            weighted_path = f"{base_path}-weighted.png"
-            coverage_path = f"{base_path}-coverage.png"
-            for relative_path, pixels in (
-                (weighted_path, weighted_pack),
-                (coverage_path, coverage_pack),
-            ):
-                destination = output / relative_path
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary = destination.with_suffix(f".tmp-{os.getpid()}")
-                Image.fromarray(pixels).save(
-                    temporary,
-                    format="PNG",
-                    compress_level=7,
+            if not all(hour in channel_by_hour for hour in active_hours):
+                raise ValueError(
+                    f"field atlas does not cover active hours for {dataset}"
                 )
-                if not valid_png(temporary, frame_size):
-                    temporary.unlink(missing_ok=True)
-                    raise ValueError(f"field pack was incomplete: {relative_path}")
+
+            atlas = np.zeros(
+                (frame_size[1] * 2, frame_size[0], 4),
+                dtype=np.uint8,
+            )
+            atlas[:, :, 3] = 255
+            atlas[:frame_size[1], :, :] = weighted_pack
+            atlas[frame_size[1]:, :, :] = coverage_pack
+            temporary = output / f".field-atlas-{os.getpid()}.webp"
+            Image.fromarray(atlas).save(
+                temporary,
+                format="WEBP",
+                lossless=True,
+                quality=100,
+                method=4,
+                exact=True,
+            )
+            digest = hashlib.sha256(temporary.read_bytes()).hexdigest()[:24]
+            relative_path = f"fields/v5/{dataset}/{digest}.webp"
+            destination = output / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                temporary.unlink(missing_ok=True)
+            else:
                 temporary.replace(destination)
-                retained.add(destination)
+            if not valid_webp(
+                destination,
+                (frame_size[0], frame_size[1] * 2),
+            ):
+                destination.unlink(missing_ok=True)
+                raise ValueError(f"field atlas was incomplete: {relative_path}")
+            if not lossless_webp_matches(destination, atlas):
+                destination.unlink(missing_ok=True)
+                raise ValueError(
+                    f"field atlas did not decode byte-for-byte: {relative_path}"
+                )
+            retained.add(destination)
+            ordered_hours = sorted(active_hours)
             packs[dataset].append({
-                "weightedPath": weighted_path,
-                "coveragePath": coverage_path,
-                "hours": pack_hours,
+                "path": relative_path,
+                "hours": ordered_hours,
+                "channels": [channel_by_hour[hour] for hour in ordered_hours],
             })
 
     return packs, retained
@@ -568,9 +639,10 @@ def prune_stale_fields(output: Path, retained: set[Path]) -> None:
     fields_root = output / "fields"
     if not fields_root.exists():
         return
-    for path in fields_root.rglob("*.png"):
-        if path not in retained:
-            path.unlink(missing_ok=True)
+    for pattern in ("*.png", "*.webp"):
+        for path in fields_root.rglob(pattern):
+            if path not in retained:
+                path.unlink(missing_ok=True)
     for directory in sorted(fields_root.rglob("*"), reverse=True):
         if directory.is_dir():
             try:
@@ -585,20 +657,15 @@ def reset_stale_display_cache(output: Path) -> None:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         manifest = {}
-    display_current = (
-        manifest.get("displayPreparationVersion") ==
-        DISPLAY_PREPARATION_VERSION
-    )
     fields_current = (
         manifest.get("fieldPreparationVersion") ==
         FIELD_PREPARATION_VERSION
     )
-    if display_current and fields_current:
+    if manifest.get("schemaVersion") == 5 and fields_current:
         return
-    if not display_current:
-        shutil.rmtree(output / "frames", ignore_errors=True)
     if not fields_current:
         shutil.rmtree(output / "fields", ignore_errors=True)
+    shutil.rmtree(output / "frames", ignore_errors=True)
     shutil.rmtree(output / "previews", ignore_errors=True)
     manifest_path.unlink(missing_ok=True)
 
@@ -618,6 +685,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--minimum-success-ratio", type=float, default=0.9)
     parser.add_argument("--now", type=parse_time)
+    parser.add_argument(
+        "--asset-base-url",
+        default="",
+        help="Optional public base URL for content-addressed field assets.",
+    )
     parser.add_argument(
         "--dataset",
         dest="datasets",
@@ -675,33 +747,9 @@ def main() -> int:
             if completed % 50 == 0 or completed == len(frames):
                 print(f"downloaded {completed}/{len(frames)} source frames", flush=True)
 
-    display_size = (metadata["displayWidth"], metadata["displayHeight"])
-    prepared: dict[str, str] = {}
-    prepare_failures: dict[str, str] = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.process_jobs) as executor:
-        futures = {
-            executor.submit(
-                prepare_display_frame,
-                frame,
-                args.raw_output,
-                args.output,
-                (args.width, args.height),
-                display_size,
-                args.blur_radius,
-            ): frame
-            for frame in downloaded
-        }
-        for completed, future in enumerate(concurrent.futures.as_completed(futures), start=1):
-            frame, error = future.result()
-            if error is None:
-                prepared[frame.key] = frame.relative_path
-            else:
-                prepare_failures[frame.key] = error
-            if completed % 50 == 0 or completed == len(downloaded):
-                print(f"prepared {completed}/{len(downloaded)} display frames", flush=True)
-
-    failures = {**download_failures, **prepare_failures}
-    ratio = len(prepared) / len(frames) if frames else 0
+    downloaded_keys = {frame.key for frame in downloaded}
+    failures = download_failures
+    ratio = len(downloaded) / len(frames) if frames else 0
     if failures:
         for key, error in list(failures.items())[:10]:
             print(f"failed {key}: {error}", file=sys.stderr)
@@ -709,34 +757,31 @@ def main() -> int:
             print(f"...and {len(failures) - 10} more failures", file=sys.stderr)
     if ratio < args.minimum_success_ratio:
         print(
-            f"cache build rejected: {len(prepared)}/{len(frames)} frames "
+            f"cache build rejected: {len(downloaded)}/{len(frames)} frames "
             f"({ratio:.1%}) succeeded",
             file=sys.stderr,
         )
         return 1
 
-    retained_display = {args.output / path for path in prepared.values()}
     retained_raw = {
         args.raw_output / frame.relative_path
         for frame in frames
-        if frame.key in prepared
+        if frame.key in downloaded_keys
     }
-    prune_stale_frames(args.output, retained_display)
+    shutil.rmtree(args.output / "frames", ignore_errors=True)
     prune_stale_frames(args.raw_output, retained_raw)
-    available_hours = timeline_hours(frames, set(prepared), args.datasets)
+    available_hours = timeline_hours(frames, downloaded_keys, args.datasets)
     if not available_hours:
         print("cache build rejected: no common frame exists at Now", file=sys.stderr)
         return 1
-    field_anchor = compact_hour(parse_time(metadata["currentValidTime"]))
     try:
         field_packs, retained_fields = build_field_packs(
             frames,
-            prepared,
+            downloaded_keys,
             args.raw_output,
             args.output,
             args.datasets,
             available_hours,
-            field_anchor,
             (args.width, args.height),
         )
     except Exception as exc:
@@ -745,24 +790,28 @@ def main() -> int:
     prune_stale_fields(args.output, retained_fields)
 
     manifest = {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         **metadata,
-        "displayPrepared": True,
-        "displayPreparationVersion": DISPLAY_PREPARATION_VERSION,
         "fieldPreparationVersion": FIELD_PREPARATION_VERSION,
         "frameIntervalMinutes": 60,
         "visualInterpolation": "premultiplied-alpha",
         "timelineHours": available_hours,
-        "smoothTimeline": {
+        "fieldTimeline": {
             "frameWidth": args.width,
             "frameHeight": args.height,
             "packSize": 3,
+            "encoding": "lossless-webp-rgba",
+            "atlasLayout": "weighted-over-coverage",
+            "assetBaseUrl": (
+                args.asset_base_url.rstrip("/") + "/"
+                if args.asset_base_url
+                else ""
+            ),
             "spatialInterpolation": "gpu-linear-smoothed-field",
             "packs": field_packs,
         },
-        "frameCount": len(prepared),
+        "frameCount": len(downloaded),
         "failureCount": len(failures),
-        "frames": dict(sorted(prepared.items())),
     }
     temporary_manifest = args.output / "manifest.json.tmp"
     temporary_manifest.write_text(
@@ -771,9 +820,9 @@ def main() -> int:
     )
     temporary_manifest.replace(args.output / "manifest.json")
     print(
-        f"cache ready: {len(prepared)} display frames, {len(failures)} fallbacks, "
+        f"cache ready: {len(downloaded)} source frames, {len(failures)} failures, "
         f"{ratio:.1%} success, {sum(len(items) for items in field_packs.values())} "
-        f"field packs, timeline {available_hours[0]:+d}…{available_hours[-1]:+d} h"
+        f"field atlases, timeline {available_hours[0]:+d}…{available_hours[-1]:+d} h"
     )
     return 0
 
