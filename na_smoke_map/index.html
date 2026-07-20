@@ -500,11 +500,11 @@
       min-width: 0;
       align-items: center;
       gap: 7px;
+      overflow: hidden;
     }
 
     #north-america-pm25 .pm-time-copy {
       display: flex;
-      flex: 1 1 auto;
       min-width: 0;
       align-items: baseline;
       gap: 7px;
@@ -526,27 +526,6 @@
       font-weight: 700;
     }
 
-    #north-america-pm25 .pm-cache-refresh {
-      min-width: 0;
-      min-height: 30px;
-      flex: 0 0 auto;
-      gap: 5px;
-      padding: 0 8px;
-      border-color: color-mix(in srgb, var(--pm-line) 68%, transparent);
-      border-radius: 9px;
-      color: var(--pm-muted);
-      background: color-mix(in srgb, var(--pm-ui-solid) 42%, transparent);
-      box-shadow: none;
-      font-size: 10px;
-      font-weight: 650;
-    }
-
-    #north-america-pm25 .pm-cache-refresh:hover {
-      border-color: color-mix(in srgb, var(--pm-accent) 25%, var(--pm-line));
-      color: var(--pm-text);
-      background: var(--pm-ui-hover);
-    }
-
     #north-america-pm25 .pm-cache-refresh[data-state="loading"] {
       color: var(--pm-accent-strong);
     }
@@ -561,11 +540,6 @@
 
     #north-america-pm25 .pm-cache-refresh[data-state="error"] {
       color: #b6463d;
-    }
-
-    #north-america-pm25 .pm-cache-refresh svg {
-      width: 15px;
-      height: 15px;
     }
 
     #north-america-pm25 .pm-transport {
@@ -693,7 +667,7 @@
     }
 
     #north-america-pm25 .leaflet-top.leaflet-left {
-      top: 50%;
+      top: calc(50% - 14px);
       right: calc(10px + var(--pm-safe-right));
       left: auto;
       transform: translateY(-50%);
@@ -727,17 +701,28 @@
       background: var(--pm-ui-hover);
     }
 
-    #north-america-pm25 .pm-locate-control {
+    #north-america-pm25 .pm-map-utility-control {
+      display: grid;
+      gap: 8px;
       margin: 8px 0 0 !important;
     }
 
-    #north-america-pm25 .pm-locate-button {
+    #north-america-pm25 .pm-locate-button,
+    #north-america-pm25 .pm-cache-refresh {
       width: 42px;
       min-width: 42px;
       height: 42px;
       min-height: 42px;
       padding: 0;
       border-radius: 12px;
+    }
+
+    #north-america-pm25 .pm-cache-refresh {
+      color: var(--pm-muted);
+    }
+
+    #north-america-pm25 .pm-cache-refresh:hover {
+      color: var(--pm-text);
     }
 
     #north-america-pm25 .pm-locate-button[data-state="active"] {
@@ -926,18 +911,6 @@
         display: block;
       }
 
-      #north-america-pm25 .pm-cache-refresh {
-        width: 38px;
-        min-width: 38px;
-        height: 38px;
-        min-height: 38px;
-        padding: 0;
-      }
-
-      #north-america-pm25 .pm-cache-refresh-label {
-        display: none;
-      }
-
       #north-america-pm25 #pm-hour-value {
         display: block;
         margin-top: 1px;
@@ -979,23 +952,8 @@
     }
 
     @media (max-width: 350px) {
-      #north-america-pm25 .pm-timeline-top {
-        grid-template-columns: minmax(0, 1fr);
-        row-gap: 6px;
-      }
-
-      #north-america-pm25 .pm-legend,
-      #north-america-pm25 .pm-valid-time,
-      #north-america-pm25 .pm-transport {
-        grid-column: 1;
-      }
-
-      #north-america-pm25 .pm-transport {
-        justify-self: center;
-      }
-
       #north-america-pm25 #pm-time-value {
-        max-width: none;
+        max-width: 96px;
         font-size: 12px;
       }
     }
@@ -1091,17 +1049,6 @@
                 <strong id="pm-time-value"></strong>
                 <span id="pm-hour-value">+0 h</span>
               </div>
-              <button
-                type="button"
-                class="pm-button pm-cache-refresh"
-                id="pm-cache-refresh"
-                data-state="idle"
-                aria-label="Check for a newer forecast cache"
-                title="Check for a newer forecast cache"
-              >
-                <i data-lucide="refresh-cw" aria-hidden="true"></i>
-                <span class="pm-cache-refresh-label">Update</span>
-              </button>
             </div>
             <div class="pm-transport" aria-label="Animation controls">
               <button type="button" class="pm-button pm-icon-button" id="pm-reset" aria-label="Reset to now">
@@ -1150,8 +1097,6 @@
       const hourValue = document.getElementById("pm-hour-value");
       const frameStatus = document.getElementById("pm-frame-status");
       const frameStatusText = document.getElementById("pm-frame-status-text");
-      const cacheRefreshButton = document.getElementById("pm-cache-refresh");
-      const cacheRefreshLabel = cacheRefreshButton.querySelector(".pm-cache-refresh-label");
       const playButton = document.getElementById("pm-play");
       const resetButton = document.getElementById("pm-reset");
       const prevButton = document.getElementById("pm-prev");
@@ -1339,6 +1284,8 @@
       let datasetGeneration = 0;
       let locateButton;
       let locateStatus;
+      let cacheRefreshButton;
+      let cacheRefreshLabel;
       let locationMarker;
       let accuracyCircle;
       let activeTimelineManifest = null;
@@ -1425,10 +1372,13 @@
 
       let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
 
-      const LocateControl = L.Control.extend({
+      const MapUtilityControl = L.Control.extend({
         options: { position: "topleft" },
         onAdd() {
-          const container = L.DomUtil.create("div", "leaflet-control pm-locate-control");
+          const container = L.DomUtil.create(
+            "div",
+            "leaflet-control pm-map-utility-control"
+          );
           locateButton = L.DomUtil.create("button", "pm-button pm-icon-button pm-locate-button", container);
           locateButton.type = "button";
           locateButton.dataset.state = "idle";
@@ -1436,13 +1386,34 @@
           locateButton.innerHTML = '<i data-lucide="locate-fixed" aria-hidden="true"></i>';
           locateStatus = L.DomUtil.create("span", "sr-only", locateButton);
           locateStatus.setAttribute("aria-live", "polite");
+          cacheRefreshButton = L.DomUtil.create(
+            "button",
+            "pm-button pm-icon-button pm-cache-refresh",
+            container
+          );
+          cacheRefreshButton.type = "button";
+          cacheRefreshButton.dataset.state = "idle";
+          cacheRefreshButton.setAttribute(
+            "aria-label",
+            "Check for a newer forecast cache"
+          );
+          cacheRefreshButton.title = "Check for a newer forecast cache";
+          cacheRefreshButton.innerHTML =
+            '<i data-lucide="refresh-cw" aria-hidden="true"></i>';
+          cacheRefreshLabel = L.DomUtil.create(
+            "span",
+            "sr-only pm-cache-refresh-label",
+            cacheRefreshButton
+          );
+          cacheRefreshLabel.textContent = "Update";
           L.DomEvent.disableClickPropagation(container);
           L.DomEvent.on(locateButton, "click", () => requestLocation(true));
+          L.DomEvent.on(cacheRefreshButton, "click", () => refreshCache());
           return container;
         }
       });
 
-      new LocateControl().addTo(map);
+      new MapUtilityControl().addTo(map);
 
       function setLocateState(state, message, iconName = "locate-fixed") {
         locateButton.dataset.state = state;
@@ -3270,6 +3241,10 @@
           cacheFeedbackTimer = 0;
         }
         cacheRefreshButton.dataset.state = state;
+        cacheRefreshButton.setAttribute(
+          "aria-busy",
+          String(state === "loading")
+        );
         cacheRefreshLabel.textContent = label;
         cacheRefreshButton.setAttribute("aria-label", message);
         cacheRefreshButton.title = message;
@@ -3923,10 +3898,6 @@
       playButton.addEventListener("click", () => {
         if (playing) stopPlayback();
         else startPlayback();
-      });
-
-      cacheRefreshButton.addEventListener("click", () => {
-        refreshCache();
       });
 
       function checkCacheAfterResume() {
