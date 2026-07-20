@@ -500,11 +500,11 @@
       min-width: 0;
       align-items: center;
       gap: 7px;
-      overflow: hidden;
     }
 
     #north-america-pm25 .pm-time-copy {
       display: flex;
+      flex: 1 1 auto;
       min-width: 0;
       align-items: baseline;
       gap: 7px;
@@ -524,6 +524,48 @@
       color: var(--pm-accent-strong);
       font-size: 11px;
       font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-cache-refresh {
+      min-width: 0;
+      min-height: 30px;
+      flex: 0 0 auto;
+      gap: 5px;
+      padding: 0 8px;
+      border-color: color-mix(in srgb, var(--pm-line) 68%, transparent);
+      border-radius: 9px;
+      color: var(--pm-muted);
+      background: color-mix(in srgb, var(--pm-ui-solid) 42%, transparent);
+      box-shadow: none;
+      font-size: 10px;
+      font-weight: 650;
+    }
+
+    #north-america-pm25 .pm-cache-refresh:hover {
+      border-color: color-mix(in srgb, var(--pm-accent) 25%, var(--pm-line));
+      color: var(--pm-text);
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="loading"] {
+      color: var(--pm-accent-strong);
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="loading"] svg {
+      animation: pm-spin 900ms linear infinite;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="success"] {
+      color: #318258;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="error"] {
+      color: #b6463d;
+    }
+
+    #north-america-pm25 .pm-cache-refresh svg {
+      width: 15px;
+      height: 15px;
     }
 
     #north-america-pm25 .pm-transport {
@@ -884,6 +926,18 @@
         display: block;
       }
 
+      #north-america-pm25 .pm-cache-refresh {
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
+        min-height: 38px;
+        padding: 0;
+      }
+
+      #north-america-pm25 .pm-cache-refresh-label {
+        display: none;
+      }
+
       #north-america-pm25 #pm-hour-value {
         display: block;
         margin-top: 1px;
@@ -925,8 +979,23 @@
     }
 
     @media (max-width: 350px) {
+      #north-america-pm25 .pm-timeline-top {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 6px;
+      }
+
+      #north-america-pm25 .pm-legend,
+      #north-america-pm25 .pm-valid-time,
+      #north-america-pm25 .pm-transport {
+        grid-column: 1;
+      }
+
+      #north-america-pm25 .pm-transport {
+        justify-self: center;
+      }
+
       #north-america-pm25 #pm-time-value {
-        max-width: 96px;
+        max-width: none;
         font-size: 12px;
       }
     }
@@ -944,6 +1013,7 @@
       }
 
       #north-america-pm25 .pm-locate-button[data-state="loading"] svg,
+      #north-america-pm25 .pm-cache-refresh[data-state="loading"] svg,
       #north-america-pm25 .pm-location-dot::after {
         animation: none;
       }
@@ -1021,6 +1091,17 @@
                 <strong id="pm-time-value"></strong>
                 <span id="pm-hour-value">+0 h</span>
               </div>
+              <button
+                type="button"
+                class="pm-button pm-cache-refresh"
+                id="pm-cache-refresh"
+                data-state="idle"
+                aria-label="Check for a newer forecast cache"
+                title="Check for a newer forecast cache"
+              >
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                <span class="pm-cache-refresh-label">Update</span>
+              </button>
             </div>
             <div class="pm-transport" aria-label="Animation controls">
               <button type="button" class="pm-button pm-icon-button" id="pm-reset" aria-label="Reset to now">
@@ -1069,6 +1150,8 @@
       const hourValue = document.getElementById("pm-hour-value");
       const frameStatus = document.getElementById("pm-frame-status");
       const frameStatusText = document.getElementById("pm-frame-status-text");
+      const cacheRefreshButton = document.getElementById("pm-cache-refresh");
+      const cacheRefreshLabel = cacheRefreshButton.querySelector(".pm-cache-refresh-label");
       const playButton = document.getElementById("pm-play");
       const resetButton = document.getElementById("pm-reset");
       const prevButton = document.getElementById("pm-prev");
@@ -1087,6 +1170,7 @@
       const SCRUB_FADE_MS = 260;
       const IMAGE_SIZE = { width: 1000, height: 625 };
       const SPATIAL_SCALE = 1.5;
+      const CACHE_CHECK_INTERVAL = HOUR;
       const DATA_BOUNDS = L.latLngBounds([[16, -170], [76, -52]]);
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const cacheLimit = window.innerWidth < 600 || (navigator.deviceMemory && navigator.deviceMemory <= 4) ? 3 : 5;
@@ -1258,9 +1342,13 @@
       let locationMarker;
       let accuracyCircle;
       let activeTimelineManifest = null;
+      let activeTimelineWindow = null;
       let manifestHourOffset = 0;
       let cacheUpdateDelayHours = 0;
       let timelineInteractionLocked = true;
+      let cacheRefreshActive = false;
+      let cacheFeedbackTimer = 0;
+      let lastCacheCheckAt = Date.now();
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -1272,12 +1360,9 @@
       let scrubPairKey = "";
       let fieldRenderingFailed = false;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
-      const cacheManifestPromise = fetch(cacheManifestUrl, { cache: "no-store" })
-        .then((response) => {
-          if (!response.ok) throw new Error("Static cache manifest unavailable");
-          return response.json();
-        })
-        .then((manifest) => (
+
+      function validCacheManifest(manifest) {
+        return (
           manifest &&
           [1, 2, 3, 4, 5].includes(manifest.schemaVersion) &&
           (
@@ -1285,10 +1370,20 @@
               ? manifest.fieldTimeline && typeof manifest.fieldTimeline === "object"
               : manifest.frames && typeof manifest.frames === "object"
           )
-            ? manifest
-            : null
-        ))
-        .catch(() => null);
+        ) ? manifest : null;
+      }
+
+      async function fetchCacheManifest(cacheBust = false) {
+        const requestUrl = new URL(cacheManifestUrl);
+        if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
+        const response = await fetch(requestUrl, { cache: "no-store" });
+        if (!response.ok) throw new Error("Static cache manifest unavailable");
+        const manifest = validCacheManifest(await response.json());
+        if (!manifest) throw new Error("Static cache manifest invalid");
+        return manifest;
+      }
+
+      let cacheManifestPromise = fetchCacheManifest().catch(() => null);
 
       const map = L.map(mapElement, {
         zoomControl: true,
@@ -1422,7 +1517,7 @@
         return `${particleType}-${extentType}`;
       }
 
-      function manifestTimelineWindow(manifest, clientNow = now) {
+      function manifestTimelineWindow(manifest, clientNow = new Date()) {
         if (
           ![2, 3, 4, 5].includes(manifest?.schemaVersion) ||
           !Array.isArray(manifest.timelineHours)
@@ -1471,11 +1566,12 @@
         };
       }
 
-      function applyManifestTimeline(manifest) {
+      function applyManifestTimeline(manifest, clientNow = new Date()) {
         activeTimelineManifest = null;
+        activeTimelineWindow = null;
         manifestHourOffset = 0;
         cacheUpdateDelayHours = 0;
-        const window = manifestTimelineWindow(manifest);
+        const window = manifestTimelineWindow(manifest, clientNow);
         if (!window) return false;
 
         referenceTime = window.referenceTime;
@@ -1486,6 +1582,7 @@
         manifestHourOffset = window.hourOffset;
         cacheUpdateDelayHours = window.updateDelayHours;
         activeTimelineManifest = manifest;
+        activeTimelineWindow = window;
         return true;
       }
 
@@ -1924,103 +2021,96 @@
         scheduledProcessing.clear();
       }
 
-      function loadPreviewDataset(datasetName = cacheDatasetName()) {
-        const existing = previewCache.get(datasetName);
-        if (existing) {
-          touchCache(previewCache, datasetName, existing);
-          return existing.promise;
-        }
-
-        const entry = { value: null, promise: null };
-        entry.promise = cacheManifestPromise.then(async (manifest) => {
-          const schemaVersion = manifest?.schemaVersion;
-          const timeline = manifest === activeTimelineManifest
-            ? (
-                schemaVersion === 5
-                  ? manifest.fieldTimeline
-                  : schemaVersion === 4
-                    ? manifest.smoothTimeline
-                    : null
-              )
+      async function buildPreviewDataset(
+        manifest,
+        timelineWindow,
+        datasetName,
+        options = {}
+      ) {
+        const schemaVersion = manifest?.schemaVersion;
+        const timeline = schemaVersion === 5
+          ? manifest.fieldTimeline
+          : schemaVersion === 4
+            ? manifest.smoothTimeline
             : null;
-          const packs = timeline?.packs?.[datasetName];
-          const schemaFive = schemaVersion === 5;
-          if (
-            !timeline ||
-            timeline.frameWidth !== IMAGE_SIZE.width ||
-            timeline.frameHeight !== IMAGE_SIZE.height ||
-            timeline.packSize !== 3 ||
-            !Array.isArray(packs) ||
-            packs.length === 0 ||
-            !packs.every((pack) => (
-              (
-                schemaFive
-                  ? (
-                      typeof pack.path === "string" &&
-                      pack.path.length > 0 &&
-                      Array.isArray(pack.channels) &&
-                      pack.channels.length === pack.hours?.length &&
-                      pack.channels.every((channel) => (
-                        Number.isInteger(Number(channel)) &&
-                        Number(channel) >= 0 &&
-                        Number(channel) < 3
-                      ))
-                    )
-                  : (
-                      typeof pack.weightedPath === "string" &&
-                      pack.weightedPath.length > 0 &&
-                      typeof pack.coveragePath === "string" &&
-                      pack.coveragePath.length > 0
-                    )
-              ) &&
-              Array.isArray(pack.hours) &&
-              pack.hours.length > 0 &&
-              pack.hours.length <= 3 &&
-              pack.hours.every((hour) => Number.isInteger(Number(hour)))
-            ))
-          ) return null;
-          if (
-            schemaFive &&
+        const packs = timeline?.packs?.[datasetName];
+        const schemaFive = schemaVersion === 5;
+        if (
+          !timelineWindow ||
+          !timeline ||
+          timeline.frameWidth !== IMAGE_SIZE.width ||
+          timeline.frameHeight !== IMAGE_SIZE.height ||
+          timeline.packSize !== 3 ||
+          !Array.isArray(packs) ||
+          packs.length === 0 ||
+          !packs.every((pack) => (
             (
-              timeline.encoding !== "lossless-webp-rgba" ||
-              timeline.atlasLayout !== "weighted-over-coverage"
-            )
-          ) return null;
+              schemaFive
+                ? (
+                    typeof pack.path === "string" &&
+                    pack.path.length > 0 &&
+                    Array.isArray(pack.channels) &&
+                    pack.channels.length === pack.hours?.length &&
+                    pack.channels.every((channel) => (
+                      Number.isInteger(Number(channel)) &&
+                      Number(channel) >= 0 &&
+                      Number(channel) < 3
+                    ))
+                  )
+                : (
+                    typeof pack.weightedPath === "string" &&
+                    pack.weightedPath.length > 0 &&
+                    typeof pack.coveragePath === "string" &&
+                    pack.coveragePath.length > 0
+                  )
+            ) &&
+            Array.isArray(pack.hours) &&
+            pack.hours.length > 0 &&
+            pack.hours.length <= 3 &&
+            pack.hours.every((hour) => Number.isInteger(Number(hour)))
+          ))
+        ) return null;
+        if (
+          schemaFive &&
+          (
+            timeline.encoding !== "lossless-webp-rgba" ||
+            timeline.atlasLayout !== "weighted-over-coverage"
+          )
+        ) return null;
 
-          const assetBase = timeline.assetBaseUrl
-            ? new URL(timeline.assetBaseUrl, cacheManifestUrl)
-            : cacheManifestUrl;
-
-          const value = {
+        const assetBase = timeline.assetBaseUrl
+          ? new URL(timeline.assetBaseUrl, cacheManifestUrl)
+          : cacheManifestUrl;
+        const value = {
+          frameWidth: timeline.frameWidth,
+          frameHeight: timeline.frameHeight,
+          packs: packs.map((pack) => ({
+            hours: Array.isArray(pack.hours)
+              ? pack.hours.map((hour) => Number(hour) - timelineWindow.hourOffset)
+              : [],
+            channels: schemaFive
+              ? pack.channels.map(Number)
+              : pack.hours.map((_, channel) => channel),
+            atlasUrl: schemaFive
+              ? new URL(pack.path, assetBase).href
+              : "",
+            weightedUrl: schemaFive
+              ? ""
+              : new URL(pack.weightedPath, cacheManifestUrl).href,
+            coverageUrl: schemaFive
+              ? ""
+              : new URL(pack.coveragePath, cacheManifestUrl).href,
+            weightedImage: null,
+            coverageImage: null,
             frameWidth: timeline.frameWidth,
             frameHeight: timeline.frameHeight,
-            packs: packs.map((pack) => ({
-              hours: Array.isArray(pack.hours)
-                ? pack.hours.map((hour) => Number(hour) - manifestHourOffset)
-                : [],
-              channels: schemaFive
-                ? pack.channels.map(Number)
-                : pack.hours.map((_, channel) => channel),
-              atlasUrl: schemaFive
-                ? new URL(pack.path, assetBase).href
-                : "",
-              weightedUrl: schemaFive
-                ? ""
-                : new URL(pack.weightedPath, cacheManifestUrl).href,
-              coverageUrl: schemaFive
-                ? ""
-                : new URL(pack.coveragePath, cacheManifestUrl).href,
-              weightedImage: null,
-              coverageImage: null,
-              frameWidth: timeline.frameWidth,
-              frameHeight: timeline.frameHeight,
-              schemaFive,
-              promise: null
-            })),
-            frames: new Map(),
-            ready: false
-          };
-          entry.value = value;
+            schemaFive,
+            promise: null
+          })),
+          frames: new Map(),
+          ready: false
+        };
+        try {
           value.packs.forEach((pack) => {
             pack.hours.forEach((hour, index) => {
               if (value.frames.has(hour)) {
@@ -2032,25 +2122,39 @@
               });
             });
           });
-          for (let hour = minimumHour; hour <= maximumHour; hour += 1) {
+          for (
+            let hour = timelineWindow.minimumHour;
+            hour <= timelineWindow.maximumHour;
+            hour += 1
+          ) {
             if (!value.frames.has(hour)) {
               throw new Error("Incomplete smooth timeline field coverage");
             }
           }
+
+          const priorityHour = Math.max(
+            timelineWindow.minimumHour,
+            Math.min(
+              timelineWindow.maximumHour,
+              Number(options.priorityHour ?? selectedHour)
+            )
+          );
           const queue = [...value.packs].sort(
             (left, right) =>
-              previewAtlasDistance(left, selectedHour) -
-              previewAtlasDistance(right, selectedHour)
+              previewAtlasDistance(left, priorityHour) -
+              previewAtlasDistance(right, priorityHour)
           );
           const priorityPack = queue.shift();
           if (!priorityPack || !await loadPreviewAtlas(priorityPack)) {
             throw new Error("Current smooth timeline field pack unavailable");
           }
           if (
+            options.showFirstPack === true &&
             datasetName === cacheDatasetName() &&
+            manifest === activeTimelineManifest &&
             renderLayer?.supportsFieldRendering()
           ) {
-            renderScrubPreview(selectedHour, { allowPartial: true });
+            renderScrubPreview(priorityHour, { allowPartial: true });
             setFrameStatus("loading", "Map ready · preparing full timeline");
           }
           let cursor = 0;
@@ -2059,27 +2163,63 @@
               const pack = queue[cursor];
               cursor += 1;
               const loaded = await loadPreviewAtlas(pack);
-              if (!loaded) throw new Error("Smooth timeline field pack unavailable");
+              if (!loaded) {
+                throw new Error("Smooth timeline field pack unavailable");
+              }
             }
           };
-          await Promise.all([worker(), worker(), worker(), worker()]);
+          const workerResults = await Promise.allSettled([
+            worker(),
+            worker(),
+            worker(),
+            worker()
+          ]);
+          if (workerResults.some((result) => result.status === "rejected")) {
+            throw new Error("Smooth timeline field pack unavailable");
+          }
           value.ready = true;
           return value;
+        } catch (error) {
+          releasePreviewDataset(value);
+          throw error;
+        }
+      }
+
+      function releasePreviewDataset(value) {
+        value?.packs?.forEach((pack) => {
+          releaseFieldPack(pack);
+        });
+      }
+
+      function loadPreviewDataset(datasetName = cacheDatasetName()) {
+        const existing = previewCache.get(datasetName);
+        if (existing) {
+          touchCache(previewCache, datasetName, existing);
+          return existing.promise;
+        }
+
+        const entry = { value: null, promise: null };
+        entry.promise = cacheManifestPromise.then((manifest) => {
+          if (
+            manifest !== activeTimelineManifest ||
+            !activeTimelineWindow
+          ) return null;
+          return buildPreviewDataset(
+            manifest,
+            activeTimelineWindow,
+            datasetName,
+            { priorityHour: selectedHour, showFirstPack: true }
+          );
         }).then((value) => {
           entry.value = value;
           while (previewCache.size > 1) {
             const oldestKey = previewCache.keys().next().value;
-            const oldest = previewCache.get(oldestKey)?.value;
-            oldest?.packs?.forEach((pack) => {
-              releaseFieldPack(pack);
-            });
+            releasePreviewDataset(previewCache.get(oldestKey)?.value);
             previewCache.delete(oldestKey);
           }
           return value;
         }).catch(() => {
-          entry.value?.packs?.forEach((pack) => {
-            releaseFieldPack(pack);
-          });
+          releasePreviewDataset(entry.value);
           previewCache.delete(datasetName);
           return null;
         });
@@ -2211,9 +2351,7 @@
 
       function clearSmoothTimelineCache() {
         previewCache.forEach((entry) => {
-          entry.value?.packs?.forEach((pack) => {
-            releaseFieldPack(pack);
-          });
+          releasePreviewDataset(entry.value);
         });
         previewCache.clear();
       }
@@ -3121,6 +3259,34 @@
         frameStatus.title = delayNote ? delayNote.slice(2) : message;
       }
 
+      function setCacheRefreshState(
+        state = "idle",
+        label = "Update",
+        message = "Check for a newer forecast cache",
+        resetDelay = 0
+      ) {
+        if (cacheFeedbackTimer) {
+          window.clearTimeout(cacheFeedbackTimer);
+          cacheFeedbackTimer = 0;
+        }
+        cacheRefreshButton.dataset.state = state;
+        cacheRefreshLabel.textContent = label;
+        cacheRefreshButton.setAttribute("aria-label", message);
+        cacheRefreshButton.title = message;
+        if (resetDelay > 0) {
+          cacheFeedbackTimer = window.setTimeout(() => {
+            cacheRefreshButton.dataset.state = "idle";
+            cacheRefreshLabel.textContent = "Update";
+            cacheRefreshButton.setAttribute(
+              "aria-label",
+              "Check for a newer forecast cache"
+            );
+            cacheRefreshButton.title = "Check for a newer forecast cache";
+            cacheFeedbackTimer = 0;
+          }, resetDelay);
+        }
+      }
+
       function updateControlAvailability(hour = selectedHour) {
         slider.disabled = timelineInteractionLocked;
         prevButton.disabled = (
@@ -3138,6 +3304,10 @@
         resetButton.disabled = (
           timelineInteractionLocked ||
           (Math.round(hour) === 0 && !playing)
+        );
+        cacheRefreshButton.disabled = (
+          timelineInteractionLocked ||
+          cacheRefreshActive
         );
       }
 
@@ -3360,6 +3530,242 @@
         playbackLoop(generation);
       }
 
+      function manifestGeneratedTime(manifest) {
+        const generated = new Date(manifest?.generatedAt).getTime();
+        return Number.isFinite(generated) ? generated : -Infinity;
+      }
+
+      function sameManifest(left, right) {
+        if (left === right) return true;
+        if (!left || !right) return false;
+        return JSON.stringify(left) === JSON.stringify(right);
+      }
+
+      async function refreshCache(options = {}) {
+        if (cacheRefreshActive || timelineInteractionLocked) return false;
+        cacheRefreshActive = true;
+        lastCacheCheckAt = Date.now();
+        updateControlAvailability();
+        setCacheRefreshState(
+          "loading",
+          "Checking",
+          "Checking for a newer forecast cache"
+        );
+        setFrameStatus("loading", "Checking forecast cache");
+
+        const refreshDatasetName = cacheDatasetName();
+        const refreshDatasetGeneration = datasetGeneration;
+        const checkNow = new Date();
+        let stagedPreview = null;
+        let stagedInstalled = false;
+        let rollbackState = null;
+
+        try {
+          const fetchedManifest = await fetchCacheManifest(true);
+          let nextManifest = fetchedManifest;
+          if (
+            activeTimelineManifest &&
+            manifestGeneratedTime(fetchedManifest) <
+              manifestGeneratedTime(activeTimelineManifest)
+          ) {
+            nextManifest = activeTimelineManifest;
+          }
+          const nextWindow = manifestTimelineWindow(nextManifest, checkNow);
+          if (!nextWindow) {
+            throw new Error("Latest cache does not cover the current hour");
+          }
+
+          const cacheChanged = !sameManifest(
+            nextManifest,
+            activeTimelineManifest
+          );
+          const alignmentChanged = (
+            !activeTimelineWindow ||
+            nextWindow.currentValidTime.getTime() !==
+              activeTimelineWindow.currentValidTime.getTime() ||
+            nextWindow.minimumHour !== activeTimelineWindow.minimumHour ||
+            nextWindow.maximumHour !== activeTimelineWindow.maximumHour ||
+            nextWindow.hourOffset !== activeTimelineWindow.hourOffset
+          );
+          if (!cacheChanged && !alignmentChanged) {
+            cacheUpdateDelayHours = nextWindow.updateDelayHours;
+            setFrameStatus("ready", "Forecast cache is current");
+            setCacheRefreshState(
+              "success",
+              "Current",
+              "Already using the latest forecast cache",
+              2600
+            );
+            return true;
+          }
+
+          const selectedValidTime = new Date(
+            currentValidTime.getTime() + Math.round(selectedHour) * HOUR
+          );
+          const selectedWasNow = Math.round(selectedHour) === 0;
+          const nextSelectedHour = selectedWasNow
+            ? 0
+            : Math.max(
+                nextWindow.minimumHour,
+                Math.min(
+                  nextWindow.maximumHour,
+                  Math.round(
+                    (
+                      selectedValidTime.getTime() -
+                      nextWindow.currentValidTime.getTime()
+                    ) / HOUR
+                  )
+                )
+              );
+
+          if (
+            fieldRenderingFailed ||
+            !renderLayer.supportsFieldRendering()
+          ) {
+            throw new Error("Smooth forecast timeline unavailable");
+          }
+          stagedPreview = await buildPreviewDataset(
+            nextManifest,
+            nextWindow,
+            refreshDatasetName,
+            { priorityHour: nextSelectedHour, showFirstPack: false }
+          );
+          if (!stagedPreview?.ready) {
+            throw new Error("Updated forecast fields unavailable");
+          }
+          if (
+            refreshDatasetGeneration !== datasetGeneration ||
+            refreshDatasetName !== cacheDatasetName()
+          ) {
+            throw new Error("Forecast selection changed during update");
+          }
+
+          const resumePlayback = playing;
+          playbackGeneration += 1;
+          transitionGeneration += 1;
+          cancelScheduledProcessing();
+          cancelScrubPreview();
+          renderLayer.finishTransition();
+
+          rollbackState = {
+            activeTimelineManifest,
+            activeTimelineWindow,
+            manifestHourOffset,
+            cacheUpdateDelayHours,
+            referenceTime,
+            currentValidTime,
+            currentIndex,
+            minimumHour,
+            maximumHour,
+            selectedHour,
+            cacheManifestPromise,
+            previewEntry: previewCache.get(refreshDatasetName),
+            fieldRenderingFailed,
+            resumePlayback
+          };
+          if (!applyManifestTimeline(nextManifest, checkNow)) {
+            throw new Error("Updated forecast timeline unavailable");
+          }
+          cacheManifestPromise = Promise.resolve(nextManifest);
+          const stagedEntry = {
+            value: stagedPreview,
+            promise: Promise.resolve(stagedPreview)
+          };
+          previewCache.set(refreshDatasetName, stagedEntry);
+          stagedInstalled = true;
+          stagedPreview = null;
+
+          slider.min = String(minimumHour);
+          slider.max = String(maximumHour);
+          selectedHour = Math.max(
+            minimumHour,
+            Math.min(maximumHour, nextSelectedHour)
+          );
+          slider.value = String(selectedHour);
+          updateRangeLabels();
+          scrubPairKey = "";
+          if (!renderScrubPreview(selectedHour)) {
+            throw new Error("Updated forecast frame unavailable");
+          }
+          releasePreviewDataset(rollbackState.previewEntry?.value);
+          timelineInteractionLocked = false;
+          updateLabels(selectedHour, false);
+          setFrameStatus(
+            "ready",
+            cacheChanged
+              ? "Forecast cache updated"
+              : "Forecast cache is current · Now realigned"
+          );
+          setCacheRefreshState(
+            "success",
+            cacheChanged ? "Updated" : "Current",
+            cacheChanged
+              ? "Forecast cache updated"
+              : "Forecast cache is current and Now was realigned",
+            2600
+          );
+          if (resumePlayback && playing) {
+            playbackGeneration += 1;
+            playbackLoop(playbackGeneration);
+          }
+          return true;
+        } catch {
+          if (rollbackState) {
+            const failedEntry = previewCache.get(refreshDatasetName);
+            activeTimelineManifest = rollbackState.activeTimelineManifest;
+            activeTimelineWindow = rollbackState.activeTimelineWindow;
+            manifestHourOffset = rollbackState.manifestHourOffset;
+            cacheUpdateDelayHours = rollbackState.cacheUpdateDelayHours;
+            referenceTime = rollbackState.referenceTime;
+            currentValidTime = rollbackState.currentValidTime;
+            currentIndex = rollbackState.currentIndex;
+            minimumHour = rollbackState.minimumHour;
+            maximumHour = rollbackState.maximumHour;
+            selectedHour = rollbackState.selectedHour;
+            cacheManifestPromise = rollbackState.cacheManifestPromise;
+            fieldRenderingFailed = rollbackState.fieldRenderingFailed;
+            if (rollbackState.previewEntry) {
+              previewCache.set(
+                refreshDatasetName,
+                rollbackState.previewEntry
+              );
+            } else {
+              previewCache.delete(refreshDatasetName);
+            }
+            slider.min = String(minimumHour);
+            slider.max = String(maximumHour);
+            slider.value = String(selectedHour);
+            updateRangeLabels();
+            scrubPairKey = "";
+            renderScrubPreview(selectedHour);
+            if (stagedInstalled) {
+              releasePreviewDataset(failedEntry?.value);
+            } else {
+              releasePreviewDataset(stagedPreview);
+            }
+            timelineInteractionLocked = false;
+            updateLabels(selectedHour, false);
+            if (rollbackState.resumePlayback && playing) {
+              playbackGeneration += 1;
+              playbackLoop(playbackGeneration);
+            }
+          } else if (!stagedInstalled) {
+            releasePreviewDataset(stagedPreview);
+          }
+          setFrameStatus("error", "Cache update unavailable · keeping current map");
+          setCacheRefreshState(
+            "error",
+            "Retry",
+            "Cache update unavailable; current map retained",
+            options.automatic === true ? 2600 : 3600
+          );
+          return false;
+        } finally {
+          cacheRefreshActive = false;
+          updateControlAvailability();
+        }
+      }
+
       async function changeDataset() {
         const resumePlayback = playing;
         const change = ++datasetGeneration;
@@ -3519,6 +3925,23 @@
         else startPlayback();
       });
 
+      cacheRefreshButton.addEventListener("click", () => {
+        refreshCache();
+      });
+
+      function checkCacheAfterResume() {
+        if (
+          document.visibilityState !== "visible" ||
+          cacheRefreshActive ||
+          timelineInteractionLocked ||
+          Date.now() - lastCacheCheckAt < CACHE_CHECK_INTERVAL
+        ) return;
+        refreshCache({ automatic: true });
+      }
+
+      document.addEventListener("visibilitychange", checkCacheAfterResume);
+      window.addEventListener("pageshow", checkCacheAfterResume);
+
       const probeCanvas = document.createElement("canvas");
       probeCanvas.width = 1;
       probeCanvas.height = 1;
@@ -3667,7 +4090,8 @@
         updateControlAvailability(0);
         setFrameStatus("loading", "Loading available forecast frames");
         const manifest = await cacheManifestPromise;
-        applyManifestTimeline(manifest);
+        lastCacheCheckAt = Date.now();
+        applyManifestTimeline(manifest, new Date());
         slider.min = String(minimumHour);
         slider.max = String(maximumHour);
         slider.value = "0";
