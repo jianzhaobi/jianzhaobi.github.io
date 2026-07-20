@@ -548,13 +548,15 @@
       --pm-range-progress: 50%;
       display: block;
       width: 100%;
-      height: 18px;
+      height: 34px;
       margin: 0;
       appearance: none;
       -webkit-appearance: none;
       accent-color: var(--pm-accent);
       background: transparent;
       cursor: pointer;
+      touch-action: pan-y;
+      -webkit-tap-highlight-color: transparent;
     }
 
     #north-america-pm25 .pm-range::-webkit-slider-runnable-track {
@@ -572,15 +574,22 @@
     }
 
     #north-america-pm25 .pm-range::-webkit-slider-thumb {
-      width: 18px;
-      height: 18px;
-      margin-top: -6.5px;
+      width: 22px;
+      height: 22px;
+      margin-top: -8.5px;
       appearance: none;
       -webkit-appearance: none;
-      border: 1px solid var(--pm-line);
+      border: 2px solid color-mix(in srgb, var(--pm-accent) 45%, var(--pm-line));
       border-radius: 50%;
-      background: var(--pm-ui-solid);
-      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
+      background: radial-gradient(
+        circle,
+        var(--pm-accent) 0 4px,
+        var(--pm-ui-solid) 4.5px 100%
+      );
+      box-shadow:
+        0 2px 8px rgb(31 35 39 / 22%),
+        0 0 0 3px color-mix(in srgb, var(--pm-ui-solid) 66%, transparent);
+      transition: transform 120ms ease, box-shadow 120ms ease;
     }
 
     #north-america-pm25 .pm-range::-moz-range-track {
@@ -598,22 +607,50 @@
     }
 
     #north-america-pm25 .pm-range::-moz-range-thumb {
-      width: 18px;
-      height: 18px;
-      border: 1px solid var(--pm-line);
+      width: 22px;
+      height: 22px;
+      border: 2px solid color-mix(in srgb, var(--pm-accent) 45%, var(--pm-line));
       border-radius: 50%;
-      background: var(--pm-ui-solid);
-      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
+      background: radial-gradient(
+        circle,
+        var(--pm-accent) 0 4px,
+        var(--pm-ui-solid) 4.5px 100%
+      );
+      box-shadow:
+        0 2px 8px rgb(31 35 39 / 22%),
+        0 0 0 3px color-mix(in srgb, var(--pm-ui-solid) 66%, transparent);
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    #north-america-pm25 .pm-range:active::-webkit-slider-thumb {
+      transform: scale(1.08);
+    }
+
+    #north-america-pm25 .pm-range:active::-moz-range-thumb {
+      transform: scale(1.08);
+    }
+
+    #north-america-pm25 .pm-range:focus-visible::-webkit-slider-thumb {
+      box-shadow:
+        0 2px 8px rgb(31 35 39 / 22%),
+        0 0 0 4px color-mix(in srgb, var(--pm-accent) 28%, transparent);
+    }
+
+    #north-america-pm25 .pm-range:focus-visible::-moz-range-thumb {
+      box-shadow:
+        0 2px 8px rgb(31 35 39 / 22%),
+        0 0 0 4px color-mix(in srgb, var(--pm-accent) 28%, transparent);
     }
 
     #north-america-pm25 .pm-range-labels {
       position: relative;
       height: 9px;
-      margin-top: -1px;
+      margin-top: -9px;
       color: var(--pm-muted);
       font-size: 9px;
       font-variant-numeric: tabular-nums;
       line-height: 1;
+      pointer-events: none;
     }
 
     #north-america-pm25 .pm-range-labels span {
@@ -886,6 +923,35 @@
 
       #north-america-pm25 .pm-play-label {
         display: none;
+      }
+
+      #north-america-pm25 .pm-range {
+        height: 42px;
+      }
+
+      #north-america-pm25 .pm-range::-webkit-slider-thumb {
+        width: 26px;
+        height: 26px;
+        margin-top: -10.5px;
+        background: radial-gradient(
+          circle,
+          var(--pm-accent) 0 5px,
+          var(--pm-ui-solid) 5.5px 100%
+        );
+      }
+
+      #north-america-pm25 .pm-range::-moz-range-thumb {
+        width: 26px;
+        height: 26px;
+        background: radial-gradient(
+          circle,
+          var(--pm-accent) 0 5px,
+          var(--pm-ui-solid) 5.5px 100%
+        );
+      }
+
+      #north-america-pm25 .pm-range-labels {
+        margin-top: -13px;
       }
     }
 
@@ -1200,7 +1266,7 @@
         Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR))
       );
       let currentValidTime = new Date(referenceTime.getTime() + currentIndex * HOUR);
-      let timelineRadius = Math.max(0, 72 - currentIndex);
+      const timelineRadius = Math.max(0, 72 - currentIndex);
       let minimumHour = -timelineRadius;
       let maximumHour = timelineRadius;
       const DEFAULT_CENTER = [window.innerWidth < 720 ? 49.5 : 46.5, -101];
@@ -1223,6 +1289,8 @@
       let locationMarker;
       let accuracyCircle;
       let activeTimelineManifest = null;
+      let manifestHourOffset = 0;
+      let cacheUpdateDelayHours = 0;
       let timelineInteractionLocked = true;
 
       const rawCache = new Map();
@@ -1385,42 +1453,69 @@
         return `${particleType}-${extentType}`;
       }
 
-      function applyManifestTimeline(manifest) {
-        activeTimelineManifest = null;
+      function manifestTimelineWindow(manifest, clientNow = now) {
         if (
           ![2, 3, 4, 5].includes(manifest?.schemaVersion) ||
           !Array.isArray(manifest.timelineHours)
-        ) return false;
+        ) return null;
         const generatedAt = new Date(manifest.generatedAt);
         const manifestReference = new Date(manifest.primaryReferenceTime);
         const manifestNow = new Date(manifest.currentValidTime);
         if (
           !Number.isFinite(generatedAt.getTime()) ||
           !Number.isFinite(manifestReference.getTime()) ||
-          !Number.isFinite(manifestNow.getTime()) ||
-          Math.abs(now.getTime() - generatedAt.getTime()) > 4 * HOUR
-        ) return false;
+          !Number.isFinite(manifestNow.getTime())
+        ) return null;
 
         const available = new Set(
           manifest.timelineHours
             .map(Number)
             .filter((hour) => Number.isInteger(hour))
         );
-        if (!available.has(0)) return false;
-        let radius = 0;
-        while (
-          radius < 64 &&
-          available.has(-(radius + 1)) &&
-          available.has(radius + 1)
-        ) radius += 1;
-        if (radius < 1) return false;
+        const alignedNow = new Date(
+          Math.round(clientNow.getTime() / HOUR) * HOUR
+        );
+        const hourOffset = Math.round(
+          (alignedNow.getTime() - manifestNow.getTime()) / HOUR
+        );
+        if (!available.has(hourOffset)) return null;
 
-        referenceTime = manifestReference;
-        currentValidTime = manifestNow;
-        currentIndex = Math.round((currentValidTime.getTime() - referenceTime.getTime()) / HOUR);
-        timelineRadius = radius;
-        minimumHour = -radius;
-        maximumHour = radius;
+        let firstCacheHour = hourOffset;
+        let lastCacheHour = hourOffset;
+        while (available.has(firstCacheHour - 1)) firstCacheHour -= 1;
+        while (available.has(lastCacheHour + 1)) lastCacheHour += 1;
+        if (firstCacheHour === lastCacheHour) return null;
+
+        return {
+          referenceTime: manifestReference,
+          currentValidTime: alignedNow,
+          currentIndex: Math.round(
+            (alignedNow.getTime() - manifestReference.getTime()) / HOUR
+          ),
+          minimumHour: firstCacheHour - hourOffset,
+          maximumHour: lastCacheHour - hourOffset,
+          hourOffset,
+          updateDelayHours: Math.max(
+            0,
+            Math.round((clientNow.getTime() - generatedAt.getTime()) / HOUR)
+          )
+        };
+      }
+
+      function applyManifestTimeline(manifest) {
+        activeTimelineManifest = null;
+        manifestHourOffset = 0;
+        cacheUpdateDelayHours = 0;
+        const window = manifestTimelineWindow(manifest);
+        if (!window) return false;
+
+        referenceTime = window.referenceTime;
+        currentValidTime = window.currentValidTime;
+        currentIndex = window.currentIndex;
+        minimumHour = window.minimumHour;
+        maximumHour = window.maximumHour;
+        manifestHourOffset = window.hourOffset;
+        cacheUpdateDelayHours = window.updateDelayHours;
         activeTimelineManifest = manifest;
         return true;
       }
@@ -1931,7 +2026,9 @@
             frameWidth: timeline.frameWidth,
             frameHeight: timeline.frameHeight,
             packs: packs.map((pack) => ({
-              hours: Array.isArray(pack.hours) ? pack.hours.map(Number) : [],
+              hours: Array.isArray(pack.hours)
+                ? pack.hours.map((hour) => Number(hour) - manifestHourOffset)
+                : [],
               channels: schemaFive
                 ? pack.channels.map(Number)
                 : pack.hours.map((_, channel) => channel),
@@ -2989,12 +3086,12 @@
       }
 
       function updateRangeLabels() {
-        const midpoint = Math.floor(timelineRadius / 2);
+        const rangeSpan = maximumHour - minimumHour;
         const offsets = [...new Set([
           minimumHour,
-          -midpoint,
+          Math.round(minimumHour / 2),
           0,
-          midpoint,
+          Math.round(maximumHour / 2),
           maximumHour
         ])]
           .filter((offset) => offset >= minimumHour && offset <= maximumHour)
@@ -3004,9 +3101,9 @@
           span.textContent = offset === 0
             ? "Now"
             : `${offset < 0 ? "−" : "+"}${Math.abs(offset)} h`;
-          span.style.left = timelineRadius === 0
+          span.style.left = rangeSpan === 0
             ? "0%"
-            : `${(offset - minimumHour) / (maximumHour - minimumHour) * 100}%`;
+            : `${(offset - minimumHour) / rangeSpan * 100}%`;
           return span;
         }));
       }
@@ -3047,8 +3144,12 @@
       }
 
       function setFrameStatus(state = "ready", message = "Forecast frame loaded") {
+        const delayNote = cacheUpdateDelayHours > 1
+          ? `; cached forecast last refreshed ${cacheUpdateDelayHours} hours ago`
+          : "";
         frameStatus.dataset.state = state;
-        frameStatusText.textContent = message;
+        frameStatusText.textContent = `${message}${delayNote}`;
+        frameStatus.title = delayNote ? delayNote.slice(2) : message;
       }
 
       function updateControlAvailability(hour = selectedHour) {

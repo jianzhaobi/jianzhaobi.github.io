@@ -8,7 +8,7 @@ The map must let users independently choose:
 
 - Wildfire-smoke PM2.5 or total PM2.5.
 - Surface concentration or entire-atmosphere column loading.
-- A single always-visible timeline centered on the current model hour, with a symmetric recent-history and forecast window limited by the model run's remaining forecast horizon.
+- A single always-visible timeline aligned to the current model hour. Use every continuous cached hour available; `Now` may appear anywhere along the track, and the recent-history and forecast sides do not need to be symmetric.
 
 The experience should make the map the dominant visual element and make time exploration fast, smooth, and understandable on both desktop and mobile devices.
 
@@ -108,25 +108,39 @@ The production cache is a same-origin GitHub Pages deployment artifact, not brow
 - `.github/workflows/deploy-pages-with-smoke-cache.yml` runs hourly, on pushes, and on manual dispatch.
 - `scripts/build_static_cache.py` downloads the latest bounded set of raw, transparent WMS PNGs for all four particle/extent combinations.
 - Cache up to 64 valid hours on either side of the current model hour. The actual future side may be shorter near the end of a model run.
-- Generate a schema-v4 manifest containing the four datasets' common, continuous, symmetric `timelineHours` coverage. At runtime, initialize the slider from this list and never expose an hour whose cached frame is missing for any selectable dataset. If the manifest is absent or stale, use the conservative direct-GeoMet range as a fallback.
+- Generate a schema-v5 manifest containing the four datasets' common, continuous `timelineHours` coverage and lossless WebP field-atlas metadata. At runtime, never expose an hour whose cached field is missing for any selectable dataset.
+- Do not reject an otherwise complete schema-v5 cache merely because its manifest is more than four hours old. Align the browser's current integer model hour to the matching cached absolute valid time, translate manifest-relative field hours into current-relative slider hours, and expose the entire continuous range. For example, a `-59…+59` cache delayed by four hours becomes `-63…+55`; `Now` moves right while all 119 cached hours remain usable.
+- Keep `Now` available at any track position, including an endpoint. Only abandon the schema-v5 timeline when the current valid hour lies outside its continuous cached coverage or a required field asset fails validation. Use direct GeoMet only after that cached-field path is unavailable.
+- Make delayed-cache use clear in accessible status text. Do not imply that an older model run is newly produced data; the displayed valid hour remains exact, while the cache refresh may be delayed.
 - Restore the newest rolling GitHub Actions frame cache before each build and save the refreshed bounded set afterward. GeoMet currently advertises roughly 48 hours of reference cycles, so retaining still-needed frames from prior scheduled runs is what allows the deployed artifact to maintain historical coverage without committing binaries.
 - Keep the cache build's minimum success ratio at 80% on every run. A few edge-hour or transient GeoMet failures must not block publication of an otherwise valid common timeline; the manifest still exposes only the continuous symmetric hours present for all four datasets.
 - Run the Pages cache workflow hourly. Most hourly runs reuse the rolling raw and display caches and mainly advance the manifest's `Now`; the heavier frame refresh occurs when a new 00 or 12 UTC model run becomes available.
-- Keep source WMS PNGs only in the rolling GitHub Actions cache. During the build, precompute both display-ready fallback PNGs and smoothed scalar-field packs. Publish `cache/manifest.json`, `cache/frames/`, and `cache/fields/` inside the Pages artifact; do not commit generated binary data to Git history.
-- Build full-source-grid field packs for every dataset from the common timeline hours. Each pack stores up to three consecutive 1000 × 625 hours in the RGB channels of two opaque PNGs: one alpha-weighted scalar-position image and one coverage image. Keep the PNG alpha channel fully opaque because browser decoders may discard RGB data behind transparent alpha. Apply the restrained spatial blur to these scalar and coverage fields at build time, before packing.
-- For the selected dataset, load every field pack before enabling the timeline. Retain at most one decoded field dataset in memory. During normal schema-v4 operation, dragging, playback, previous/next, Reset, and release snapping must all sample these same full-grid fields through the persistent WebGL canvas; never render a low-resolution scrub preview and never fetch or swap to a separate full-frame PNG when dragging ends.
-- Use field packs only from the fresh schema-v4 manifest that was accepted to define the active timeline. Validate the 1000 × 625 dimensions, three-hour RGB packing, paths, uniqueness, and complete integer-hour coverage; fully decode every selected-dataset pack before enabling timeline interaction.
-- Prepared display PNGs are a compatibility and failure fallback only. If the schema-v4 field manifest, a field pack, or WebGL field rendering is unavailable, use a matching display-ready PNG or the direct GeoMet browser-preparation path without clearing the currently visible frame.
-- Schema-v4 point probes sample the weighted scalar and coverage field packs at the displayed temporal mix. Prepared-frame fallback probes sample the displayed monochromatic palette, while direct-GeoMet fallback frames keep the original per-pixel value grid.
+- Keep source WMS PNGs only in the rolling GitHub Actions cache. Publish `cache/manifest.json` and content-addressed `cache/fields/v5/` assets inside the Pages artifact when R2 is not configured; do not publish per-hour display PNGs or commit generated binary data to Git history.
+- Build full-source-grid field packs for every dataset from the common timeline hours. Each lossless WebP atlas stores up to three consecutive 1000 × 625 hours in RGB channels, with the alpha-weighted scalar field in its top half and coverage in its bottom half. Keep decoded field values byte-for-byte equivalent to the source field pack.
+- For the selected dataset, load every field atlas before enabling the timeline. Retain at most one decoded field dataset in memory. Dragging, playback, previous/next, Reset, and release snapping must all sample these same full-grid fields through the persistent WebGL canvas; never render a low-resolution scrub preview and never fetch or swap to a separate full-frame image when dragging ends.
+- Validate the 1000 × 625 field dimensions, 1000 × 1250 atlas dimensions, three-hour RGB packing, paths, uniqueness, current-hour alignment, and complete continuous runtime coverage. Fully decode every selected-dataset atlas before enabling timeline interaction.
+- If WebGL is unavailable, reconstruct the same palette through the Canvas 2D field fallback. Use direct GeoMet only when the schema-v5 field timeline or a required atlas is unavailable, without clearing the currently visible frame.
+- Schema-v5 point probes sample the weighted scalar and coverage fields at the displayed temporal mix. Direct-GeoMet fallback frames keep the original per-pixel value grid.
 
 This arrangement avoids user-device persistence, keeps Git history small, reduces GeoMet latency during normal use, and allows a partial cache to degrade safely.
+
+### Deferred Pages workflow resilience
+
+Do not change `actions/configure-pages` as part of the non-symmetric timeline and touch-target update. Keep these items as a future deployment-resilience TODO and remind the user when a later task concerns Pages failures, repeated cache publication failures, or hosting reliability:
+
+- Move `Configure GitHub Pages` out of the cache-build critical path and into the deploy job so a transient Pages API failure cannot prevent source-cache refresh and field generation.
+- Add bounded retries with backoff around Pages configuration and deployment.
+- Consider publishing the latest manifest as well as immutable field atlases through R2 so successful cache builds do not depend on a Pages deployment.
+- Add an external freshness/asset health check and alert only after repeated failures or a materially delayed manifest.
+
+Discuss the exact workflow design with the user before implementing these deferred items.
 
 ### Spatial and temporal interpolation
 
 Interpolation is a presentation treatment and must not be described as creating new atmospheric information:
 
 - Infer the scalar ramp position first, alpha-weight it by source coverage, and apply a restrained Gaussian blur to the scalar and coverage fields before packing them at build time. Smoothing the scalar field rather than already-colored pixels removes high-concentration stair steps while preserving a continuous plume. This is display smoothing, not a higher-resolution forecast.
-- Keep the original 1000 × 625 WMS image as the scientific source grid. In normal schema-v4 operation, upload the pre-smoothed field packs once and use GPU linear spatial sampling to render them into the fixed 1500 × 938 display canvas. Reconstruct the scalar position from weighted value and coverage, then apply the selected monochromatic palette in the shader.
+- Keep the original 1000 × 625 WMS image as the scientific source grid. In normal schema-v5 operation, upload the pre-smoothed fields from the decoded WebP atlases and use GPU linear spatial sampling to render them into the fixed 1500 × 938 display canvas. Reconstruct the scalar position from weighted value and coverage, then apply the selected monochromatic palette in the shader.
 - Linearly interpolate premultiplied pixel color and alpha from the two adjacent field hours in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
 - Keep visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value and synchronously set the adjacent field hours, channel masks, and fractional shader mix. On release, snap to the nearest integer hour without changing render source, resolution, canvas, or image quality.
 - Dragging must follow the pointer in either direction and during random jumps without debounce, delayed network requests, or a post-release clarity swap. Every intermediate and resting state must use the same smooth full-grid field renderer.
@@ -181,6 +195,7 @@ Cell-phone usability is a core requirement, not a later enhancement.
 - Keep the basemap menu programmatically labeled, but do not display a visible “Basemap” heading inside the open menu.
 - Keep the zoom controls vertically centered along the right edge and place a compact location control directly beneath them.
 - Render the range track explicitly instead of relying on platform-native styling. The elapsed side uses the coral accent and the future side uses the same light neutral gray on desktop and mobile.
+- Give the timeline range input a generous mobile touch box of about 42 px without making the visual track heavy. Use a clearly visible thumb with a warm accent center, an approximately 26 px mobile visual diameter, and a keyboard focus ring.
 - After location permission is granted, show the user's current location as a modern blue dot with a restrained accuracy halo. Each location-button press should refresh the position and zoom to it; if permission was already granted, show the dot without prompting or changing the initial map view.
 - Forecast controls must remain usable without covering all meaningful map content.
 - The map receives additional vertical height on phones to accommodate floating controls.
@@ -212,7 +227,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Keep the static cache manifest and frame URLs relative to the deployed `na_smoke_map/` path so they work on the `jianzhaobi.github.io` project site.
 - Preserve the current particle/extent dataset matrix as a single source of truth in JavaScript.
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
-- Clamp timeline offsets to the symmetric available range around the current model hour. Present the centered slider position as “Now,” earlier positions with negative relative hours, and later positions with positive relative hours.
+- Clamp timeline offsets to the full continuous range after aligning the manifest's cached valid hours to the browser's current integer model hour. Present the current-hour slider position as “Now” wherever it falls, earlier positions with negative relative hours, and later positions with positive relative hours.
 - Use generation counters or an equivalent cancellation mechanism so stale asynchronous image loads cannot replace a newer user selection.
 - Preserve the default `day` basemap and the `day`, `dark`, and `satellite` basemap option values.
 - Keep fallback canvas recoloring off the visible layer and return the processed offscreen canvas directly to the WebGL renderer so the visible frame is never cleared while recoloring occurs.
@@ -233,10 +248,10 @@ Before handing off a material change:
 2. Load the standalone HTML through a local HTTP server rather than relying only on a `file:` URL.
 3. Confirm all four particle/extent combinations reach the loaded state.
 4. Visually inspect wildfire smoke + entire atmosphere for yellow projection wedges, rectangles, or other model-domain artifacts.
-5. Scrub both sides of the centered Now position, use previous/next, Reset, and play several frames.
+5. Scrub across every available side of the possibly non-central Now position, use previous/next, Reset, and play several frames.
 6. Confirm the previous frame remains visible while the next frame loads and that there is no vacant flash.
 7. Confirm the horizontal legend title, scale, and units update correctly.
-8. Confirm the timeline is always visible, centers “Now,” and has correct Play/Pause and Reset states and accessible labels.
+8. Confirm the timeline is always visible, places “Now” at its correct possibly non-central position, and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
 11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
@@ -248,7 +263,7 @@ Before handing off a material change:
 17. Zoom in and out repeatedly over a distinct plume edge; confirm the basemap and pollution canvas scale and settle together without visible lag.
 18. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
 19. Confirm playback loops from the final forecast frame to Now and continues, and switch pollutant or vertical extent during playback to verify the current hour is preserved and animation resumes without a blank map.
-20. Validate a generated schema-v4 cache manifest, display PNG fallback set, and weighted/coverage field-pack set. Confirm the normal page loads only the selected dataset's same-origin field packs before enabling the timeline, performs no `cache/frames/` request when dragging or releasing, and still falls back safely when a field asset is absent.
+20. Validate a generated schema-v5 cache manifest and lossless weighted/coverage WebP atlas set. Confirm that a delayed manifest is re-aligned without discarding valid hours, the page loads only the selected dataset's field atlases before enabling the timeline, performs no field or GeoMet request when dragging or releasing, and still falls back safely when a field asset is absent.
 
 ## Known tradeoffs
 
