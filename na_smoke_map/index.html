@@ -548,7 +548,7 @@
       --pm-range-progress: 50%;
       display: block;
       width: 100%;
-      height: 34px;
+      height: 28px;
       margin: 0;
       appearance: none;
       -webkit-appearance: none;
@@ -574,22 +574,15 @@
     }
 
     #north-america-pm25 .pm-range::-webkit-slider-thumb {
-      width: 22px;
-      height: 22px;
-      margin-top: -8.5px;
+      width: 20px;
+      height: 20px;
+      margin-top: -7.5px;
       appearance: none;
       -webkit-appearance: none;
-      border: 2px solid color-mix(in srgb, var(--pm-accent) 45%, var(--pm-line));
+      border: 1px solid var(--pm-line);
       border-radius: 50%;
-      background: radial-gradient(
-        circle,
-        var(--pm-accent) 0 4px,
-        var(--pm-ui-solid) 4.5px 100%
-      );
-      box-shadow:
-        0 2px 8px rgb(31 35 39 / 22%),
-        0 0 0 3px color-mix(in srgb, var(--pm-ui-solid) 66%, transparent);
-      transition: transform 120ms ease, box-shadow 120ms ease;
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
     }
 
     #north-america-pm25 .pm-range::-moz-range-track {
@@ -607,45 +600,30 @@
     }
 
     #north-america-pm25 .pm-range::-moz-range-thumb {
-      width: 22px;
-      height: 22px;
-      border: 2px solid color-mix(in srgb, var(--pm-accent) 45%, var(--pm-line));
+      width: 20px;
+      height: 20px;
+      border: 1px solid var(--pm-line);
       border-radius: 50%;
-      background: radial-gradient(
-        circle,
-        var(--pm-accent) 0 4px,
-        var(--pm-ui-solid) 4.5px 100%
-      );
-      box-shadow:
-        0 2px 8px rgb(31 35 39 / 22%),
-        0 0 0 3px color-mix(in srgb, var(--pm-ui-solid) 66%, transparent);
-      transition: transform 120ms ease, box-shadow 120ms ease;
-    }
-
-    #north-america-pm25 .pm-range:active::-webkit-slider-thumb {
-      transform: scale(1.08);
-    }
-
-    #north-america-pm25 .pm-range:active::-moz-range-thumb {
-      transform: scale(1.08);
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
     }
 
     #north-america-pm25 .pm-range:focus-visible::-webkit-slider-thumb {
       box-shadow:
-        0 2px 8px rgb(31 35 39 / 22%),
-        0 0 0 4px color-mix(in srgb, var(--pm-accent) 28%, transparent);
+        0 2px 7px rgb(31 35 39 / 20%),
+        0 0 0 3px color-mix(in srgb, var(--pm-accent) 24%, transparent);
     }
 
     #north-america-pm25 .pm-range:focus-visible::-moz-range-thumb {
       box-shadow:
-        0 2px 8px rgb(31 35 39 / 22%),
-        0 0 0 4px color-mix(in srgb, var(--pm-accent) 28%, transparent);
+        0 2px 7px rgb(31 35 39 / 20%),
+        0 0 0 3px color-mix(in srgb, var(--pm-accent) 24%, transparent);
     }
 
     #north-america-pm25 .pm-range-labels {
       position: relative;
       height: 9px;
-      margin-top: -9px;
+      margin-top: -1px;
       color: var(--pm-muted);
       font-size: 9px;
       font-variant-numeric: tabular-nums;
@@ -926,32 +904,23 @@
       }
 
       #north-america-pm25 .pm-range {
-        height: 42px;
+        height: 40px;
+        margin-block: -5px 0;
       }
 
       #north-america-pm25 .pm-range::-webkit-slider-thumb {
-        width: 26px;
-        height: 26px;
-        margin-top: -10.5px;
-        background: radial-gradient(
-          circle,
-          var(--pm-accent) 0 5px,
-          var(--pm-ui-solid) 5.5px 100%
-        );
+        width: 24px;
+        height: 24px;
+        margin-top: -9.5px;
       }
 
       #north-america-pm25 .pm-range::-moz-range-thumb {
-        width: 26px;
-        height: 26px;
-        background: radial-gradient(
-          circle,
-          var(--pm-accent) 0 5px,
-          var(--pm-ui-solid) 5.5px 100%
-        );
+        width: 24px;
+        height: 24px;
       }
 
       #north-america-pm25 .pm-range-labels {
-        margin-top: -13px;
+        margin-top: 0;
       }
     }
 

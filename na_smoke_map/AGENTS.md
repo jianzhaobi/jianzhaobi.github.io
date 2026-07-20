@@ -195,7 +195,7 @@ Cell-phone usability is a core requirement, not a later enhancement.
 - Keep the basemap menu programmatically labeled, but do not display a visible “Basemap” heading inside the open menu.
 - Keep the zoom controls vertically centered along the right edge and place a compact location control directly beneath them.
 - Render the range track explicitly instead of relying on platform-native styling. The elapsed side uses the coral accent and the future side uses the same light neutral gray on desktop and mobile.
-- Give the timeline range input a generous mobile touch box of about 42 px without making the visual track heavy. Use a clearly visible thumb with a warm accent center, an approximately 26 px mobile visual diameter, and a keyboard focus ring.
+- Give the timeline range input a generous mobile touch box of about 40 px without making the visual track heavy. Preserve the original neutral white thumb, subtle border, and shadow; increase its mobile visual diameter only slightly to approximately 24 px, keep clear space above the time labels, and retain a keyboard focus ring.
 - After location permission is granted, show the user's current location as a modern blue dot with a restrained accuracy halo. Each location-button press should refresh the position and zoom to it; if permission was already granted, show the dot without prompting or changing the initial map view.
 - Forecast controls must remain usable without covering all meaningful map content.
 - The map receives additional vertical height on phones to accommodate floating controls.
