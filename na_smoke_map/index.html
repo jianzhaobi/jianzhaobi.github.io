@@ -1585,7 +1585,8 @@
 
       const WMS = "https://geo.weather.gc.ca/geomet";
       const HOUR = 60 * 60 * 1000;
-      const WFIGS_ROOT = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+      const WFIGS_ROOT = "https://services.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+      const WFIGS_FALLBACK_ROOT = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
       const FIRE_SERVICES = {
         currentLocations: `${WFIGS_ROOT}/WFIGS_Incident_Locations_Current/FeatureServer/0`,
         currentPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_Current/FeatureServer/0`,
@@ -1597,6 +1598,8 @@
       const FIRE_RECENT_MS = 24 * HOUR;
       const FIRE_PAGE_SIZE = 50;
       const FIRE_LARGE_ACRES = 300;
+      const FIRE_DATABASE_CACHE_MS = 5 * 60 * 1000;
+      const FIRE_DATABASE_CACHE_LIMIT = 24;
       const FIRE_POINT_FIELDS = [
         "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
         "IncidentSize", "PercentContained", "ContainmentDateTime",
@@ -1815,6 +1818,7 @@
       let fireDatabaseFilter = "all";
       let fireDatabaseLargeOnly = false;
       let fireDatabaseSort = "date";
+      let fireDatabaseNeedsReset = false;
       let fireSearchTimer = 0;
       let fireAttributionVisible = false;
       let selectedFireRecord = null;
@@ -1822,6 +1826,7 @@
       let currentFirePoints = [];
       let recentFirePoints = [];
       const firePerimeterCache = new Map();
+      const fireDatabasePageCache = new Map();
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -1961,13 +1966,18 @@
         return url;
       }
 
-      async function fetchArcgis(service, parameters, signal) {
-        const requestUrl = arcgisQueryUrl(service, parameters);
+      async function fetchArcgis(service, parameters, signal, options = {}) {
+        const maxAttempts = Math.max(1, options.maxAttempts || 3);
+        const fallbackService = service.startsWith(WFIGS_ROOT)
+          ? service.replace(WFIGS_ROOT, WFIGS_FALLBACK_ROOT)
+          : service;
         let lastError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           try {
+            const requestService = attempt % 2 === 1 ? fallbackService : service;
+            const requestUrl = arcgisQueryUrl(requestService, parameters);
             const response = await fetch(requestUrl, {
-              cache: "no-store",
+              cache: options.cacheMode || "no-store",
               signal
             });
             if (!response.ok) throw new Error(`WFIGS request failed (${response.status})`);
@@ -1977,7 +1987,10 @@
           } catch (error) {
             if (error.name === "AbortError") throw error;
             lastError = error;
-            if (attempt < 2) await delay(attempt === 0 ? 350 : 800);
+            if (attempt < maxAttempts - 1) {
+              const backoff = [300, 700, 1400, 2500][Math.min(attempt, 3)];
+              await delay(backoff);
+            }
           }
         }
         throw lastError || new Error("WFIGS request failed");
@@ -2113,12 +2126,22 @@
 
       function activeFirePointColor(discovery, now = Date.now()) {
         const time = Number(discovery);
-        if (!Number.isFinite(time) || time <= 0) return "#bd4934";
+        if (!Number.isFinite(time) || time <= 0) return "#d84a2f";
         const ageHours = Math.max(0, (now - time) / HOUR);
-        if (ageHours <= 24) return "#982c24";
-        if (ageHours <= 72) return "#b84231";
-        if (ageHours <= 168) return "#d55d3c";
-        return "#e07a43";
+        if (ageHours <= 24) return "#861d1d";
+        if (ageHours <= 72) return "#bd3426";
+        if (ageHours <= 168) return "#e45b2f";
+        if (ageHours <= 336) return "#ee9138";
+        return "#f2c75c";
+      }
+
+      function firePointChronologicalCompare(left, right) {
+        const leftTime = Number(left.properties?.FireDiscoveryDateTime);
+        const rightTime = Number(right.properties?.FireDiscoveryDateTime);
+        const safeLeftTime = Number.isFinite(leftTime) && leftTime > 0 ? leftTime : Number.NEGATIVE_INFINITY;
+        const safeRightTime = Number.isFinite(rightTime) && rightTime > 0 ? rightTime : Number.NEGATIVE_INFINITY;
+        if (safeLeftTime !== safeRightTime) return safeLeftTime - safeRightTime;
+        return Number(left.properties?.OBJECTID || 0) - Number(right.properties?.OBJECTID || 0);
       }
 
       function fireStatus(record) {
@@ -2256,6 +2279,7 @@
             });
           }
         });
+        pointFeatures.sort(firePointChronologicalCompare);
 
         if (perimeterFeatures.length) {
           L.geoJSON(perimeterFeatures, {
@@ -2678,7 +2702,7 @@
         if (reset) {
           fireDatabaseOffset = 0;
           fireDatabaseHasMore = true;
-          fireList.replaceChildren();
+          fireDatabaseNeedsReset = true;
         }
         if (!fireDatabaseHasMore) return;
         if (fireDatabaseController) fireDatabaseController.abort();
@@ -2689,34 +2713,58 @@
         fireLoadMore.hidden = false;
         fireLoadMore.textContent = "Loading…";
         const currentMembersOnly = fireDatabaseFilter === "active";
+        const requestOffset = fireDatabaseOffset;
+        const requestService = currentMembersOnly
+          ? FIRE_SERVICES.currentLocations
+          : FIRE_SERVICES.ytdLocations;
+        const requestParameters = {
+          f: "geojson",
+          where: fireDatabaseWhere(currentMembersOnly),
+          outFields: FIRE_POINT_FIELDS,
+          returnGeometry: true,
+          outSR: 4326,
+          orderByFields: fireDatabaseSort === "size"
+            ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+            : "FireDiscoveryDateTime DESC,OBJECTID DESC",
+          resultOffset: requestOffset,
+          resultRecordCount: FIRE_PAGE_SIZE + 1
+        };
+        const cacheKey = `${requestService}|${JSON.stringify(requestParameters)}`;
         fireDatabaseStatus.textContent = fireDatabaseOffset
           ? "Loading more wildfires"
           : (currentMembersOnly ? "Loading active wildfires" : "Loading year-to-date wildfires");
 
         try {
-          const result = await fetchArcgis(
-            currentMembersOnly ? FIRE_SERVICES.currentLocations : FIRE_SERVICES.ytdLocations,
-            {
-              f: "geojson",
-              where: fireDatabaseWhere(currentMembersOnly),
-              outFields: FIRE_POINT_FIELDS,
-              returnGeometry: true,
-              outSR: 4326,
-              orderByFields: fireDatabaseSort === "size"
-                ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
-                : "FireDiscoveryDateTime DESC,OBJECTID DESC",
-              resultOffset: fireDatabaseOffset,
-              resultRecordCount: FIRE_PAGE_SIZE + 1
-            },
-            controller.signal
-          );
+          const cachedPage = fireDatabasePageCache.get(cacheKey);
+          let features;
+          if (cachedPage && Date.now() - cachedPage.loadedAt < FIRE_DATABASE_CACHE_MS) {
+            features = cachedPage.features;
+          } else {
+            const result = await fetchArcgis(
+              requestService,
+              requestParameters,
+              controller.signal,
+              { maxAttempts: 5, cacheMode: "default" }
+            );
+            features = (result.features || []).filter((feature) => (
+              feature.properties?.IncidentTypeCategory === "WF"
+            ));
+            if (
+              !fireDatabasePageCache.has(cacheKey) &&
+              fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
+            ) {
+              fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+            }
+            fireDatabasePageCache.set(cacheKey, { loadedAt: Date.now(), features });
+          }
           if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
-          const features = (result.features || []).filter((feature) => (
-            feature.properties?.IncidentTypeCategory === "WF"
-          ));
+          if (fireDatabaseNeedsReset && requestOffset === 0) {
+            fireList.replaceChildren();
+            fireDatabaseNeedsReset = false;
+          }
           const visible = features.slice(0, FIRE_PAGE_SIZE);
           visible.forEach((feature) => appendFireDatabaseRow(feature, currentMembersOnly));
-          fireDatabaseOffset += visible.length;
+          fireDatabaseOffset = requestOffset + visible.length;
           fireDatabaseHasMore = features.length > FIRE_PAGE_SIZE;
           fireLoadMore.hidden = !fireDatabaseHasMore;
           fireLoadMore.disabled = false;
@@ -2726,7 +2774,9 @@
             : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
         } catch (error) {
           if (error.name === "AbortError") return;
-          fireDatabaseStatus.textContent = "Wildfire database unavailable";
+          fireDatabaseStatus.textContent = fireList.childElementCount
+            ? "Wildfire database temporarily unavailable · keeping current list"
+            : "Wildfire database temporarily unavailable";
           fireLoadMore.hidden = false;
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Retry";
@@ -2739,7 +2789,9 @@
         menus.forEach((menu) => { menu.open = false; });
         fireDrawer.hidden = false;
         firesButton.setAttribute("aria-expanded", "true");
-        if (!fireList.childElementCount) loadFireDatabase(true);
+        if (!fireList.childElementCount || fireDatabaseNeedsReset) {
+          loadFireDatabase(fireDatabaseNeedsReset || !fireList.childElementCount);
+        }
         window.requestAnimationFrame(() => fireSearch.focus({ preventScroll: true }));
       }
 
@@ -5322,6 +5374,8 @@
       async function refreshAllData() {
         if (combinedRefreshActive || cacheRefreshActive) return false;
         combinedRefreshActive = true;
+        fireDatabasePageCache.clear();
+        fireDatabaseNeedsReset = true;
         updateControlAvailability();
         setCacheRefreshState(
           "loading",
@@ -5334,6 +5388,7 @@
             refreshCache({ combined: true }),
             refreshWildfires({ force: true })
           ]);
+          if (!fireDrawer.hidden) loadFireDatabase(true);
           const bothReady = smokeReady && wildfiresReady;
           const eitherReady = smokeReady || wildfiresReady;
           setCacheRefreshState(
@@ -5435,7 +5490,7 @@
       });
       fireDrawerClose.addEventListener("click", () => closeFireDrawer());
       fireRetry.addEventListener("click", () => refreshWildfires({ force: true }));
-      fireLoadMore.addEventListener("click", () => loadFireDatabase(false));
+      fireLoadMore.addEventListener("click", () => loadFireDatabase(fireDatabaseNeedsReset));
       fireSearch.addEventListener("input", () => {
         if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
         fireSearchTimer = window.setTimeout(() => loadFireDatabase(true), 300);

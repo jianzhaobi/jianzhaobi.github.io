@@ -54,7 +54,7 @@ The wildfire overlay is an independent NIFC WFIGS system layered above the RAQDP
 
 ### Official sources and service endpoints
 
-Use the following official ArcGIS items and their layer-0 FeatureServer endpoints under `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services`:
+Use the following official ArcGIS items and their layer-0 FeatureServer endpoints. Runtime requests use ArcGIS's generic routing host `https://services.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services` first and alternate retries through the source shard `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services`:
 
 | Purpose | ArcGIS item | Runtime service |
 | --- | --- | --- |
@@ -126,12 +126,14 @@ Render WFIGS with Leaflet `L.geoJSON` and a Canvas renderer in a `firePane` abov
 
 Ignition styling combines age and reported acreage while keeping the map restrained:
 
-- Discovery age: 0–24 hours dark red; 24–72 hours red; 72–168 hours coral; older active incidents orange.
-- Missing discovery time uses a middle red fallback.
+- Discovery age must use a deliberately broad warm range: 0–24 hours deep burgundy red (`#861d1d`), 24–72 hours red (`#bd3426`), 72–168 hours coral-orange (`#e45b2f`), 7–14 days amber-orange (`#ee9138`), and older active incidents light golden yellow (`#f2c75c`).
+- Missing discovery time uses the middle red-orange fallback `#d84a2f`.
 - Point radii follow compressed NWCG fire-size classes: up to 0.25 acre, under 10, under 100, under 300, under 1,000, under 5,000, and 5,000+ acres map to approximately 3.25–7 CSS pixels.
 - The `Large · 300+ acres` database threshold begins at 300 acres, corresponding to the start of NWCG class E. It is intentionally a useful large-incident filter rather than a claim that every 300-acre event is nationally significant.
 
 Active perimeters use a coral-red outline and low-opacity fill. Recently closed geometry uses a gray-brown hollow point or dashed perimeter. Hover increases point size or perimeter emphasis. A selected database incident receives a larger, stronger non-flashing highlight. Do not add a permanent wildfire symbol legend; the Layers menu should remain compact and the popup/list must always state the status in text.
+
+Sort ignition features by `FireDiscoveryDateTime` ascending before adding them to the shared Leaflet Canvas renderer. Treat a missing or invalid discovery time as oldest and use OBJECTID as a stable tie-breaker. Because Canvas draws later features above earlier ones, this guarantees that the newest ignition is visually and interactively above every older overlapping ignition after initial render and every zoom redraw. A deliberately selected database incident remains above the normal time ordering.
 
 Ignitions and perimeters have independent checkboxes. Turning Wildfires off removes persistent wildfire layers and their popup, but a fire deliberately selected from the database may still be temporarily displayed. Smoke and Wildfires also remain independently selectable; turning both off leaves only the basemap.
 
@@ -154,6 +156,7 @@ The `Fires` control opens a right-side desktop drawer or mobile bottom sheet. On
 Database behavior:
 
 - Load lazily on first open; keep pages in memory only.
+- Use a bounded 24-page in-memory cache with a five-minute lifetime for successful query/filter/sort/page combinations. Do not persist this cache across page sessions.
 - Default to `FireDiscoveryDateTime DESC, OBJECTID DESC`.
 - The sort icon toggles between newest discovery first and `IncidentSize DESC, FireDiscoveryDateTime DESC, OBJECTID DESC`.
 - Keep the sort button neutral white with accent text/border in both modes; do not reuse the generic solid-orange `aria-pressed` button treatment.
@@ -164,6 +167,8 @@ Database behavior:
 - Active queries the Current location service and excludes final ICS-209 reports with `(ICS209ReportStatus IS NULL OR ICS209ReportStatus <> 'F')`.
 - Contained means containment is present while control and out are absent. Controlled means control is present while out is absent. Out means out is present.
 - Cancel obsolete search, filter, sort, pagination, and selection requests with `AbortController` and generation counters. Late results must not overwrite the latest user action.
+- A reset request must leave the previously rendered rows in place until its replacement page succeeds. On failure, report temporary unavailability, keep the current list, and make Retry repeat the pending reset rather than append duplicate rows.
+- Database queries get up to five total attempts with alternating generic and shard hosts, short bounded backoff, and normal HTTP caching. Map-layer queries retain the lighter three-attempt policy.
 
 Selecting a database record queries all Year-to-Date perimeter polygons with the same `attr_IrwinID`. Draw both ignition and every matching perimeter when available, including for an older event not normally visible. Fit perimeter bounds, fall back to the ignition point, or retain the current map and report `Location unavailable` when neither exists. Keep the temporary selection until the popup is closed, another event is selected, or the selection is otherwise cleared.
 
@@ -173,18 +178,18 @@ WFIGS currently loads directly from the official ArcGIS FeatureServer. Do not ad
 
 The current lightweight client strategy is:
 
-- Keep points, recent records, database pages, and perimeter geometry only in page memory; do not use browser persistence.
+- Keep points, recent records, database pages, and perimeter geometry only in page memory; do not use browser persistence. Cache at most 24 successful database pages for five minutes and evict the oldest entry at the limit.
 - On first load, fetch full display-simplified Current and recent perimeter GeoJSON directly, avoiding a fragile index-plus-geometry request burst.
 - On later refreshes, fetch a lightweight `OBJECTID`, polygon-time, and modified-time index, reuse unchanged geometry from `firePerimeterCache`, request only new or changed object IDs, and remove records no longer returned by Current.
 - If the incremental perimeter path fails, retry a full perimeter query. If one perimeter source still fails, retain cached geometry and current points and report a partial refresh rather than clearing the map.
 - Request `outSR=4326`, `geometryPrecision=5`, and `maxAllowableOffset=0.0001` for displayed perimeters.
-- Retry ArcGIS requests up to three total attempts with short 350 ms and 800 ms backoffs. Abort errors are never retried.
+- Retry normal ArcGIS map-layer requests up to three total attempts. Alternate the generic ArcGIS routing host and the source shard, using bounded 300 ms, 700 ms, 1.4 s, and 2.5 s backoffs as needed. Database requests may use five total attempts; abort errors are never retried.
 - Use a 45-second refresh controller timeout, request generation checks, and sequential same-host point requests to reduce contention.
 - Load Active points first so useful wildfire locations can appear while perimeter geometry continues loading.
 - Refresh while the page is visible every five minutes. On `pageshow` or visibility resume, do not start a second refresh while one is already running.
 - Preserve the old wildfire layer on any refresh failure and expose a concise Layers-menu error plus `Retry`.
 
-The map's manual refresh button is a unified action: it must refresh the smoke cache manifest/data path and WFIGS wildfire data together. Its accessible name is `Refresh smoke and wildfire data`. Report success only if both succeed, partial success if one succeeds, and retain current visible data for any failed source.
+The map's manual refresh button is a unified action: it must refresh the smoke cache manifest/data path and WFIGS wildfire data together. Clear the database page cache, mark the visible list for replacement, and reload it immediately when the drawer is open or on the next drawer open when it is closed. Its accessible name is `Refresh smoke and wildfire data`. Report success only if both primary systems succeed, partial success if one succeeds, and retain current visible data for any failed source.
 
 Do not change `scripts/build_static_cache.py`, the schema-v5 smoke cache format, or `.github/workflows/deploy-pages-with-smoke-cache.yml` merely to support WFIGS. Smoke cache behavior and wildfire in-memory caching are separate systems.
 
@@ -195,8 +200,9 @@ The following work was completed and pushed on 2026-07-22:
 - `c46a6dd` added the four official WFIGS sources, mandatory WF filtering, normalized IrwinID merging, active and recent map layers, ignition/perimeter-independent records, popup cards, Layers controls, NIFC attribution, the Year-to-Date database drawer, search, status filters, pagination, sorting, large-fire filtering, on-demand historical geometry, and in-memory refresh/cancellation logic.
 - `6ede96b` corrected wildfire hover and click handling, established ignition-over-perimeter-over-smoke click priority, increased Canvas hit tolerance, made ignition and perimeter popup content identical for one event, added independent ignition/perimeter visibility, added age colors and NWCG-derived size radii, added the 300-acre large-fire filter and date/size sort control, increased map zoom capability for city- and perimeter-level inspection, and connected the existing map refresh control to smoke and wildfire together.
 - `380d938` removed the wildfire symbol legend, made recently closed geometry opt-in, corrected old Year-to-Date events that were being labeled Active, added the neutral `Not current` state and final ICS-209 handling, made Active filtering use the Current service while excluding final reports, fixed the mobile sort button's solid-orange state, reduced ArcGIS request bursts, added retry/full-query fallback behavior, and fixed a startup race in which `initialize()` and `pageshow` started competing WFIGS refreshes and aborted one another.
+- A later 2026-07-22 reliability and visual-order follow-up moved the primary WFIGS hostname to ArcGIS's generic routing endpoint with the original shard as an alternating fallback, added five-attempt database recovery, five-minute bounded page caching, and old-row retention during failed resets. It also expanded ignition age colors from deep red through light golden yellow and explicitly sorted ignition drawing oldest-to-newest so the newest event always remains on top across zoom redraws.
 
-During the final service-health investigation, direct official queries returned HTTP 200 for all four services. A volatile diagnostic snapshot contained approximately 472 Current WF locations, 169 Current WF perimeters, 266 recently ended Year-to-Date locations, and 38 recently ended Year-to-Date perimeters. Full Current perimeter GeoJSON was roughly 2.5 MB and completed in several seconds. These numbers are diagnostic history, not application constants. The observed browser failure was caused by the duplicate-refresh race, not a continuing WFIGS outage. After the fix, fresh load and the unified manual refresh both reached a ready wildfire state while retaining the smoke layer independently.
+During the final service-health investigation, direct official queries returned HTTP 200 for all four services. A volatile diagnostic snapshot contained approximately 472 Current WF locations, 169 Current WF perimeters, 266 recently ended Year-to-Date locations, and 38 recently ended Year-to-Date perimeters. Full Current perimeter GeoJSON was roughly 2.5 MB and completed in several seconds. These numbers are diagnostic history, not application constants. The earlier browser failure was caused by the duplicate-refresh race, not a continuing WFIGS outage. In the later list-reliability follow-up, the sharded host failed 5 of 5 early local drawer loads while the identical official query returned HTTP 200 directly and the deployed page passed 5 of 5. After switching to generic routing plus shard fallback and database-specific recovery, the same early local drawer test passed 10 of 10; the map layer and database also reached ready state together.
 
 ## Rendering architecture
 
@@ -436,13 +442,13 @@ Before handing off a material change:
 23. Confirm status priority for final ICS-209/Not current, Current/Active, Out, Controlled, Contained, and fallback Not current. Test the exact 24-hour recent boundary and confirm `PercentContained = 100` alone does not create an end state.
 24. Confirm recently closed ignition and perimeter geometry is hidden on first load, appears immediately without a request when its checkbox is enabled, and disappears again without changing Active geometry.
 25. Confirm Ignitions, Perimeters, Wildfires, and Smoke switches work independently in all meaningful combinations, including a database-selected temporary event while persistent Wildfires is off.
-26. Hover and click both active and recently closed ignition/perimeter geometry. Confirm hover emphasis works, ignition wins over an overlapping perimeter, perimeter wins over smoke when no ignition is hit, and wildfire clicks never open the PM2.5 probe.
+26. Hover and click both active and recently closed ignition/perimeter geometry. Confirm hover emphasis works, ignition wins over an overlapping perimeter, perimeter wins over smoke when no ignition is hit, and wildfire clicks never open the PM2.5 probe. Create overlapping old/new ignition cases and verify the newest point is visibly and interactively on top before and after multiple zoom redraws.
 27. Confirm ignition and perimeter clicks for one IrwinID show identical status and incident attributes, use safely constructed DOM text, and anchor the popup at the appropriate point or polygon click.
-28. Open the wildfire database on desktop and phone; test 300 ms name search, all status filters, the independent 300+ acre filter, 50-record Load more pagination, newest-first and acreage-first ordering, and rapid consecutive actions whose stale responses arrive late.
+28. Open the wildfire database on desktop and phone; test at least ten fresh early-page opens, 300 ms name search, all status filters, the independent 300+ acre filter, 50-record Load more pagination, newest-first and acreage-first ordering, and rapid consecutive actions whose stale responses arrive late. Confirm cached repeat queries return immediately and a failed reset retains existing rows without duplicate Retry results.
 29. Select active, recently closed, older Not current, point-only, perimeter-only, and multi-polygon database events. Confirm the map fits or flies to the available geometry, temporarily draws an otherwise hidden incident, closes the phone sheet, and reports `Location unavailable` without moving when necessary.
 30. Confirm large year-to-date fires with final ICS-209 reports or no live membership do not appear as Active, and confirm the Active filter uses the Current service while excluding final reports.
-31. Test a fresh WFIGS load, five-minute/visibility refresh, Layers-menu Retry, and the unified manual smoke-and-wildfire refresh. Confirm no startup `pageshow` race, no duplicate active refresh, old geometry survives failures, and success/partial/error feedback matches the actual two-source result.
-32. Inspect WFIGS request count and payload behavior: initial full simplified perimeter query, later unchanged-geometry reuse, changed-ID fetches, removal of expired Current records, and full-query fallback after incremental failure.
+31. Test a fresh WFIGS load, five-minute/visibility refresh, Layers-menu Retry, and the unified manual smoke-and-wildfire refresh. Confirm no startup `pageshow` race, no duplicate active refresh, generic-host failure can recover through the shard host and vice versa, old geometry survives failures, and success/partial/error feedback matches the actual two-source result.
+32. Inspect WFIGS request count and payload behavior: initial full simplified perimeter query, later unchanged-geometry reuse, changed-ID fetches, removal of expired Current records, full-query fallback after incremental failure, five-minute database-page reuse, 24-page eviction, and explicit cache clearing during unified manual refresh.
 33. At 320–390 px widths, verify the Fires bottom sheet, Layers checkboxes, filter wrapping, search/sort row, neutral sort-button background in both modes, popup width, timeline coexistence, and absence of horizontal overflow.
 34. Confirm `AGENTS.md` was updated for the current project change and no instruction in it contradicts the final code, data behavior, or workflow.
 
