@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self'; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services3.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <meta
@@ -61,6 +61,11 @@
       --pm-line: rgb(30 33 36 / 11%);
       --pm-shadow: 0 10px 30px rgb(31 35 39 / 14%), 0 2px 7px rgb(31 35 39 / 8%);
       --pm-radius: 14px;
+      --pm-fire-active: #d94b38;
+      --pm-fire-active-dark: #8f241d;
+      --pm-fire-new: #982c24;
+      --pm-fire-established: #e07a43;
+      --pm-fire-closed: #77716b;
       --pm-safe-top: env(safe-area-inset-top, 0px);
       --pm-safe-right: env(safe-area-inset-right, 0px);
       --pm-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -300,6 +305,12 @@
       margin-left: auto;
     }
 
+    #north-america-pm25 .pm-fires-button[aria-expanded="true"] {
+      border-color: rgb(230 106 71 / 35%);
+      color: var(--pm-accent-strong);
+      background: var(--pm-accent-soft);
+    }
+
     #north-america-pm25 .pm-popover {
       position: absolute;
       top: calc(100% + 8px);
@@ -373,6 +384,379 @@
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    #north-america-pm25 .pm-layer-toggles {
+      display: grid;
+      gap: 3px;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-check {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 10px;
+      padding: 0 7px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-check:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-check input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-layer-section {
+      margin-top: 12px;
+    }
+
+    #north-america-pm25 .pm-layer-section-title {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    #north-america-pm25 .pm-fire-legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px 9px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    #north-america-pm25 .pm-fire-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #north-america-pm25 .pm-fire-legend-item.is-wide {
+      grid-column: 1 / -1;
+    }
+
+    #north-america-pm25 .pm-fire-age-symbols {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    #north-america-pm25 .pm-fire-symbol-point {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 auto;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: var(--pm-fire-new);
+      box-shadow: 0 0 0 1px rgb(35 22 20 / 38%);
+    }
+
+    #north-america-pm25 .pm-fire-symbol-point.is-closed {
+      border-color: var(--pm-fire-closed);
+      background: var(--pm-ui-solid);
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-symbol-point.is-established {
+      width: 12px;
+      height: 12px;
+      background: var(--pm-fire-established);
+    }
+
+    #north-america-pm25 .pm-fire-symbol-perimeter {
+      width: 18px;
+      height: 10px;
+      flex: 0 0 auto;
+      border: 2px solid var(--pm-fire-active);
+      border-radius: 4px;
+      background: rgb(217 75 56 / 13%);
+    }
+
+    #north-america-pm25 .pm-fire-symbol-perimeter.is-closed {
+      border-color: var(--pm-fire-closed);
+      border-style: dashed;
+      background: rgb(119 113 107 / 5%);
+    }
+
+    #north-america-pm25 .pm-fire-legend-note {
+      grid-column: 1 / -1;
+      margin-top: 1px;
+      color: var(--pm-muted);
+      font-size: 10px;
+      line-height: 1.3;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status {
+      display: flex;
+      min-height: 28px;
+      align-items: center;
+      gap: 7px;
+      margin-top: 9px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status::before {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #45a66b;
+      content: "";
+    }
+
+    #north-america-pm25 .pm-fire-layer-status[data-state="loading"]::before {
+      background: var(--pm-accent);
+      animation: pm-pulse 900ms ease-in-out infinite alternate;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status[data-state="error"]::before {
+      background: #c84c42;
+    }
+
+    #north-america-pm25 .pm-fire-retry {
+      appearance: none;
+      min-height: 38px;
+      margin-left: auto;
+      padding: 0 8px;
+      border: 1px solid var(--pm-line);
+      border-radius: 8px;
+      color: var(--pm-text);
+      background: var(--pm-ui-solid);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    #north-america-pm25 .pm-fire-drawer {
+      position: absolute;
+      z-index: 1100;
+      top: calc(60px + var(--pm-safe-top));
+      right: calc(62px + var(--pm-safe-right));
+      bottom: calc(105px + var(--pm-safe-bottom));
+      display: grid;
+      width: min(370px, calc(100% - 86px - var(--pm-safe-left) - var(--pm-safe-right)));
+      min-height: 0;
+      grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      border-radius: 17px;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 12px 8px 14px;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-title {
+      min-width: 0;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-close {
+      width: 38px;
+      min-width: 38px;
+      min-height: 38px;
+      padding: 0;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-search-wrap {
+      padding: 0 13px 9px;
+    }
+
+    #north-america-pm25 .pm-fire-search {
+      width: 100%;
+      min-height: 42px;
+      padding: 0 11px;
+      border: 1px solid var(--pm-line);
+      border-radius: 10px;
+      color: var(--pm-text);
+      background: var(--pm-ui-solid);
+    }
+
+    #north-america-pm25 .pm-fire-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 0 13px 10px;
+    }
+
+    #north-america-pm25 .pm-fire-filter {
+      appearance: none;
+      min-height: 38px;
+      padding: 0 9px;
+      border: 1px solid var(--pm-line);
+      border-radius: 999px;
+      color: var(--pm-muted);
+      background: var(--pm-ui-solid);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    #north-america-pm25 .pm-fire-filter[aria-pressed="true"] {
+      border-color: transparent;
+      color: #fff;
+      background: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-fire-database-status {
+      min-height: 24px;
+      padding: 0 14px 7px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    #north-america-pm25 .pm-fire-list {
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      border-top: 1px solid var(--pm-line);
+      overscroll-behavior: contain;
+    }
+
+    #north-america-pm25 .pm-fire-row {
+      appearance: none;
+      display: grid;
+      width: 100%;
+      min-height: 76px;
+      gap: 4px;
+      padding: 10px 14px;
+      border: 0;
+      border-bottom: 1px solid var(--pm-line);
+      color: var(--pm-text);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    #north-america-pm25 .pm-fire-row:hover,
+    #north-america-pm25 .pm-fire-row:focus-visible {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fire-row-head {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-fire-row-name {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-fire-badge {
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border-radius: 999px;
+      color: var(--pm-fire-active-dark);
+      background: rgb(217 75 56 / 13%);
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: .04em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #north-america-pm25 .pm-fire-badge[data-status="contained"],
+    #north-america-pm25 .pm-fire-badge[data-status="controlled"],
+    #north-america-pm25 .pm-fire-badge[data-status="out"] {
+      color: var(--pm-muted);
+      background: rgb(119 113 107 / 12%);
+    }
+
+    #north-america-pm25 .pm-fire-row-meta {
+      overflow: hidden;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-fire-load-wrap {
+      padding: 9px 12px 11px;
+    }
+
+    #north-america-pm25 .pm-fire-load-more {
+      width: 100%;
+      min-height: 38px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-popup {
+      display: grid;
+      min-width: 238px;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-fire-popup-head {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 9px;
+    }
+
+    #north-america-pm25 .pm-fire-popup-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.2;
+    }
+
+    #north-america-pm25 .pm-fire-popup-grid {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 5px 11px;
+      padding-top: 8px;
+      border-top: 1px solid var(--pm-line);
+      font-size: 11px;
+      line-height: 1.28;
+    }
+
+    #north-america-pm25 .pm-fire-popup-label {
+      color: var(--pm-muted);
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fire-popup-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fire-selected-path {
+      filter: drop-shadow(0 0 2px rgb(255 255 255 / 96%));
     }
 
     #north-america-pm25 .pm-bottom-dock {
@@ -536,6 +920,10 @@
 
     #north-america-pm25 .pm-cache-refresh[data-state="success"] {
       color: #318258;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="partial"] {
+      color: var(--pm-accent-strong);
     }
 
     #north-america-pm25 .pm-cache-refresh[data-state="error"] {
@@ -865,6 +1253,11 @@
         width: 100%;
         grid-column: 1 / -1;
       }
+
+      #north-america-pm25 .pm-fire-drawer {
+        right: calc(54px + var(--pm-safe-right));
+        width: min(350px, calc(100% - 70px - var(--pm-safe-left) - var(--pm-safe-right)));
+      }
     }
 
     @media (max-width: 560px) {
@@ -883,6 +1276,10 @@
         display: none;
       }
 
+      #north-america-pm25 .pm-toolbar > button.pm-button {
+        padding-inline: 9px;
+      }
+
       #north-america-pm25 .pm-toolbar summary.pm-button {
         padding-inline: 9px;
       }
@@ -893,6 +1290,15 @@
 
       #north-america-pm25 .pm-map-menu .pm-popover {
         width: 158px;
+      }
+
+      #north-america-pm25 .pm-fire-drawer {
+        top: auto;
+        right: calc(8px + var(--pm-safe-right));
+        bottom: calc(8px + var(--pm-safe-bottom));
+        left: calc(8px + var(--pm-safe-left));
+        width: auto;
+        max-height: min(72%, 570px);
       }
 
       #north-america-pm25 .pm-bottom-dock {
@@ -970,6 +1376,10 @@
         animation: none;
       }
 
+      #north-america-pm25 .pm-fire-layer-status[data-state="loading"]::before {
+        animation: none;
+      }
+
       #north-america-pm25 .pm-locate-button[data-state="loading"] svg,
       #north-america-pm25 .pm-cache-refresh[data-state="loading"] svg,
       #north-america-pm25 .pm-location-dot::after {
@@ -985,27 +1395,65 @@
 
       <nav class="pm-toolbar" aria-label="Map controls">
         <details class="pm-menu" id="pm-data-menu">
-          <summary class="pm-button" aria-label="Choose particles and vertical extent">
+          <summary class="pm-button" aria-label="Choose visible data layers">
             <i data-lucide="layers-3" aria-hidden="true"></i>
-            <span class="pm-menu-label">Data</span>
+            <span class="pm-menu-label">Layers</span>
           </summary>
           <div class="pm-popover">
-            <label class="pm-field" for="pm-particle">
-              Particles
-              <select class="pm-select" id="pm-particle">
-                <option value="smoke">Wildfire smoke</option>
-                <option value="total">Total PM2.5</option>
-              </select>
-            </label>
-            <label class="pm-field" for="pm-extent">
-              Vertical extent
-              <select class="pm-select" id="pm-extent">
-                <option value="surface">Surface</option>
-                <option value="column">Entire atmosphere</option>
-              </select>
-            </label>
+            <div class="pm-layer-toggles" aria-label="Visible layers">
+              <label class="pm-check" for="pm-show-smoke">
+                <input id="pm-show-smoke" type="checkbox" checked>
+                <span>Smoke &amp; PM2.5</span>
+              </label>
+              <label class="pm-check" for="pm-show-wildfires">
+                <input id="pm-show-wildfires" type="checkbox" checked>
+                <span>Wildfires</span>
+              </label>
+            </div>
+            <section class="pm-layer-section" id="pm-smoke-options" aria-labelledby="pm-smoke-options-title">
+              <strong class="pm-layer-section-title" id="pm-smoke-options-title">Smoke</strong>
+              <label class="pm-field" for="pm-particle">
+                Particles
+                <select class="pm-select" id="pm-particle">
+                  <option value="smoke">Wildfire smoke</option>
+                  <option value="total">Total PM2.5</option>
+                </select>
+              </label>
+              <label class="pm-field" for="pm-extent">
+                Vertical extent
+                <select class="pm-select" id="pm-extent">
+                  <option value="surface">Surface</option>
+                  <option value="column">Entire atmosphere</option>
+                </select>
+              </label>
+            </section>
+            <section class="pm-layer-section" id="pm-wildfire-options" aria-labelledby="pm-wildfire-options-title">
+              <strong class="pm-layer-section-title" id="pm-wildfire-options-title">Wildfires</strong>
+              <div class="pm-fire-legend" aria-label="Wildfire symbols">
+                <span class="pm-fire-legend-item is-wide">
+                  <span class="pm-fire-age-symbols" aria-hidden="true">
+                    <span class="pm-fire-symbol-point"></span>
+                    <span class="pm-fire-symbol-point is-established"></span>
+                  </span>
+                  New → established active ignition
+                </span>
+                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-perimeter" aria-hidden="true"></span>Active perimeter</span>
+                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-point is-closed" aria-hidden="true"></span>Recently closed</span>
+                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-perimeter is-closed" aria-hidden="true"></span>Closed perimeter</span>
+                <span class="pm-fire-legend-note">Circle size follows NWCG fire-size classes; larger circles indicate more reported acres.</span>
+              </div>
+              <div class="pm-fire-layer-status" id="pm-fire-layer-status" data-state="loading" role="status" aria-live="polite">
+                <span id="pm-fire-layer-status-text">Loading WFIGS wildfires</span>
+                <button type="button" class="pm-fire-retry" id="pm-fire-retry" hidden>Retry</button>
+              </div>
+            </section>
           </div>
         </details>
+
+        <button type="button" class="pm-button pm-fires-button" id="pm-fires-button" aria-label="Open WFIGS wildfire database" aria-controls="pm-fire-drawer" aria-expanded="false">
+          <i data-lucide="flame" aria-hidden="true"></i>
+          <span class="pm-menu-label">Fires</span>
+        </button>
 
         <details class="pm-menu pm-map-menu" id="pm-map-menu">
           <summary class="pm-button" aria-label="Choose basemap">
@@ -1029,7 +1477,32 @@
         </details>
       </nav>
 
-      <div class="pm-bottom-dock">
+      <aside class="pm-fire-drawer pm-glass" id="pm-fire-drawer" aria-labelledby="pm-fire-drawer-title" hidden>
+        <div class="pm-fire-drawer-head">
+          <h2 class="pm-fire-drawer-title" id="pm-fire-drawer-title">Wildfires · Year to date</h2>
+          <button type="button" class="pm-button pm-icon-button pm-fire-drawer-close" id="pm-fire-drawer-close" aria-label="Close wildfire database">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="pm-fire-search-wrap">
+          <label class="sr-only" for="pm-fire-search">Search by incident name</label>
+          <input class="pm-fire-search" id="pm-fire-search" type="search" autocomplete="off" placeholder="Search by incident name">
+        </div>
+        <div class="pm-fire-filters" id="pm-fire-filters" role="group" aria-label="Filter wildfires by status">
+          <button type="button" class="pm-fire-filter" data-fire-status="all" aria-pressed="true">All</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="active" aria-pressed="false">Active</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="contained" aria-pressed="false">Contained</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="controlled" aria-pressed="false">Controlled</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="out" aria-pressed="false">Out</button>
+        </div>
+        <div class="pm-fire-database-status" id="pm-fire-database-status" role="status" aria-live="polite">Open the database to load fires.</div>
+        <div class="pm-fire-list" id="pm-fire-list" aria-label="Wildfire incidents"></div>
+        <div class="pm-fire-load-wrap">
+          <button type="button" class="pm-button pm-fire-load-more" id="pm-fire-load-more" hidden>Load more</button>
+        </div>
+      </aside>
+
+      <div class="pm-bottom-dock" id="pm-bottom-dock">
         <section class="pm-timeline pm-glass" id="pm-timeline" aria-label="PM2.5 forecast timeline">
           <div class="pm-timeline-top">
             <div class="pm-legend" aria-label="Map color scale">
@@ -1084,10 +1557,26 @@
 
       const root = document.getElementById("north-america-pm25");
       const mapElement = document.getElementById("pm-map");
+      const smokeToggle = document.getElementById("pm-show-smoke");
+      const wildfireToggle = document.getElementById("pm-show-wildfires");
+      const smokeOptions = document.getElementById("pm-smoke-options");
+      const wildfireOptions = document.getElementById("pm-wildfire-options");
       const particleSelect = document.getElementById("pm-particle");
       const extentSelect = document.getElementById("pm-extent");
       const basemapInputs = [...root.querySelectorAll('input[name="pm-basemap"]')];
       const menus = [...root.querySelectorAll(".pm-menu")];
+      const firesButton = document.getElementById("pm-fires-button");
+      const fireDrawer = document.getElementById("pm-fire-drawer");
+      const fireDrawerClose = document.getElementById("pm-fire-drawer-close");
+      const fireSearch = document.getElementById("pm-fire-search");
+      const fireFilters = [...root.querySelectorAll(".pm-fire-filter")];
+      const fireList = document.getElementById("pm-fire-list");
+      const fireLoadMore = document.getElementById("pm-fire-load-more");
+      const fireDatabaseStatus = document.getElementById("pm-fire-database-status");
+      const fireLayerStatus = document.getElementById("pm-fire-layer-status");
+      const fireLayerStatusText = document.getElementById("pm-fire-layer-status-text");
+      const fireRetry = document.getElementById("pm-fire-retry");
+      const bottomDock = document.getElementById("pm-bottom-dock");
       const legendTitle = document.getElementById("pm-legend-title");
       const legendUnit = document.getElementById("pm-legend-unit");
       const legendTicks = document.getElementById("pm-legend-ticks");
@@ -1110,6 +1599,32 @@
 
       const WMS = "https://geo.weather.gc.ca/geomet";
       const HOUR = 60 * 60 * 1000;
+      const WFIGS_ROOT = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+      const FIRE_SERVICES = {
+        currentLocations: `${WFIGS_ROOT}/WFIGS_Incident_Locations_Current/FeatureServer/0`,
+        currentPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_Current/FeatureServer/0`,
+        ytdLocations: `${WFIGS_ROOT}/WFIGS_Incident_Locations_YearToDate/FeatureServer/0`,
+        ytdPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0`
+      };
+      const FIRE_ATTRIBUTION = '<a href="https://www.arcgis.com/home/item.html?id=4181a117dc9e43db8598533e29972015">NIFC WFIGS</a>';
+      const FIRE_REFRESH_MS = 5 * 60 * 1000;
+      const FIRE_RECENT_MS = 24 * HOUR;
+      const FIRE_PAGE_SIZE = 50;
+      const FIRE_POINT_FIELDS = [
+        "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
+        "IncidentSize", "PercentContained", "ContainmentDateTime",
+        "ControlDateTime", "FireOutDateTime", "FireCause", "POOCounty",
+        "POOState", "InitialLatitude", "InitialLongitude",
+        "ModifiedOnDateTime_dt", "IncidentTypeCategory"
+      ].join(",");
+      const FIRE_PERIMETER_FIELDS = [
+        "OBJECTID", "attr_IrwinID", "attr_IncidentName",
+        "attr_FireDiscoveryDateTime", "attr_IncidentSize",
+        "attr_PercentContained", "attr_ContainmentDateTime",
+        "attr_ControlDateTime", "attr_FireOutDateTime",
+        "attr_ModifiedOnDateTime_dt", "attr_IncidentTypeCategory",
+        "poly_GISAcres", "poly_PolygonDateTime"
+      ].join(",");
       const DATA_OPACITY = 0.9;
       const PLAYBACK_FADE_MS = 900;
       const SCRUB_FADE_MS = 260;
@@ -1272,6 +1787,8 @@
 
       let particle = "smoke";
       let extent = "surface";
+      let smokeVisible = true;
+      let wildfiresVisible = true;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -1294,8 +1811,25 @@
       let cacheUpdateDelayHours = 0;
       let timelineInteractionLocked = true;
       let cacheRefreshActive = false;
+      let combinedRefreshActive = false;
       let cacheFeedbackTimer = 0;
       let lastCacheCheckAt = Date.now();
+      let fireRefreshController = null;
+      let fireRefreshGeneration = 0;
+      let fireRefreshTimer = 0;
+      let lastFireRefreshAt = 0;
+      let fireDatabaseController = null;
+      let fireDatabaseGeneration = 0;
+      let fireDatabaseOffset = 0;
+      let fireDatabaseHasMore = true;
+      let fireDatabaseFilter = "all";
+      let fireSearchTimer = 0;
+      let fireAttributionVisible = false;
+      let selectedFireRecord = null;
+      let fireEvents = new Map();
+      let currentFirePoints = [];
+      let recentFirePoints = [];
+      const firePerimeterCache = new Map();
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -1372,6 +1906,872 @@
 
       let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
 
+      map.createPane("firePerimeterPane").style.zIndex = "440";
+      map.createPane("fireIgnitionPane").style.zIndex = "450";
+      map.createPane("fireSelectionPane").style.zIndex = "460";
+      const firePerimeterRenderer = L.canvas({ pane: "firePerimeterPane", padding: 0.5 });
+      const fireIgnitionRenderer = L.canvas({ pane: "fireIgnitionPane", padding: 0.5, tolerance: 6 });
+      const fireSelectionRenderer = L.canvas({ pane: "fireSelectionPane", padding: 0.5, tolerance: 6 });
+      const firePerimeterGroup = L.layerGroup();
+      const fireIgnitionGroup = L.layerGroup();
+      const fireSelectionGroup = L.layerGroup();
+
+      function updateMapAccessibleName() {
+        const parts = [];
+        if (smokeVisible) {
+          const data = DATASETS[particle][extent];
+          const valid = new Date(currentValidTime.getTime() + Math.round(selectedHour) * HOUR);
+          parts.push(`${data.extentLabel} ${DATASETS[particle].label} valid ${formatLocal.format(valid)}`);
+        }
+        if (wildfiresVisible) parts.push("WFIGS wildfires");
+        if (selectedFireRecord) parts.push(`selected wildfire ${selectedFireRecord.name || "Unnamed wildfire"}`);
+        mapElement.setAttribute(
+          "aria-label",
+          parts.length ? `North America map showing ${parts.join(" and ")}` : "North America basemap"
+        );
+      }
+
+      function setFireLayerStatus(state, message) {
+        fireLayerStatus.dataset.state = state;
+        fireLayerStatusText.textContent = message;
+        fireRetry.hidden = state !== "error";
+      }
+
+      function syncFireAttribution() {
+        const shouldShow = wildfiresVisible || Boolean(selectedFireRecord);
+        if (shouldShow === fireAttributionVisible) return;
+        if (shouldShow) map.attributionControl.addAttribution(FIRE_ATTRIBUTION);
+        else map.attributionControl.removeAttribution(FIRE_ATTRIBUTION);
+        fireAttributionVisible = shouldShow;
+      }
+
+      function arcgisQueryUrl(service, parameters) {
+        const url = new URL(`${service}/query`);
+        Object.entries(parameters).forEach(([name, value]) => {
+          if (value !== undefined && value !== null && value !== "") {
+            url.searchParams.set(name, String(value));
+          }
+        });
+        return url;
+      }
+
+      async function fetchArcgis(service, parameters, signal) {
+        const response = await fetch(arcgisQueryUrl(service, parameters), {
+          cache: "no-store",
+          signal
+        });
+        if (!response.ok) throw new Error(`WFIGS request failed (${response.status})`);
+        const result = await response.json();
+        if (result?.error) throw new Error(result.error.message || "WFIGS request failed");
+        return result;
+      }
+
+      async function fetchArcgisFeaturePages(service, parameters, signal) {
+        const features = [];
+        let offset = 0;
+        for (;;) {
+          const result = await fetchArcgis(service, {
+            ...parameters,
+            f: "json",
+            resultOffset: offset,
+            resultRecordCount: 2000
+          }, signal);
+          const page = Array.isArray(result.features) ? result.features : [];
+          features.push(...page);
+          if (!result.exceededTransferLimit || page.length === 0) break;
+          offset += page.length;
+        }
+        return features;
+      }
+
+      function fireSqlTimestamp(date) {
+        return date.toISOString().slice(0, 19).replace("T", " ");
+      }
+
+      function recentFireWhere(prefix = "") {
+        const threshold = fireSqlTimestamp(new Date(Date.now() - FIRE_RECENT_MS));
+        return `${prefix}IncidentTypeCategory='WF' AND (` +
+          `${prefix}ContainmentDateTime >= TIMESTAMP '${threshold}' OR ` +
+          `${prefix}ControlDateTime >= TIMESTAMP '${threshold}' OR ` +
+          `${prefix}FireOutDateTime >= TIMESTAMP '${threshold}')`;
+      }
+
+      function normalizeIrwinId(value) {
+        return String(value || "").trim().replace(/^\{|\}$/g, "").toLowerCase();
+      }
+
+      function featureId(feature, source) {
+        const properties = feature?.properties || feature?.attributes || {};
+        const irwin = properties.IrwinID || properties.attr_IrwinID;
+        return normalizeIrwinId(irwin) || `${source}:${properties.OBJECTID || properties.IncidentName || properties.attr_IncidentName || "unknown"}`;
+      }
+
+      function pointAttributes(properties = {}) {
+        return {
+          name: properties.IncidentName,
+          discovery: properties.FireDiscoveryDateTime,
+          size: properties.IncidentSize,
+          percentContained: properties.PercentContained,
+          containment: properties.ContainmentDateTime,
+          control: properties.ControlDateTime,
+          out: properties.FireOutDateTime,
+          cause: properties.FireCause,
+          county: properties.POOCounty,
+          state: properties.POOState,
+          modified: properties.ModifiedOnDateTime_dt
+        };
+      }
+
+      function ensurePointGeometry(feature) {
+        if (feature?.geometry?.type === "Point" && Array.isArray(feature.geometry.coordinates)) return feature;
+        const latitude = Number(feature?.properties?.InitialLatitude);
+        const longitude = Number(feature?.properties?.InitialLongitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return feature;
+        return { ...feature, geometry: { type: "Point", coordinates: [longitude, latitude] } };
+      }
+
+      function perimeterAttributes(properties = {}) {
+        return {
+          name: properties.attr_IncidentName,
+          discovery: properties.attr_FireDiscoveryDateTime,
+          size: properties.attr_IncidentSize ?? properties.poly_GISAcres,
+          percentContained: properties.attr_PercentContained,
+          containment: properties.attr_ContainmentDateTime,
+          control: properties.attr_ControlDateTime,
+          out: properties.attr_FireOutDateTime,
+          modified: properties.attr_ModifiedOnDateTime_dt,
+          polygonTime: properties.poly_PolygonDateTime
+        };
+      }
+
+      function mergeFireAttributes(record, values) {
+        Object.entries(values).forEach(([name, value]) => {
+          if (value !== null && value !== undefined && value !== "" && (
+            record[name] === null || record[name] === undefined || record[name] === ""
+          )) {
+            record[name] = value;
+          }
+        });
+      }
+
+      function blankFireRecord(id) {
+        return {
+          id,
+          rawIrwinId: null,
+          name: null,
+          discovery: null,
+          size: null,
+          percentContained: null,
+          containment: null,
+          control: null,
+          out: null,
+          cause: null,
+          county: null,
+          state: null,
+          modified: null,
+          polygonTime: null,
+          active: false,
+          recent: false,
+          pointRadius: null,
+          pointColor: null,
+          pointFeature: null,
+          perimeterFeatures: []
+        };
+      }
+
+      function firePointRadius(size) {
+        // NWCG fire-size classes A–G, compressed into a restrained 3.25–7 px visual scale.
+        const acres = Number(size);
+        if (!Number.isFinite(acres) || acres < 0) return 4.25;
+        if (acres <= 0.25) return 3.25;
+        if (acres < 10) return 3.75;
+        if (acres < 100) return 4.25;
+        if (acres < 300) return 4.75;
+        if (acres < 1000) return 5.25;
+        if (acres < 5000) return 6;
+        return 7;
+      }
+
+      function activeFirePointColor(discovery, now = Date.now()) {
+        const time = Number(discovery);
+        if (!Number.isFinite(time) || time <= 0) return "#bd4934";
+        const ageHours = Math.max(0, (now - time) / HOUR);
+        if (ageHours <= 24) return "#982c24";
+        if (ageHours <= 72) return "#b84231";
+        if (ageHours <= 168) return "#d55d3c";
+        return "#e07a43";
+      }
+
+      function fireStatus(record) {
+        if (record.active) return "Active";
+        if (record.out) return "Out";
+        if (record.control) return "Controlled";
+        if (record.containment) return "Contained";
+        return record.recent ? "Contained" : "Active";
+      }
+
+      function rebuildFireEvents() {
+        const events = new Map();
+        const getRecord = (id) => {
+          if (!events.has(id)) events.set(id, blankFireRecord(id));
+          return events.get(id);
+        };
+
+        currentFirePoints.forEach((feature) => {
+          const id = featureId(feature, "current-point");
+          const record = getRecord(id);
+          record.active = true;
+          record.rawIrwinId = record.rawIrwinId || feature.properties?.IrwinID;
+          record.pointFeature = feature;
+          mergeFireAttributes(record, pointAttributes(feature.properties));
+        });
+        recentFirePoints.forEach((feature) => {
+          const id = featureId(feature, "recent-point");
+          const record = getRecord(id);
+          record.recent = true;
+          record.rawIrwinId = record.rawIrwinId || feature.properties?.IrwinID;
+          if (!record.pointFeature) record.pointFeature = feature;
+          mergeFireAttributes(record, pointAttributes(feature.properties));
+        });
+        firePerimeterCache.forEach((entry) => {
+          const record = getRecord(featureId(entry.feature, entry.source));
+          if (entry.source === "current") record.active = true;
+          else record.recent = true;
+          record.rawIrwinId = record.rawIrwinId || entry.feature.properties?.attr_IrwinID;
+          record.perimeterFeatures.push(entry.feature);
+          mergeFireAttributes(record, perimeterAttributes(entry.feature.properties));
+        });
+        const pointStyleTime = Date.now();
+        events.forEach((record) => {
+          record.pointRadius = firePointRadius(record.size);
+          record.pointColor = activeFirePointColor(record.discovery, pointStyleTime);
+        });
+        fireEvents = events;
+      }
+
+      function firePerimeterStyle(record, selected = false) {
+        const active = fireStatus(record) === "Active";
+        return {
+          pane: selected ? "fireSelectionPane" : "firePerimeterPane",
+          renderer: selected ? fireSelectionRenderer : firePerimeterRenderer,
+          bubblingMouseEvents: false,
+          color: active ? "#d94b38" : "#77716b",
+          weight: selected ? 4 : (active ? 2 : 1.75),
+          opacity: selected ? 1 : 0.92,
+          dashArray: active ? null : "7 5",
+          fillColor: active ? "#d94b38" : "#77716b",
+          fillOpacity: selected ? (active ? 0.18 : 0.09) : (active ? 0.11 : 0.035),
+          className: selected ? "pm-fire-selected-path" : ""
+        };
+      }
+
+      function firePointStyle(record, selected = false) {
+        const active = fireStatus(record) === "Active";
+        const radius = record.pointRadius ?? firePointRadius(record.size);
+        const displayRadius = active ? radius : Math.max(3.25, radius - 1.25);
+        const activeColor = record.pointColor || activeFirePointColor(record.discovery);
+        return {
+          pane: selected ? "fireSelectionPane" : "fireIgnitionPane",
+          renderer: selected ? fireSelectionRenderer : fireIgnitionRenderer,
+          bubblingMouseEvents: false,
+          radius: selected ? Math.min(11, radius + 3) : displayRadius,
+          color: selected ? "#fff" : (active ? "#fff" : "#77716b"),
+          weight: selected ? 3 : (active ? 2 : 1.5),
+          opacity: active || selected ? 1 : 0.74,
+          fillColor: active ? activeColor : "#fff",
+          fillOpacity: active ? 1 : (selected ? 0.88 : 0.22)
+        };
+      }
+
+      function markFireEvent(event) {
+        if (!event.originalEvent) return;
+        event.originalEvent._pmFireHandled = true;
+        L.DomEvent.stopPropagation(event.originalEvent);
+      }
+
+      function renderFireLayers() {
+        firePerimeterGroup.clearLayers();
+        fireIgnitionGroup.clearLayers();
+        const perimeterFeatures = [];
+        const pointFeatures = [];
+        fireEvents.forEach((record) => {
+          record.perimeterFeatures.forEach((feature) => {
+            perimeterFeatures.push({
+              ...feature,
+              properties: { ...feature.properties, __pmFireId: record.id }
+            });
+          });
+          if (record.pointFeature) {
+            pointFeatures.push({
+              ...record.pointFeature,
+              properties: { ...record.pointFeature.properties, __pmFireId: record.id }
+            });
+          }
+        });
+
+        if (perimeterFeatures.length) {
+          L.geoJSON(perimeterFeatures, {
+            pane: "firePerimeterPane",
+            renderer: firePerimeterRenderer,
+            style: (feature) => firePerimeterStyle(fireEvents.get(feature.properties.__pmFireId)),
+            onEachFeature: (feature, layer) => {
+              layer.on("click", (event) => {
+                markFireEvent(event);
+                openFirePopup(fireEvents.get(feature.properties.__pmFireId), event.latlng);
+              });
+            }
+          }).addTo(firePerimeterGroup);
+        }
+        if (pointFeatures.length) {
+          L.geoJSON(pointFeatures, {
+            pane: "fireIgnitionPane",
+            pointToLayer: (feature, latlng) => L.circleMarker(
+              latlng,
+              firePointStyle(fireEvents.get(feature.properties.__pmFireId))
+            ),
+            onEachFeature: (feature, layer) => {
+              layer.on("click", (event) => {
+                markFireEvent(event);
+                openFirePopup(fireEvents.get(feature.properties.__pmFireId), event.latlng);
+              });
+            }
+          }).addTo(fireIgnitionGroup);
+        }
+
+        if (wildfiresVisible) {
+          if (!map.hasLayer(firePerimeterGroup)) firePerimeterGroup.addTo(map);
+          if (!map.hasLayer(fireIgnitionGroup)) fireIgnitionGroup.addTo(map);
+        }
+        updateMapAccessibleName();
+      }
+
+      async function fetchPointFeatures(service, where, signal) {
+        const result = await fetchArcgis(service, {
+          f: "geojson",
+          where,
+          outFields: FIRE_POINT_FIELDS,
+          returnGeometry: true,
+          outSR: 4326,
+          orderByFields: "OBJECTID ASC",
+          resultRecordCount: 2000
+        }, signal);
+        return (result.features || [])
+          .filter((feature) => feature.properties?.IncidentTypeCategory === "WF")
+          .map(ensurePointGeometry);
+      }
+
+      async function loadPerimeterSource(source, service, where, signal) {
+        const indexFeatures = await fetchArcgisFeaturePages(service, {
+          where,
+          outFields: "OBJECTID,attr_IrwinID,poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_IncidentTypeCategory",
+          returnGeometry: false,
+          orderByFields: "OBJECTID ASC"
+        }, signal);
+        const expected = new Map();
+        indexFeatures.forEach(({ attributes }) => {
+          if (attributes?.attr_IncidentTypeCategory !== "WF") return;
+          const objectId = String(attributes.OBJECTID);
+          expected.set(objectId, `${attributes.poly_PolygonDateTime || ""}:${attributes.attr_ModifiedOnDateTime_dt || ""}`);
+        });
+
+        const next = new Map();
+        const changedIds = [];
+        expected.forEach((signature, objectId) => {
+          const previous = firePerimeterCache.get(`${source}:${objectId}`);
+          if (previous?.signature === signature && previous.feature) {
+            next.set(`${source}:${objectId}`, previous);
+          } else {
+            changedIds.push(objectId);
+          }
+        });
+
+        for (let index = 0; index < changedIds.length; index += 250) {
+          const objectIds = changedIds.slice(index, index + 250);
+          const result = await fetchArcgis(service, {
+            f: "geojson",
+            objectIds: objectIds.join(","),
+            outFields: FIRE_PERIMETER_FIELDS,
+            returnGeometry: true,
+            outSR: 4326,
+            geometryPrecision: 5,
+            maxAllowableOffset: 0.0001
+          }, signal);
+          (result.features || []).forEach((feature) => {
+            if (feature.properties?.attr_IncidentTypeCategory !== "WF") return;
+            const objectId = String(feature.properties.OBJECTID);
+            next.set(`${source}:${objectId}`, {
+              source,
+              signature: expected.get(objectId) || "",
+              feature
+            });
+          });
+        }
+        return next;
+      }
+
+      async function refreshWildfires(options = {}) {
+        if (!wildfiresVisible && !options.force) return false;
+        if (fireRefreshController) fireRefreshController.abort();
+        const controller = new AbortController();
+        fireRefreshController = controller;
+        const generation = ++fireRefreshGeneration;
+        const timeout = window.setTimeout(() => controller.abort(), 45000);
+        setFireLayerStatus("loading", fireEvents.size ? "Refreshing WFIGS wildfires" : "Loading WFIGS wildfires");
+
+        try {
+          const recentPointWhere = recentFireWhere();
+          const recentPerimeterWhere = recentFireWhere("attr_");
+          const pointPromise = Promise.all([
+            fetchPointFeatures(FIRE_SERVICES.currentLocations, "IncidentTypeCategory='WF'", controller.signal),
+            fetchPointFeatures(FIRE_SERVICES.ytdLocations, recentPointWhere, controller.signal)
+          ]);
+          const perimeterPromise = Promise.all([
+            loadPerimeterSource("current", FIRE_SERVICES.currentPerimeters, "attr_IncidentTypeCategory='WF'", controller.signal),
+            loadPerimeterSource("recent", FIRE_SERVICES.ytdPerimeters, recentPerimeterWhere, controller.signal)
+          ]);
+          perimeterPromise.catch(() => {});
+
+          const [currentPoints, recentPoints] = await pointPromise;
+          if (generation !== fireRefreshGeneration) return false;
+
+          const activeIds = new Set(currentPoints.map((feature) => featureId(feature, "current-point")));
+          const filteredRecentPoints = recentPoints.filter((feature) => !activeIds.has(featureId(feature, "recent-point")));
+          if (!fireEvents.size) {
+            currentFirePoints = currentPoints;
+            recentFirePoints = filteredRecentPoints;
+            rebuildFireEvents();
+            renderFireLayers();
+            const activePointCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
+            setFireLayerStatus("loading", `${activePointCount} active points · loading perimeters`);
+          }
+
+          const [currentPerimeters, recentPerimeters] = await perimeterPromise;
+          if (generation !== fireRefreshGeneration) return false;
+
+          currentFirePoints = currentPoints;
+          recentFirePoints = filteredRecentPoints;
+          firePerimeterCache.clear();
+          currentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
+          recentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
+          rebuildFireEvents();
+          renderFireLayers();
+          lastFireRefreshAt = Date.now();
+          const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
+          const recentCount = fireEvents.size - activeCount;
+          setFireLayerStatus("ready", `${activeCount} active · ${recentCount} closed in 24 h`);
+          return true;
+        } catch (error) {
+          if (!controller.signal.aborted) controller.abort();
+          if (error.name === "AbortError" && generation !== fireRefreshGeneration) return false;
+          setFireLayerStatus("error", fireEvents.size ? "WFIGS refresh failed · keeping current fires" : "WFIGS wildfires unavailable");
+          return false;
+        } finally {
+          window.clearTimeout(timeout);
+          if (fireRefreshController === controller) fireRefreshController = null;
+        }
+      }
+
+      const fireDateFormatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short"
+      });
+      const fireListDateFormatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+      const fireNumberFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+      const fireRelativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+      function validFireTime(value) {
+        const time = Number(value);
+        return Number.isFinite(time) && time > 0 ? time : null;
+      }
+
+      function formatFireDate(value, compact = false) {
+        const time = validFireTime(value);
+        return time ? (compact ? fireListDateFormatter : fireDateFormatter).format(new Date(time)) : "Not reported";
+      }
+
+      function formatFireRelativeTime(value) {
+        const time = validFireTime(value);
+        if (!time) return "Not reported";
+        const delta = time - Date.now();
+        const minutes = Math.round(delta / 60000);
+        if (Math.abs(minutes) < 60) return fireRelativeFormatter.format(minutes, "minute");
+        const hours = Math.round(delta / HOUR);
+        if (Math.abs(hours) < 48) return fireRelativeFormatter.format(hours, "hour");
+        return formatFireDate(time);
+      }
+
+      function formatFireAcres(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${fireNumberFormatter.format(number)} acres` : "Not reported";
+      }
+
+      function formatFirePercent(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? `${Math.round(number)}%` : "Not reported";
+      }
+
+      function formatFireLocation(record) {
+        const state = String(record.state || "").replace(/^US-/, "");
+        return [record.county, state].filter(Boolean).join(", ") || "Not reported";
+      }
+
+      function appendFirePopupRow(grid, label, value) {
+        const labelElement = document.createElement("span");
+        labelElement.className = "pm-fire-popup-label";
+        labelElement.textContent = label;
+        const valueElement = document.createElement("span");
+        valueElement.className = "pm-fire-popup-value";
+        valueElement.textContent = value;
+        grid.append(labelElement, valueElement);
+      }
+
+      function fireDataAvailability(record) {
+        if (record.pointFeature && record.perimeterFeatures.length) return "Ignition + perimeter";
+        if (record.pointFeature) return "Ignition only";
+        if (record.perimeterFeatures.length) return "Perimeter only";
+        return "Location unavailable";
+      }
+
+      function buildFirePopup(record) {
+        const content = document.createElement("div");
+        content.className = "pm-fire-popup";
+        const status = fireStatus(record);
+        content.setAttribute("aria-label", `${record.name || "Unnamed wildfire"}, ${status}`);
+        const head = document.createElement("div");
+        head.className = "pm-fire-popup-head";
+        const name = document.createElement("strong");
+        name.className = "pm-fire-popup-name";
+        name.textContent = record.name || "Unnamed wildfire";
+        const badge = document.createElement("span");
+        badge.className = "pm-fire-badge";
+        badge.dataset.status = status.toLowerCase();
+        badge.textContent = status;
+        head.append(name, badge);
+        const grid = document.createElement("div");
+        grid.className = "pm-fire-popup-grid";
+        appendFirePopupRow(grid, "Discovered", formatFireDate(record.discovery));
+        appendFirePopupRow(grid, "Size", formatFireAcres(record.size));
+        appendFirePopupRow(grid, "Contained", formatFirePercent(record.percentContained));
+        appendFirePopupRow(grid, "Location", formatFireLocation(record));
+        appendFirePopupRow(grid, "Cause", record.cause || "Not reported");
+        appendFirePopupRow(grid, "Updated", formatFireRelativeTime(record.modified || record.polygonTime));
+        appendFirePopupRow(grid, "Data", fireDataAvailability(record));
+        content.append(head, grid);
+        return content;
+      }
+
+      function openFirePopup(record, latlng, selected = false) {
+        if (!record || !latlng) return;
+        const popup = L.popup({ maxWidth: 310, offset: [0, -5], closeButton: true })
+          .setLatLng(latlng)
+          .setContent(buildFirePopup(record));
+        popup._pmFirePopup = true;
+        popup._pmFireSelection = selected;
+        popup.openOn(map);
+      }
+
+      function fireRecordFromPointFeature(feature) {
+        const pointFeature = ensurePointGeometry(feature);
+        const record = blankFireRecord(featureId(pointFeature, "database"));
+        record.rawIrwinId = pointFeature.properties?.IrwinID || null;
+        record.pointFeature = pointFeature;
+        mergeFireAttributes(record, pointAttributes(pointFeature.properties));
+        record.active = !(record.containment || record.control || record.out);
+        record.recent = !record.active;
+        return record;
+      }
+
+      function sqlString(value) {
+        return String(value || "").replace(/'/g, "''");
+      }
+
+      function fireDatabaseWhere() {
+        const clauses = ["IncidentTypeCategory='WF'"];
+        const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
+        if (search) clauses.push(`IncidentName LIKE '%${sqlString(search)}%'`);
+        if (fireDatabaseFilter === "active") {
+          clauses.push("ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
+        } else if (fireDatabaseFilter === "contained") {
+          clauses.push("ContainmentDateTime IS NOT NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
+        } else if (fireDatabaseFilter === "controlled") {
+          clauses.push("ControlDateTime IS NOT NULL AND FireOutDateTime IS NULL");
+        } else if (fireDatabaseFilter === "out") {
+          clauses.push("FireOutDateTime IS NOT NULL");
+        }
+        return clauses.join(" AND ");
+      }
+
+      function appendFireDatabaseRow(feature) {
+        const record = fireRecordFromPointFeature(feature);
+        const status = fireStatus(record);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "pm-fire-row";
+        button.setAttribute(
+          "aria-label",
+          `${record.name || "Unnamed wildfire"}, ${status}, discovered ${formatFireDate(record.discovery)}`
+        );
+        const head = document.createElement("span");
+        head.className = "pm-fire-row-head";
+        const name = document.createElement("span");
+        name.className = "pm-fire-row-name";
+        name.textContent = record.name || "Unnamed wildfire";
+        const badge = document.createElement("span");
+        badge.className = "pm-fire-badge";
+        badge.dataset.status = status.toLowerCase();
+        badge.textContent = status;
+        head.append(name, badge);
+        const dateLocation = document.createElement("span");
+        dateLocation.className = "pm-fire-row-meta";
+        dateLocation.textContent = `${formatFireDate(record.discovery, true)} · ${formatFireLocation(record)}`;
+        const sizeContainment = document.createElement("span");
+        sizeContainment.className = "pm-fire-row-meta";
+        sizeContainment.textContent = `${formatFireAcres(record.size)} · ${formatFirePercent(record.percentContained)} contained`;
+        button.append(head, dateLocation, sizeContainment);
+        button.addEventListener("click", () => selectDatabaseFire(feature));
+        fireList.append(button);
+      }
+
+      async function loadFireDatabase(reset = false) {
+        if (reset) {
+          fireDatabaseOffset = 0;
+          fireDatabaseHasMore = true;
+          fireList.replaceChildren();
+        }
+        if (!fireDatabaseHasMore) return;
+        if (fireDatabaseController) fireDatabaseController.abort();
+        const controller = new AbortController();
+        fireDatabaseController = controller;
+        const generation = ++fireDatabaseGeneration;
+        fireLoadMore.disabled = true;
+        fireLoadMore.hidden = false;
+        fireLoadMore.textContent = "Loading…";
+        fireDatabaseStatus.textContent = fireDatabaseOffset ? "Loading more wildfires" : "Loading year-to-date wildfires";
+
+        try {
+          const result = await fetchArcgis(FIRE_SERVICES.ytdLocations, {
+            f: "geojson",
+            where: fireDatabaseWhere(),
+            outFields: FIRE_POINT_FIELDS,
+            returnGeometry: true,
+            outSR: 4326,
+            orderByFields: "FireDiscoveryDateTime DESC,OBJECTID DESC",
+            resultOffset: fireDatabaseOffset,
+            resultRecordCount: FIRE_PAGE_SIZE + 1
+          }, controller.signal);
+          if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
+          const features = (result.features || []).filter((feature) => (
+            feature.properties?.IncidentTypeCategory === "WF"
+          ));
+          const visible = features.slice(0, FIRE_PAGE_SIZE);
+          visible.forEach(appendFireDatabaseRow);
+          fireDatabaseOffset += visible.length;
+          fireDatabaseHasMore = features.length > FIRE_PAGE_SIZE;
+          fireLoadMore.hidden = !fireDatabaseHasMore;
+          fireLoadMore.disabled = false;
+          fireLoadMore.textContent = "Load more";
+          fireDatabaseStatus.textContent = visible.length
+            ? `${fireList.childElementCount.toLocaleString()} wildfires shown · newest discoveries first`
+            : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          fireDatabaseStatus.textContent = "Wildfire database unavailable";
+          fireLoadMore.hidden = false;
+          fireLoadMore.disabled = false;
+          fireLoadMore.textContent = "Retry";
+        } finally {
+          if (fireDatabaseController === controller) fireDatabaseController = null;
+        }
+      }
+
+      function openFireDrawer() {
+        menus.forEach((menu) => { menu.open = false; });
+        fireDrawer.hidden = false;
+        firesButton.setAttribute("aria-expanded", "true");
+        if (!fireList.childElementCount) loadFireDatabase(true);
+        window.requestAnimationFrame(() => fireSearch.focus({ preventScroll: true }));
+      }
+
+      function closeFireDrawer(restoreFocus = true) {
+        fireDrawer.hidden = true;
+        firesButton.setAttribute("aria-expanded", "false");
+        fireDatabaseGeneration += 1;
+        if (fireDatabaseController) fireDatabaseController.abort();
+        fireDatabaseController = null;
+        if (restoreFocus) firesButton.focus({ preventScroll: true });
+      }
+
+      function selectedRecordWithPerimeters(pointRecord, perimeterFeatures) {
+        const liveRecord = fireEvents.get(pointRecord.id);
+        const record = blankFireRecord(pointRecord.id);
+        record.rawIrwinId = pointRecord.rawIrwinId;
+        record.pointFeature = pointRecord.pointFeature || liveRecord?.pointFeature || null;
+        record.active = pointRecord.active || liveRecord?.active || false;
+        record.recent = !record.active;
+        mergeFireAttributes(record, pointRecord);
+        if (liveRecord) mergeFireAttributes(record, liveRecord);
+        record.perimeterFeatures = perimeterFeatures.length
+          ? perimeterFeatures
+          : (liveRecord?.perimeterFeatures || []);
+        record.perimeterFeatures.forEach((feature) => {
+          mergeFireAttributes(record, perimeterAttributes(feature.properties));
+        });
+        return record;
+      }
+
+      function clearFireSelection(closePopup = false) {
+        const popup = map._popup;
+        selectedFireRecord = null;
+        fireSelectionGroup.clearLayers();
+        if (map.hasLayer(fireSelectionGroup)) map.removeLayer(fireSelectionGroup);
+        syncFireAttribution();
+        updateMapAccessibleName();
+        if (closePopup && popup?._pmFireSelection) map.closePopup(popup);
+      }
+
+      function renderFireSelection(record) {
+        fireSelectionGroup.clearLayers();
+        let perimeterLayer = null;
+        if (record.perimeterFeatures.length) {
+          perimeterLayer = L.geoJSON(record.perimeterFeatures, {
+            pane: "fireSelectionPane",
+            renderer: fireSelectionRenderer,
+            style: () => firePerimeterStyle(record, true),
+            onEachFeature: (_feature, layer) => {
+              layer.on("click", (event) => {
+                markFireEvent(event);
+                openFirePopup(record, event.latlng, true);
+              });
+            }
+          }).addTo(fireSelectionGroup);
+        }
+        let pointLayer = null;
+        if (record.pointFeature) {
+          pointLayer = L.geoJSON(record.pointFeature, {
+            pane: "fireSelectionPane",
+            pointToLayer: (_feature, latlng) => L.circleMarker(latlng, firePointStyle(record, true)),
+            onEachFeature: (_feature, layer) => {
+              layer.on("click", (event) => {
+                markFireEvent(event);
+                openFirePopup(record, event.latlng, true);
+              });
+            }
+          }).addTo(fireSelectionGroup);
+        }
+        if (!map.hasLayer(fireSelectionGroup)) fireSelectionGroup.addTo(map);
+        selectedFireRecord = record;
+        syncFireAttribution();
+        updateMapAccessibleName();
+        return { perimeterLayer, pointLayer };
+      }
+
+      async function selectDatabaseFire(feature) {
+        const pointRecord = fireRecordFromPointFeature(feature);
+        fireDatabaseStatus.textContent = `Locating ${pointRecord.name || "wildfire"}`;
+        const generation = ++fireDatabaseGeneration;
+        if (fireDatabaseController) fireDatabaseController.abort();
+        const controller = new AbortController();
+        fireDatabaseController = controller;
+        let perimeterFeatures = [];
+
+        try {
+          if (pointRecord.rawIrwinId) {
+            const result = await fetchArcgis(FIRE_SERVICES.ytdPerimeters, {
+              f: "geojson",
+              where: `attr_IncidentTypeCategory='WF' AND attr_IrwinID='${sqlString(pointRecord.rawIrwinId)}'`,
+              outFields: FIRE_PERIMETER_FIELDS,
+              returnGeometry: true,
+              outSR: 4326,
+              geometryPrecision: 5,
+              maxAllowableOffset: 0.0001
+            }, controller.signal);
+            perimeterFeatures = (result.features || []).filter((item) => (
+              item.properties?.attr_IncidentTypeCategory === "WF"
+            ));
+          }
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          perimeterFeatures = [];
+        } finally {
+          if (fireDatabaseController === controller) fireDatabaseController = null;
+        }
+        if (generation !== fireDatabaseGeneration) return;
+
+        clearFireSelection(true);
+        const record = selectedRecordWithPerimeters(pointRecord, perimeterFeatures);
+        const { perimeterLayer, pointLayer } = renderFireSelection(record);
+        let popupLatLng = null;
+        const mobile = window.matchMedia("(max-width: 560px)").matches;
+        if (mobile) closeFireDrawer(false);
+
+        if (perimeterLayer?.getBounds()?.isValid()) {
+          const paddingBottomRight = mobile ? [24, 120] : [400, 120];
+          map.fitBounds(perimeterLayer.getBounds(), {
+            paddingTopLeft: [28, 70],
+            paddingBottomRight,
+            maxZoom: 10,
+            animate: !reducedMotion
+          });
+          popupLatLng = pointLayer?.getBounds()?.isValid()
+            ? pointLayer.getBounds().getCenter()
+            : perimeterLayer.getBounds().getCenter();
+        } else if (pointLayer?.getBounds()?.isValid()) {
+          popupLatLng = pointLayer.getBounds().getCenter();
+          map.flyTo(popupLatLng, 9, { animate: !reducedMotion, duration: reducedMotion ? 0 : 0.75 });
+        }
+
+        if (!popupLatLng) {
+          clearFireSelection();
+          fireDatabaseStatus.textContent = "Location unavailable";
+          return;
+        }
+        fireDatabaseStatus.textContent = `${record.name || "Wildfire"} selected`;
+        openFirePopup(record, popupLatLng, true);
+      }
+
+      function setSmokeVisibility(visible) {
+        smokeVisible = visible;
+        smokeToggle.checked = visible;
+        smokeOptions.hidden = !visible;
+        bottomDock.hidden = !visible;
+        const canvas = renderLayer?.getElement?.();
+        if (canvas) canvas.style.display = visible ? "" : "none";
+        if (!visible) {
+          stopPlayback();
+          if (!map._popup?._pmFirePopup) map.closePopup();
+        }
+        updateMapAccessibleName();
+      }
+
+      function setWildfireVisibility(visible) {
+        wildfiresVisible = visible;
+        wildfireToggle.checked = visible;
+        wildfireOptions.hidden = !visible;
+        if (visible) {
+          if (!map.hasLayer(firePerimeterGroup)) firePerimeterGroup.addTo(map);
+          if (!map.hasLayer(fireIgnitionGroup)) fireIgnitionGroup.addTo(map);
+          if (!lastFireRefreshAt || Date.now() - lastFireRefreshAt >= FIRE_REFRESH_MS) {
+            refreshWildfires({ force: true });
+          }
+        } else {
+          if (fireRefreshController) fireRefreshController.abort();
+          if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
+          if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
+          if (map._popup?._pmFirePopup) map.closePopup();
+          clearFireSelection();
+        }
+        syncFireAttribution();
+        updateMapAccessibleName();
+      }
+
       const MapUtilityControl = L.Control.extend({
         options: { position: "topleft" },
         onAdd() {
@@ -1395,9 +2795,9 @@
           cacheRefreshButton.dataset.state = "idle";
           cacheRefreshButton.setAttribute(
             "aria-label",
-            "Check for a newer forecast cache"
+            "Refresh smoke and wildfire data"
           );
-          cacheRefreshButton.title = "Check for a newer forecast cache";
+          cacheRefreshButton.title = "Refresh smoke and wildfire data";
           cacheRefreshButton.innerHTML =
             '<i data-lucide="refresh-cw" aria-hidden="true"></i>';
           cacheRefreshLabel = L.DomUtil.create(
@@ -1408,7 +2808,7 @@
           cacheRefreshLabel.textContent = "Update";
           L.DomEvent.disableClickPropagation(container);
           L.DomEvent.on(locateButton, "click", () => requestLocation(true));
-          L.DomEvent.on(cacheRefreshButton, "click", () => refreshCache());
+          L.DomEvent.on(cacheRefreshButton, "click", () => refreshAllData());
           return container;
         }
       });
@@ -3215,10 +4615,7 @@
           : `${displayedHour < 0 ? "−" : "+"}${Math.abs(displayedHour)} h`;
         updateControlAvailability(hour);
         setFrameStatus(pending ? "loading" : "ready", pending ? "Loading forecast frame" : "Forecast frame loaded");
-        mapElement.setAttribute(
-          "aria-label",
-          `${data.extentLabel} ${DATASETS[particle].label} valid ${localTime}`
-        );
+        updateMapAccessibleName();
       }
 
       function setFrameStatus(state = "ready", message = "Forecast frame loaded") {
@@ -3233,7 +4630,7 @@
       function setCacheRefreshState(
         state = "idle",
         label = "Update",
-        message = "Check for a newer forecast cache",
+        message = "Refresh smoke and wildfire data",
         resetDelay = 0
       ) {
         if (cacheFeedbackTimer) {
@@ -3254,9 +4651,9 @@
             cacheRefreshLabel.textContent = "Update";
             cacheRefreshButton.setAttribute(
               "aria-label",
-              "Check for a newer forecast cache"
+              "Refresh smoke and wildfire data"
             );
-            cacheRefreshButton.title = "Check for a newer forecast cache";
+            cacheRefreshButton.title = "Refresh smoke and wildfire data";
             cacheFeedbackTimer = 0;
           }, resetDelay);
         }
@@ -3281,8 +4678,8 @@
           (Math.round(hour) === 0 && !playing)
         );
         cacheRefreshButton.disabled = (
-          timelineInteractionLocked ||
-          cacheRefreshActive
+          cacheRefreshActive ||
+          combinedRefreshActive
         );
       }
 
@@ -3517,15 +4914,17 @@
       }
 
       async function refreshCache(options = {}) {
-        if (cacheRefreshActive || timelineInteractionLocked) return false;
+        if (cacheRefreshActive || (timelineInteractionLocked && !options.combined)) return false;
         cacheRefreshActive = true;
         lastCacheCheckAt = Date.now();
         updateControlAvailability();
-        setCacheRefreshState(
-          "loading",
-          "Checking",
-          "Checking for a newer forecast cache"
-        );
+        if (!options.combined) {
+          setCacheRefreshState(
+            "loading",
+            "Checking",
+            "Checking for a newer forecast cache"
+          );
+        }
         setFrameStatus("loading", "Checking forecast cache");
 
         const refreshDatasetName = cacheDatasetName();
@@ -3565,12 +4964,14 @@
           if (!cacheChanged && !alignmentChanged) {
             cacheUpdateDelayHours = nextWindow.updateDelayHours;
             setFrameStatus("ready", "Forecast cache is current");
-            setCacheRefreshState(
-              "success",
-              "Current",
-              "Already using the latest forecast cache",
-              2600
-            );
+            if (!options.combined) {
+              setCacheRefreshState(
+                "success",
+                "Current",
+                "Already using the latest forecast cache",
+                2600
+              );
+            }
             return true;
           }
 
@@ -3671,14 +5072,16 @@
               ? "Forecast cache updated"
               : "Forecast cache is current · Now realigned"
           );
-          setCacheRefreshState(
-            "success",
-            cacheChanged ? "Updated" : "Current",
-            cacheChanged
-              ? "Forecast cache updated"
-              : "Forecast cache is current and Now was realigned",
-            2600
-          );
+          if (!options.combined) {
+            setCacheRefreshState(
+              "success",
+              cacheChanged ? "Updated" : "Current",
+              cacheChanged
+                ? "Forecast cache updated"
+                : "Forecast cache is current and Now was realigned",
+              2600
+            );
+          }
           if (resumePlayback && playing) {
             playbackGeneration += 1;
             playbackLoop(playbackGeneration);
@@ -3728,15 +5131,59 @@
             releasePreviewDataset(stagedPreview);
           }
           setFrameStatus("error", "Cache update unavailable · keeping current map");
-          setCacheRefreshState(
-            "error",
-            "Retry",
-            "Cache update unavailable; current map retained",
-            options.automatic === true ? 2600 : 3600
-          );
+          if (!options.combined) {
+            setCacheRefreshState(
+              "error",
+              "Retry",
+              "Cache update unavailable; current map retained",
+              options.automatic === true ? 2600 : 3600
+            );
+          }
           return false;
         } finally {
           cacheRefreshActive = false;
+          updateControlAvailability();
+        }
+      }
+
+      async function refreshAllData() {
+        if (combinedRefreshActive || cacheRefreshActive) return false;
+        combinedRefreshActive = true;
+        updateControlAvailability();
+        setCacheRefreshState(
+          "loading",
+          "Refreshing",
+          "Refreshing smoke and wildfire data"
+        );
+
+        try {
+          const [smokeReady, wildfiresReady] = await Promise.all([
+            refreshCache({ combined: true }),
+            refreshWildfires({ force: true })
+          ]);
+          const bothReady = smokeReady && wildfiresReady;
+          const eitherReady = smokeReady || wildfiresReady;
+          setCacheRefreshState(
+            bothReady ? "success" : (eitherReady ? "partial" : "error"),
+            bothReady ? "Updated" : (eitherReady ? "Partial" : "Retry"),
+            bothReady
+              ? "Smoke and wildfire data refreshed"
+              : (eitherReady
+                  ? "Refresh partially completed; current data retained where unavailable"
+                  : "Refresh unavailable; current map retained"),
+            bothReady ? 2600 : 3600
+          );
+          return bothReady;
+        } catch {
+          setCacheRefreshState(
+            "error",
+            "Retry",
+            "Refresh unavailable; current map retained",
+            3600
+          );
+          return false;
+        } finally {
+          combinedRefreshActive = false;
           updateControlAvailability();
         }
       }
@@ -3801,13 +5248,37 @@
 
       renderLayer = makeContinuousLayer().addTo(map);
 
+      smokeToggle.addEventListener("change", () => setSmokeVisibility(smokeToggle.checked));
+      wildfireToggle.addEventListener("change", () => setWildfireVisibility(wildfireToggle.checked));
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
+      firesButton.addEventListener("click", () => {
+        if (fireDrawer.hidden) openFireDrawer();
+        else closeFireDrawer();
+      });
+      fireDrawerClose.addEventListener("click", () => closeFireDrawer());
+      fireRetry.addEventListener("click", () => refreshWildfires({ force: true }));
+      fireLoadMore.addEventListener("click", () => loadFireDatabase(false));
+      fireSearch.addEventListener("input", () => {
+        if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
+        fireSearchTimer = window.setTimeout(() => loadFireDatabase(true), 300);
+      });
+      fireFilters.forEach((button) => {
+        button.addEventListener("click", () => {
+          fireDatabaseFilter = button.dataset.fireStatus;
+          fireFilters.forEach((choice) => choice.setAttribute(
+            "aria-pressed",
+            String(choice === button)
+          ));
+          loadFireDatabase(true);
+        });
+      });
 
       menus.forEach((menu) => {
         menu.addEventListener("toggle", () => {
           if (!menu.open) return;
+          if (!fireDrawer.hidden) closeFireDrawer(false);
           menus.forEach((other) => {
             if (other !== menu) other.open = false;
           });
@@ -3818,6 +5289,14 @@
         menus.forEach((menu) => {
           if (menu.open && !menu.contains(event.target)) menu.open = false;
         });
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !fireDrawer.hidden) closeFireDrawer();
+      });
+
+      map.on("popupclose", (event) => {
+        if (event.popup?._pmFireSelection && selectedFireRecord) clearFireSelection();
       });
 
       function settleScrub() {
@@ -3904,14 +5383,30 @@
         if (
           document.visibilityState !== "visible" ||
           cacheRefreshActive ||
+          combinedRefreshActive ||
           timelineInteractionLocked ||
           Date.now() - lastCacheCheckAt < CACHE_CHECK_INTERVAL
         ) return;
         refreshCache({ automatic: true });
       }
 
+      function checkWildfiresAfterResume() {
+        if (
+          document.visibilityState !== "visible" ||
+          combinedRefreshActive ||
+          !wildfiresVisible ||
+          Date.now() - lastFireRefreshAt < FIRE_REFRESH_MS
+        ) return;
+        refreshWildfires({ force: true });
+      }
+
       document.addEventListener("visibilitychange", checkCacheAfterResume);
-      window.addEventListener("pageshow", checkCacheAfterResume);
+      document.addEventListener("visibilitychange", checkWildfiresAfterResume);
+      window.addEventListener("pageshow", () => {
+        checkCacheAfterResume();
+        checkWildfiresAfterResume();
+      });
+      fireRefreshTimer = window.setInterval(checkWildfiresAfterResume, FIRE_REFRESH_MS);
 
       const probeCanvas = document.createElement("canvas");
       probeCanvas.width = 1;
@@ -3919,7 +5414,9 @@
       const probeContext = probeCanvas.getContext("2d", { willReadFrequently: true, alpha: true });
 
       map.on("click", (event) => {
+        if (event.originalEvent?._pmFireHandled) return;
         map.closePopup();
+        if (!smokeVisible) return;
         const values = activeProcessed?.values;
         const preparedImage = activeProcessed?.image;
         const fields = activeProcessed?.fields;
@@ -4051,12 +5548,18 @@
 
       window.addEventListener("pagehide", () => {
         cancelScheduledProcessing();
+        if (fireRefreshController) fireRefreshController.abort();
+        if (fireDatabaseController) fireDatabaseController.abort();
+        if (fireRefreshTimer) window.clearInterval(fireRefreshTimer);
+        if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
         if (renderLayer) renderLayer.finishTransition();
       }, { once: true });
 
       renderIcons();
 
       async function initialize() {
+        syncFireAttribution();
+        refreshWildfires({ force: true });
         timelineInteractionLocked = true;
         updateControlAvailability(0);
         setFrameStatus("loading", "Loading available forecast frames");
