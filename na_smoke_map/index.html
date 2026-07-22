@@ -1585,8 +1585,7 @@
 
       const WMS = "https://geo.weather.gc.ca/geomet";
       const HOUR = 60 * 60 * 1000;
-      const WFIGS_ROOT = "https://services.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
-      const WFIGS_FALLBACK_ROOT = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+      const WFIGS_ROOT = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
       const FIRE_SERVICES = {
         currentLocations: `${WFIGS_ROOT}/WFIGS_Incident_Locations_Current/FeatureServer/0`,
         currentPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_Current/FeatureServer/0`,
@@ -1600,6 +1599,9 @@
       const FIRE_LARGE_ACRES = 300;
       const FIRE_DATABASE_CACHE_MS = 5 * 60 * 1000;
       const FIRE_DATABASE_CACHE_LIMIT = 24;
+      const FIRE_DATABASE_STALE_MS = 24 * HOUR;
+      const FIRE_DATABASE_STORAGE_LIMIT = 12;
+      const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v1";
       const FIRE_POINT_FIELDS = [
         "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
         "IncidentSize", "PercentContained", "ContainmentDateTime",
@@ -1968,28 +1970,56 @@
 
       async function fetchArcgis(service, parameters, signal, options = {}) {
         const maxAttempts = Math.max(1, options.maxAttempts || 3);
-        const fallbackService = service.startsWith(WFIGS_ROOT)
-          ? service.replace(WFIGS_ROOT, WFIGS_FALLBACK_ROOT)
-          : service;
+        let waitedForRateLimit = false;
         let lastError = null;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           try {
-            const requestService = attempt % 2 === 1 ? fallbackService : service;
-            const requestUrl = arcgisQueryUrl(requestService, parameters);
+            const requestUrl = arcgisQueryUrl(service, parameters);
             const response = await fetch(requestUrl, {
               cache: options.cacheMode || "no-store",
               signal
             });
-            if (!response.ok) throw new Error(`WFIGS request failed (${response.status})`);
+            if (!response.ok) {
+              const responseError = new Error(`WFIGS request failed (${response.status})`);
+              responseError.arcgisCode = response.status;
+              const retryAfter = Number(response.headers.get("Retry-After"));
+              if (Number.isFinite(retryAfter) && retryAfter > 0) {
+                responseError.retryAfterMs = retryAfter * 1000;
+              }
+              throw responseError;
+            }
             const result = await response.json();
-            if (result?.error) throw new Error(result.error.message || "WFIGS request failed");
+            if (result?.error) {
+              const serviceError = new Error(result.error.message || "WFIGS request failed");
+              serviceError.arcgisCode = result.error.code;
+              const details = Array.isArray(result.error.details)
+                ? result.error.details.join(" ")
+                : "";
+              const retryMatch = details.match(/retry after\s+(\d+)\s*sec/i);
+              if (retryMatch) serviceError.retryAfterMs = Number(retryMatch[1]) * 1000;
+              throw serviceError;
+            }
             return result;
           } catch (error) {
             if (error.name === "AbortError") throw error;
             lastError = error;
+            if (error.arcgisCode === 429) {
+              if (
+                options.waitForRateLimit &&
+                !waitedForRateLimit &&
+                attempt < maxAttempts - 1
+              ) {
+                waitedForRateLimit = true;
+                const waitMs = Math.min(65000, Math.max(1000, error.retryAfterMs || 61000));
+                options.onRateLimit?.(waitMs);
+                await abortableDelay(waitMs, signal);
+                continue;
+              }
+              throw error;
+            }
             if (attempt < maxAttempts - 1) {
               const backoff = [300, 700, 1400, 2500][Math.min(attempt, 3)];
-              await delay(backoff);
+              await abortableDelay(backoff, signal);
             }
           }
         }
@@ -2698,6 +2728,48 @@
         fireList.append(button);
       }
 
+      function arcgisJsonPointFeatures(result) {
+        return (result.features || [])
+          .map((feature) => ({
+            type: "Feature",
+            id: feature.attributes?.OBJECTID,
+            geometry: null,
+            properties: feature.attributes || {}
+          }))
+          .filter((feature) => feature.properties.IncidentTypeCategory === "WF");
+      }
+
+      function readStoredFireDatabasePages() {
+        try {
+          const stored = JSON.parse(window.localStorage.getItem(FIRE_DATABASE_STORAGE_KEY) || "[]");
+          return Array.isArray(stored) ? stored : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function storedFireDatabasePage(cacheKey) {
+        const now = Date.now();
+        return readStoredFireDatabasePages().find((entry) => (
+          entry?.cacheKey === cacheKey &&
+          Array.isArray(entry.features) &&
+          now - Number(entry.loadedAt) < FIRE_DATABASE_STALE_MS
+        )) || null;
+      }
+
+      function storeFireDatabasePage(cacheKey, features) {
+        try {
+          const entries = readStoredFireDatabasePages().filter((entry) => entry?.cacheKey !== cacheKey);
+          entries.unshift({ cacheKey, loadedAt: Date.now(), features });
+          window.localStorage.setItem(
+            FIRE_DATABASE_STORAGE_KEY,
+            JSON.stringify(entries.slice(0, FIRE_DATABASE_STORAGE_LIMIT))
+          );
+        } catch {
+          // Private browsing or storage limits must not block the live database.
+        }
+      }
+
       async function loadFireDatabase(reset = false) {
         if (reset) {
           fireDatabaseOffset = 0;
@@ -2718,11 +2790,10 @@
           ? FIRE_SERVICES.currentLocations
           : FIRE_SERVICES.ytdLocations;
         const requestParameters = {
-          f: "geojson",
+          f: "json",
           where: fireDatabaseWhere(currentMembersOnly),
           outFields: FIRE_POINT_FIELDS,
-          returnGeometry: true,
-          outSR: 4326,
+          returnGeometry: false,
           orderByFields: fireDatabaseSort === "size"
             ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
             : "FireDiscoveryDateTime DESC,OBJECTID DESC",
@@ -2736,26 +2807,48 @@
 
         try {
           const cachedPage = fireDatabasePageCache.get(cacheKey);
+          const storedPage = storedFireDatabasePage(cacheKey);
           let features;
+          let usedStoredPage = false;
           if (cachedPage && Date.now() - cachedPage.loadedAt < FIRE_DATABASE_CACHE_MS) {
             features = cachedPage.features;
+            usedStoredPage = Boolean(cachedPage.stale);
           } else {
-            const result = await fetchArcgis(
-              requestService,
-              requestParameters,
-              controller.signal,
-              { maxAttempts: 5, cacheMode: "default" }
-            );
-            features = (result.features || []).filter((feature) => (
-              feature.properties?.IncidentTypeCategory === "WF"
-            ));
+            try {
+              const result = await fetchArcgis(
+                requestService,
+                requestParameters,
+                controller.signal,
+                {
+                  maxAttempts: 3,
+                  cacheMode: "default",
+                  waitForRateLimit: !storedPage,
+                  onRateLimit: (waitMs) => {
+                    if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+                      fireDatabaseStatus.textContent = `WFIGS busy · retrying in ${Math.ceil(waitMs / 1000)} seconds`;
+                    }
+                  }
+                }
+              );
+              features = arcgisJsonPointFeatures(result);
+              storeFireDatabasePage(cacheKey, features);
+            } catch (error) {
+              if (error.name === "AbortError") throw error;
+              if (!storedPage) throw error;
+              features = storedPage.features;
+              usedStoredPage = true;
+            }
             if (
               !fireDatabasePageCache.has(cacheKey) &&
               fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
             ) {
               fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
             }
-            fireDatabasePageCache.set(cacheKey, { loadedAt: Date.now(), features });
+            fireDatabasePageCache.set(cacheKey, {
+              loadedAt: Date.now(),
+              stale: usedStoredPage,
+              features
+            });
           }
           if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
           if (fireDatabaseNeedsReset && requestOffset === 0) {
@@ -2770,7 +2863,9 @@
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Load more";
           fireDatabaseStatus.textContent = visible.length
-            ? `${fireList.childElementCount.toLocaleString()}${fireDatabaseLargeOnly ? " large" : ""} wildfires shown · ${fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first"}`
+            ? (usedStoredPage
+                ? `${fireList.childElementCount.toLocaleString()} cached wildfires shown · live WFIGS busy`
+                : `${fireList.childElementCount.toLocaleString()}${fireDatabaseLargeOnly ? " large" : ""} wildfires shown · ${fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first"}`)
             : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
         } catch (error) {
           if (error.name === "AbortError") return;
@@ -4761,6 +4856,24 @@
 
       function delay(milliseconds) {
         return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+      }
+
+      function abortableDelay(milliseconds, signal) {
+        return new Promise((resolve, reject) => {
+          if (signal?.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          const timeout = window.setTimeout(() => {
+            signal?.removeEventListener("abort", abort);
+            resolve();
+          }, milliseconds);
+          const abort = () => {
+            window.clearTimeout(timeout);
+            reject(new DOMException("Aborted", "AbortError"));
+          };
+          signal?.addEventListener("abort", abort, { once: true });
+        });
       }
 
       function nextAnimationFrame() {
