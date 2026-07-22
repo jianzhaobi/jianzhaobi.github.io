@@ -187,6 +187,10 @@
       font-family: inherit;
     }
 
+    #north-america-pm25 .leaflet-container.pm-fire-hover {
+      cursor: pointer;
+    }
+
     #north-america-pm25 .pm-continuous-layer {
       will-change: transform;
     }
@@ -438,6 +442,25 @@
       line-height: 1.2;
     }
 
+    #north-america-pm25 .pm-fire-layer-toggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 9px;
+    }
+
+    #north-america-pm25 .pm-fire-layer-toggles .pm-check {
+      min-height: 38px;
+      gap: 7px;
+      padding: 0 5px;
+      font-size: 11px;
+    }
+
+    #north-america-pm25 .pm-fire-layer-toggles .pm-check input {
+      width: 16px;
+      height: 16px;
+    }
+
     #north-america-pm25 .pm-fire-legend-item {
       display: flex;
       align-items: center;
@@ -581,17 +604,37 @@
     }
 
     #north-america-pm25 .pm-fire-search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
       padding: 0 13px 9px;
     }
 
     #north-america-pm25 .pm-fire-search {
-      width: 100%;
+      width: auto;
+      min-width: 0;
+      flex: 1 1 auto;
       min-height: 42px;
       padding: 0 11px;
       border: 1px solid var(--pm-line);
       border-radius: 10px;
       color: var(--pm-text);
       background: var(--pm-ui-solid);
+    }
+
+    #north-america-pm25 .pm-fire-sort {
+      width: 42px;
+      min-width: 42px;
+      min-height: 42px;
+      padding: 0;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-sort[aria-pressed="true"] {
+      border-color: color-mix(in srgb, var(--pm-accent) 50%, transparent);
+      color: var(--pm-accent-strong);
+      background: var(--pm-accent-soft);
     }
 
     #north-america-pm25 .pm-fire-filters {
@@ -1429,6 +1472,16 @@
             </section>
             <section class="pm-layer-section" id="pm-wildfire-options" aria-labelledby="pm-wildfire-options-title">
               <strong class="pm-layer-section-title" id="pm-wildfire-options-title">Wildfires</strong>
+              <div class="pm-fire-layer-toggles" aria-label="Visible wildfire geometry">
+                <label class="pm-check" for="pm-show-ignitions">
+                  <input id="pm-show-ignitions" type="checkbox" checked>
+                  <span>Ignition points</span>
+                </label>
+                <label class="pm-check" for="pm-show-perimeters">
+                  <input id="pm-show-perimeters" type="checkbox" checked>
+                  <span>Perimeters</span>
+                </label>
+              </div>
               <div class="pm-fire-legend" aria-label="Wildfire symbols">
                 <span class="pm-fire-legend-item is-wide">
                   <span class="pm-fire-age-symbols" aria-hidden="true">
@@ -1487,13 +1540,17 @@
         <div class="pm-fire-search-wrap">
           <label class="sr-only" for="pm-fire-search">Search by incident name</label>
           <input class="pm-fire-search" id="pm-fire-search" type="search" autocomplete="off" placeholder="Search by incident name">
+          <button type="button" class="pm-button pm-icon-button pm-fire-sort" id="pm-fire-sort" aria-label="Sort order: newest discovery first. Activate for largest fires first" aria-pressed="false" title="Newest discovery first">
+            <i data-lucide="arrow-down-wide-narrow" aria-hidden="true"></i>
+          </button>
         </div>
-        <div class="pm-fire-filters" id="pm-fire-filters" role="group" aria-label="Filter wildfires by status">
+        <div class="pm-fire-filters" id="pm-fire-filters" role="group" aria-label="Filter wildfires by status and size">
           <button type="button" class="pm-fire-filter" data-fire-status="all" aria-pressed="true">All</button>
           <button type="button" class="pm-fire-filter" data-fire-status="active" aria-pressed="false">Active</button>
           <button type="button" class="pm-fire-filter" data-fire-status="contained" aria-pressed="false">Contained</button>
           <button type="button" class="pm-fire-filter" data-fire-status="controlled" aria-pressed="false">Controlled</button>
           <button type="button" class="pm-fire-filter" data-fire-status="out" aria-pressed="false">Out</button>
+          <button type="button" class="pm-fire-filter pm-fire-large-filter" id="pm-fire-large-filter" aria-pressed="false">Large · 300+ acres</button>
         </div>
         <div class="pm-fire-database-status" id="pm-fire-database-status" role="status" aria-live="polite">Open the database to load fires.</div>
         <div class="pm-fire-list" id="pm-fire-list" aria-label="Wildfire incidents"></div>
@@ -1559,6 +1616,8 @@
       const mapElement = document.getElementById("pm-map");
       const smokeToggle = document.getElementById("pm-show-smoke");
       const wildfireToggle = document.getElementById("pm-show-wildfires");
+      const ignitionToggle = document.getElementById("pm-show-ignitions");
+      const perimeterToggle = document.getElementById("pm-show-perimeters");
       const smokeOptions = document.getElementById("pm-smoke-options");
       const wildfireOptions = document.getElementById("pm-wildfire-options");
       const particleSelect = document.getElementById("pm-particle");
@@ -1569,7 +1628,9 @@
       const fireDrawer = document.getElementById("pm-fire-drawer");
       const fireDrawerClose = document.getElementById("pm-fire-drawer-close");
       const fireSearch = document.getElementById("pm-fire-search");
-      const fireFilters = [...root.querySelectorAll(".pm-fire-filter")];
+      const fireSort = document.getElementById("pm-fire-sort");
+      const fireFilters = [...root.querySelectorAll("[data-fire-status]")];
+      const fireLargeFilter = document.getElementById("pm-fire-large-filter");
       const fireList = document.getElementById("pm-fire-list");
       const fireLoadMore = document.getElementById("pm-fire-load-more");
       const fireDatabaseStatus = document.getElementById("pm-fire-database-status");
@@ -1610,6 +1671,7 @@
       const FIRE_REFRESH_MS = 5 * 60 * 1000;
       const FIRE_RECENT_MS = 24 * HOUR;
       const FIRE_PAGE_SIZE = 50;
+      const FIRE_LARGE_ACRES = 300;
       const FIRE_POINT_FIELDS = [
         "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
         "IncidentSize", "PercentContained", "ContainmentDateTime",
@@ -1789,6 +1851,8 @@
       let extent = "surface";
       let smokeVisible = true;
       let wildfiresVisible = true;
+      let ignitionsVisible = true;
+      let perimetersVisible = true;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -1823,6 +1887,8 @@
       let fireDatabaseOffset = 0;
       let fireDatabaseHasMore = true;
       let fireDatabaseFilter = "all";
+      let fireDatabaseLargeOnly = false;
+      let fireDatabaseSort = "date";
       let fireSearchTimer = 0;
       let fireAttributionVisible = false;
       let selectedFireRecord = null;
@@ -1870,7 +1936,7 @@
         zoomControl: true,
         attributionControl: true,
         minZoom: 2,
-        maxZoom: 10,
+        maxZoom: 17,
         zoomSnap: 1,
         zoomDelta: 1,
         worldCopyJump: true
@@ -1906,12 +1972,8 @@
 
       let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
 
-      map.createPane("firePerimeterPane").style.zIndex = "440";
-      map.createPane("fireIgnitionPane").style.zIndex = "450";
-      map.createPane("fireSelectionPane").style.zIndex = "460";
-      const firePerimeterRenderer = L.canvas({ pane: "firePerimeterPane", padding: 0.5 });
-      const fireIgnitionRenderer = L.canvas({ pane: "fireIgnitionPane", padding: 0.5, tolerance: 6 });
-      const fireSelectionRenderer = L.canvas({ pane: "fireSelectionPane", padding: 0.5, tolerance: 6 });
+      map.createPane("firePane").style.zIndex = "450";
+      const fireRenderer = L.canvas({ pane: "firePane", padding: 0.5, tolerance: 7 });
       const firePerimeterGroup = L.layerGroup();
       const fireIgnitionGroup = L.layerGroup();
       const fireSelectionGroup = L.layerGroup();
@@ -1923,7 +1985,12 @@
           const valid = new Date(currentValidTime.getTime() + Math.round(selectedHour) * HOUR);
           parts.push(`${data.extentLabel} ${DATASETS[particle].label} valid ${formatLocal.format(valid)}`);
         }
-        if (wildfiresVisible) parts.push("WFIGS wildfires");
+        if (wildfiresVisible && (ignitionsVisible || perimetersVisible)) {
+          const geometry = ignitionsVisible && perimetersVisible
+            ? "ignitions and perimeters"
+            : (ignitionsVisible ? "ignitions" : "perimeters");
+          parts.push(`WFIGS wildfire ${geometry}`);
+        }
         if (selectedFireRecord) parts.push(`selected wildfire ${selectedFireRecord.name || "Unnamed wildfire"}`);
         mapElement.setAttribute(
           "aria-label",
@@ -1938,7 +2005,9 @@
       }
 
       function syncFireAttribution() {
-        const shouldShow = wildfiresVisible || Boolean(selectedFireRecord);
+        const shouldShow = (
+          wildfiresVisible && (ignitionsVisible || perimetersVisible)
+        ) || Boolean(selectedFireRecord);
         if (shouldShow === fireAttributionVisible) return;
         if (shouldShow) map.attributionControl.addAttribution(FIRE_ATTRIBUTION);
         else map.attributionControl.removeAttribution(FIRE_ATTRIBUTION);
@@ -2149,34 +2218,36 @@
         fireEvents = events;
       }
 
-      function firePerimeterStyle(record, selected = false) {
+      function firePerimeterStyle(record, selected = false, hovered = false) {
         const active = fireStatus(record) === "Active";
         return {
-          pane: selected ? "fireSelectionPane" : "firePerimeterPane",
-          renderer: selected ? fireSelectionRenderer : firePerimeterRenderer,
+          pane: "firePane",
+          renderer: fireRenderer,
           bubblingMouseEvents: false,
           color: active ? "#d94b38" : "#77716b",
-          weight: selected ? 4 : (active ? 2 : 1.75),
+          weight: selected ? 4 : (hovered ? (active ? 3.25 : 2.75) : (active ? 2 : 1.75)),
           opacity: selected ? 1 : 0.92,
           dashArray: active ? null : "7 5",
           fillColor: active ? "#d94b38" : "#77716b",
-          fillOpacity: selected ? (active ? 0.18 : 0.09) : (active ? 0.11 : 0.035),
+          fillOpacity: selected
+            ? (active ? 0.18 : 0.09)
+            : (hovered ? (active ? 0.18 : 0.075) : (active ? 0.11 : 0.035)),
           className: selected ? "pm-fire-selected-path" : ""
         };
       }
 
-      function firePointStyle(record, selected = false) {
+      function firePointStyle(record, selected = false, hovered = false) {
         const active = fireStatus(record) === "Active";
         const radius = record.pointRadius ?? firePointRadius(record.size);
         const displayRadius = active ? radius : Math.max(3.25, radius - 1.25);
         const activeColor = record.pointColor || activeFirePointColor(record.discovery);
         return {
-          pane: selected ? "fireSelectionPane" : "fireIgnitionPane",
-          renderer: selected ? fireSelectionRenderer : fireIgnitionRenderer,
+          pane: "firePane",
+          renderer: fireRenderer,
           bubblingMouseEvents: false,
-          radius: selected ? Math.min(11, radius + 3) : displayRadius,
+          radius: selected ? Math.min(11, radius + 3) : (hovered ? displayRadius + 1.5 : displayRadius),
           color: selected ? "#fff" : (active ? "#fff" : "#77716b"),
-          weight: selected ? 3 : (active ? 2 : 1.5),
+          weight: selected ? 3 : (hovered ? 3 : (active ? 2 : 1.5)),
           opacity: active || selected ? 1 : 0.74,
           fillColor: active ? activeColor : "#fff",
           fillOpacity: active ? 1 : (selected ? 0.88 : 0.22)
@@ -2189,7 +2260,28 @@
         L.DomEvent.stopPropagation(event.originalEvent);
       }
 
+      function bindFireInteraction(layer, record, geometryType, selected = false) {
+        const style = (hovered) => geometryType === "point"
+          ? firePointStyle(record, selected, hovered)
+          : firePerimeterStyle(record, selected, hovered);
+        layer.on({
+          mouseover: () => {
+            mapElement.classList.add("pm-fire-hover");
+            layer.setStyle(style(true));
+          },
+          mouseout: () => {
+            mapElement.classList.remove("pm-fire-hover");
+            layer.setStyle(style(false));
+          },
+          click: (event) => {
+            markFireEvent(event);
+            openFirePopup(record, event.latlng, selected);
+          }
+        });
+      }
+
       function renderFireLayers() {
+        mapElement.classList.remove("pm-fire-hover");
         firePerimeterGroup.clearLayers();
         fireIgnitionGroup.clearLayers();
         const perimeterFeatures = [];
@@ -2211,37 +2303,31 @@
 
         if (perimeterFeatures.length) {
           L.geoJSON(perimeterFeatures, {
-            pane: "firePerimeterPane",
-            renderer: firePerimeterRenderer,
+            pane: "firePane",
+            renderer: fireRenderer,
             style: (feature) => firePerimeterStyle(fireEvents.get(feature.properties.__pmFireId)),
             onEachFeature: (feature, layer) => {
-              layer.on("click", (event) => {
-                markFireEvent(event);
-                openFirePopup(fireEvents.get(feature.properties.__pmFireId), event.latlng);
-              });
+              bindFireInteraction(layer, fireEvents.get(feature.properties.__pmFireId), "perimeter");
             }
           }).addTo(firePerimeterGroup);
         }
         if (pointFeatures.length) {
           L.geoJSON(pointFeatures, {
-            pane: "fireIgnitionPane",
+            pane: "firePane",
+            renderer: fireRenderer,
             pointToLayer: (feature, latlng) => L.circleMarker(
               latlng,
               firePointStyle(fireEvents.get(feature.properties.__pmFireId))
             ),
             onEachFeature: (feature, layer) => {
-              layer.on("click", (event) => {
-                markFireEvent(event);
-                openFirePopup(fireEvents.get(feature.properties.__pmFireId), event.latlng);
-              });
+              bindFireInteraction(layer, fireEvents.get(feature.properties.__pmFireId), "point");
             }
           }).addTo(fireIgnitionGroup);
         }
 
-        if (wildfiresVisible) {
-          if (!map.hasLayer(firePerimeterGroup)) firePerimeterGroup.addTo(map);
-          if (!map.hasLayer(fireIgnitionGroup)) fireIgnitionGroup.addTo(map);
-        }
+        syncLiveFireLayerOrder();
+        if (selectedFireRecord) renderFireSelection(selectedFireRecord);
+        syncFireAttribution();
         updateMapAccessibleName();
       }
 
@@ -2470,11 +2556,22 @@
 
       function openFirePopup(record, latlng, selected = false) {
         if (!record || !latlng) return;
+        if (
+          selected &&
+          map._popup?._pmFireSelection &&
+          map._popup?._pmFireId === record.id
+        ) {
+          map._popup
+            .setLatLng(latlng)
+            .setContent(buildFirePopup(record));
+          return;
+        }
         const popup = L.popup({ maxWidth: 310, offset: [0, -5], closeButton: true })
           .setLatLng(latlng)
           .setContent(buildFirePopup(record));
         popup._pmFirePopup = true;
         popup._pmFireSelection = selected;
+        popup._pmFireId = record.id;
         popup.openOn(map);
       }
 
@@ -2497,6 +2594,7 @@
         const clauses = ["IncidentTypeCategory='WF'"];
         const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
         if (search) clauses.push(`IncidentName LIKE '%${sqlString(search)}%'`);
+        if (fireDatabaseLargeOnly) clauses.push(`IncidentSize >= ${FIRE_LARGE_ACRES}`);
         if (fireDatabaseFilter === "active") {
           clauses.push("ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
         } else if (fireDatabaseFilter === "contained") {
@@ -2563,7 +2661,9 @@
             outFields: FIRE_POINT_FIELDS,
             returnGeometry: true,
             outSR: 4326,
-            orderByFields: "FireDiscoveryDateTime DESC,OBJECTID DESC",
+            orderByFields: fireDatabaseSort === "size"
+              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+              : "FireDiscoveryDateTime DESC,OBJECTID DESC",
             resultOffset: fireDatabaseOffset,
             resultRecordCount: FIRE_PAGE_SIZE + 1
           }, controller.signal);
@@ -2579,7 +2679,7 @@
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Load more";
           fireDatabaseStatus.textContent = visible.length
-            ? `${fireList.childElementCount.toLocaleString()} wildfires shown · newest discoveries first`
+            ? `${fireList.childElementCount.toLocaleString()}${fireDatabaseLargeOnly ? " large" : ""} wildfires shown · ${fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first"}`
             : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
         } catch (error) {
           if (error.name === "AbortError") return;
@@ -2630,6 +2730,7 @@
       function clearFireSelection(closePopup = false) {
         const popup = map._popup;
         selectedFireRecord = null;
+        mapElement.classList.remove("pm-fire-hover");
         fireSelectionGroup.clearLayers();
         if (map.hasLayer(fireSelectionGroup)) map.removeLayer(fireSelectionGroup);
         syncFireAttribution();
@@ -2642,27 +2743,22 @@
         let perimeterLayer = null;
         if (record.perimeterFeatures.length) {
           perimeterLayer = L.geoJSON(record.perimeterFeatures, {
-            pane: "fireSelectionPane",
-            renderer: fireSelectionRenderer,
+            pane: "firePane",
+            renderer: fireRenderer,
             style: () => firePerimeterStyle(record, true),
             onEachFeature: (_feature, layer) => {
-              layer.on("click", (event) => {
-                markFireEvent(event);
-                openFirePopup(record, event.latlng, true);
-              });
+              bindFireInteraction(layer, record, "perimeter", true);
             }
           }).addTo(fireSelectionGroup);
         }
         let pointLayer = null;
         if (record.pointFeature) {
           pointLayer = L.geoJSON(record.pointFeature, {
-            pane: "fireSelectionPane",
+            pane: "firePane",
+            renderer: fireRenderer,
             pointToLayer: (_feature, latlng) => L.circleMarker(latlng, firePointStyle(record, true)),
             onEachFeature: (_feature, layer) => {
-              layer.on("click", (event) => {
-                markFireEvent(event);
-                openFirePopup(record, event.latlng, true);
-              });
+              bindFireInteraction(layer, record, "point", true);
             }
           }).addTo(fireSelectionGroup);
         }
@@ -2717,7 +2813,7 @@
           map.fitBounds(perimeterLayer.getBounds(), {
             paddingTopLeft: [28, 70],
             paddingBottomRight,
-            maxZoom: 10,
+            maxZoom: 15,
             animate: !reducedMotion
           });
           popupLatLng = pointLayer?.getBounds()?.isValid()
@@ -2725,7 +2821,7 @@
             : perimeterLayer.getBounds().getCenter();
         } else if (pointLayer?.getBounds()?.isValid()) {
           popupLatLng = pointLayer.getBounds().getCenter();
-          map.flyTo(popupLatLng, 9, { animate: !reducedMotion, duration: reducedMotion ? 0 : 0.75 });
+          map.flyTo(popupLatLng, 13, { animate: !reducedMotion, duration: reducedMotion ? 0 : 0.75 });
         }
 
         if (!popupLatLng) {
@@ -2751,13 +2847,20 @@
         updateMapAccessibleName();
       }
 
+      function syncLiveFireLayerOrder() {
+        if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
+        if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
+        if (!wildfiresVisible) return;
+        if (perimetersVisible) firePerimeterGroup.addTo(map);
+        if (ignitionsVisible) fireIgnitionGroup.addTo(map);
+      }
+
       function setWildfireVisibility(visible) {
         wildfiresVisible = visible;
         wildfireToggle.checked = visible;
         wildfireOptions.hidden = !visible;
         if (visible) {
-          if (!map.hasLayer(firePerimeterGroup)) firePerimeterGroup.addTo(map);
-          if (!map.hasLayer(fireIgnitionGroup)) fireIgnitionGroup.addTo(map);
+          syncLiveFireLayerOrder();
           if (!lastFireRefreshAt || Date.now() - lastFireRefreshAt >= FIRE_REFRESH_MS) {
             refreshWildfires({ force: true });
           }
@@ -2768,6 +2871,26 @@
           if (map._popup?._pmFirePopup) map.closePopup();
           clearFireSelection();
         }
+        syncFireAttribution();
+        updateMapAccessibleName();
+      }
+
+      function setIgnitionVisibility(visible) {
+        ignitionsVisible = visible;
+        ignitionToggle.checked = visible;
+        mapElement.classList.remove("pm-fire-hover");
+        syncLiveFireLayerOrder();
+        if (selectedFireRecord) renderFireSelection(selectedFireRecord);
+        syncFireAttribution();
+        updateMapAccessibleName();
+      }
+
+      function setPerimeterVisibility(visible) {
+        perimetersVisible = visible;
+        perimeterToggle.checked = visible;
+        mapElement.classList.remove("pm-fire-hover");
+        syncLiveFireLayerOrder();
+        if (selectedFireRecord) renderFireSelection(selectedFireRecord);
         syncFireAttribution();
         updateMapAccessibleName();
       }
@@ -5250,6 +5373,8 @@
 
       smokeToggle.addEventListener("change", () => setSmokeVisibility(smokeToggle.checked));
       wildfireToggle.addEventListener("change", () => setWildfireVisibility(wildfireToggle.checked));
+      ignitionToggle.addEventListener("change", () => setIgnitionVisibility(ignitionToggle.checked));
+      perimeterToggle.addEventListener("change", () => setPerimeterVisibility(perimeterToggle.checked));
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
@@ -5264,6 +5389,19 @@
         if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
         fireSearchTimer = window.setTimeout(() => loadFireDatabase(true), 300);
       });
+      fireSort.addEventListener("click", () => {
+        fireDatabaseSort = fireDatabaseSort === "date" ? "size" : "date";
+        const sizeFirst = fireDatabaseSort === "size";
+        fireSort.setAttribute("aria-pressed", String(sizeFirst));
+        fireSort.setAttribute(
+          "aria-label",
+          sizeFirst
+            ? "Sort order: largest acreage first. Activate for newest discoveries first"
+            : "Sort order: newest discovery first. Activate for largest fires first"
+        );
+        fireSort.title = sizeFirst ? "Largest acreage first" : "Newest discovery first";
+        loadFireDatabase(true);
+      });
       fireFilters.forEach((button) => {
         button.addEventListener("click", () => {
           fireDatabaseFilter = button.dataset.fireStatus;
@@ -5273,6 +5411,11 @@
           ));
           loadFireDatabase(true);
         });
+      });
+      fireLargeFilter.addEventListener("click", () => {
+        fireDatabaseLargeOnly = !fireDatabaseLargeOnly;
+        fireLargeFilter.setAttribute("aria-pressed", String(fireDatabaseLargeOnly));
+        loadFireDatabase(true);
       });
 
       menus.forEach((menu) => {
@@ -5414,7 +5557,10 @@
       const probeContext = probeCanvas.getContext("2d", { willReadFrequently: true, alpha: true });
 
       map.on("click", (event) => {
-        if (event.originalEvent?._pmFireHandled) return;
+        if (
+          event.originalEvent?._pmFireHandled ||
+          mapElement.classList.contains("pm-fire-hover")
+        ) return;
         map.closePopup();
         if (!smokeVisible) return;
         const values = activeProcessed?.values;
