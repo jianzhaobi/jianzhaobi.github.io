@@ -63,8 +63,6 @@
       --pm-radius: 14px;
       --pm-fire-active: #d94b38;
       --pm-fire-active-dark: #8f241d;
-      --pm-fire-new: #982c24;
-      --pm-fire-established: #e07a43;
       --pm-fire-closed: #77716b;
       --pm-safe-top: env(safe-area-inset-top, 0px);
       --pm-safe-right: env(safe-area-inset-right, 0px);
@@ -433,15 +431,6 @@
       text-transform: uppercase;
     }
 
-    #north-america-pm25 .pm-fire-legend {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 7px 9px;
-      color: var(--pm-muted);
-      font-size: 11px;
-      line-height: 1.2;
-    }
-
     #north-america-pm25 .pm-fire-layer-toggles {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -461,65 +450,8 @@
       height: 16px;
     }
 
-    #north-america-pm25 .pm-fire-legend-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-
-    #north-america-pm25 .pm-fire-legend-item.is-wide {
+    #north-america-pm25 .pm-fire-layer-toggles .pm-check.is-wide {
       grid-column: 1 / -1;
-    }
-
-    #north-america-pm25 .pm-fire-age-symbols {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-    }
-
-    #north-america-pm25 .pm-fire-symbol-point {
-      width: 10px;
-      height: 10px;
-      flex: 0 0 auto;
-      border: 2px solid #fff;
-      border-radius: 50%;
-      background: var(--pm-fire-new);
-      box-shadow: 0 0 0 1px rgb(35 22 20 / 38%);
-    }
-
-    #north-america-pm25 .pm-fire-symbol-point.is-closed {
-      border-color: var(--pm-fire-closed);
-      background: var(--pm-ui-solid);
-      box-shadow: none;
-    }
-
-    #north-america-pm25 .pm-fire-symbol-point.is-established {
-      width: 12px;
-      height: 12px;
-      background: var(--pm-fire-established);
-    }
-
-    #north-america-pm25 .pm-fire-symbol-perimeter {
-      width: 18px;
-      height: 10px;
-      flex: 0 0 auto;
-      border: 2px solid var(--pm-fire-active);
-      border-radius: 4px;
-      background: rgb(217 75 56 / 13%);
-    }
-
-    #north-america-pm25 .pm-fire-symbol-perimeter.is-closed {
-      border-color: var(--pm-fire-closed);
-      border-style: dashed;
-      background: rgb(119 113 107 / 5%);
-    }
-
-    #north-america-pm25 .pm-fire-legend-note {
-      grid-column: 1 / -1;
-      margin-top: 1px;
-      color: var(--pm-muted);
-      font-size: 10px;
-      line-height: 1.3;
     }
 
     #north-america-pm25 .pm-fire-layer-status {
@@ -631,10 +563,10 @@
       box-shadow: none;
     }
 
-    #north-america-pm25 .pm-fire-sort[aria-pressed="true"] {
+    #north-america-pm25 .pm-fire-sort[data-sort="size"] {
       border-color: color-mix(in srgb, var(--pm-accent) 50%, transparent);
       color: var(--pm-accent-strong);
-      background: var(--pm-accent-soft);
+      background: var(--pm-ui-solid);
     }
 
     #north-america-pm25 .pm-fire-filters {
@@ -731,7 +663,8 @@
 
     #north-america-pm25 .pm-fire-badge[data-status="contained"],
     #north-america-pm25 .pm-fire-badge[data-status="controlled"],
-    #north-america-pm25 .pm-fire-badge[data-status="out"] {
+    #north-america-pm25 .pm-fire-badge[data-status="out"],
+    #north-america-pm25 .pm-fire-badge[data-status="not-current"] {
       color: var(--pm-muted);
       background: rgb(119 113 107 / 12%);
     }
@@ -1481,19 +1414,10 @@
                   <input id="pm-show-perimeters" type="checkbox" checked>
                   <span>Perimeters</span>
                 </label>
-              </div>
-              <div class="pm-fire-legend" aria-label="Wildfire symbols">
-                <span class="pm-fire-legend-item is-wide">
-                  <span class="pm-fire-age-symbols" aria-hidden="true">
-                    <span class="pm-fire-symbol-point"></span>
-                    <span class="pm-fire-symbol-point is-established"></span>
-                  </span>
-                  New → established active ignition
-                </span>
-                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-perimeter" aria-hidden="true"></span>Active perimeter</span>
-                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-point is-closed" aria-hidden="true"></span>Recently closed</span>
-                <span class="pm-fire-legend-item"><span class="pm-fire-symbol-perimeter is-closed" aria-hidden="true"></span>Closed perimeter</span>
-                <span class="pm-fire-legend-note">Circle size follows NWCG fire-size classes; larger circles indicate more reported acres.</span>
+                <label class="pm-check is-wide" for="pm-show-recent-fires">
+                  <input id="pm-show-recent-fires" type="checkbox">
+                  <span>Recently closed · last 24 h</span>
+                </label>
               </div>
               <div class="pm-fire-layer-status" id="pm-fire-layer-status" data-state="loading" role="status" aria-live="polite">
                 <span id="pm-fire-layer-status-text">Loading WFIGS wildfires</span>
@@ -1540,7 +1464,7 @@
         <div class="pm-fire-search-wrap">
           <label class="sr-only" for="pm-fire-search">Search by incident name</label>
           <input class="pm-fire-search" id="pm-fire-search" type="search" autocomplete="off" placeholder="Search by incident name">
-          <button type="button" class="pm-button pm-icon-button pm-fire-sort" id="pm-fire-sort" aria-label="Sort order: newest discovery first. Activate for largest fires first" aria-pressed="false" title="Newest discovery first">
+          <button type="button" class="pm-button pm-icon-button pm-fire-sort" id="pm-fire-sort" data-sort="date" aria-label="Sort order: newest discovery first. Activate for largest fires first" title="Newest discovery first">
             <i data-lucide="arrow-down-wide-narrow" aria-hidden="true"></i>
           </button>
         </div>
@@ -1618,6 +1542,7 @@
       const wildfireToggle = document.getElementById("pm-show-wildfires");
       const ignitionToggle = document.getElementById("pm-show-ignitions");
       const perimeterToggle = document.getElementById("pm-show-perimeters");
+      const recentFireToggle = document.getElementById("pm-show-recent-fires");
       const smokeOptions = document.getElementById("pm-smoke-options");
       const wildfireOptions = document.getElementById("pm-wildfire-options");
       const particleSelect = document.getElementById("pm-particle");
@@ -1677,7 +1602,7 @@
         "IncidentSize", "PercentContained", "ContainmentDateTime",
         "ControlDateTime", "FireOutDateTime", "FireCause", "POOCounty",
         "POOState", "InitialLatitude", "InitialLongitude",
-        "ModifiedOnDateTime_dt", "IncidentTypeCategory"
+        "ModifiedOnDateTime_dt", "IncidentTypeCategory", "ICS209ReportStatus"
       ].join(",");
       const FIRE_PERIMETER_FIELDS = [
         "OBJECTID", "attr_IrwinID", "attr_IncidentName",
@@ -1853,6 +1778,7 @@
       let wildfiresVisible = true;
       let ignitionsVisible = true;
       let perimetersVisible = true;
+      let recentClosedVisible = false;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -2004,6 +1930,17 @@
         fireRetry.hidden = state !== "error";
       }
 
+      function updateFireReadyStatus() {
+        const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
+        const recentCount = [...fireEvents.values()].filter(
+          (record) => fireStatus(record) !== "Active" && record.recent
+        ).length;
+        setFireLayerStatus(
+          "ready",
+          `${activeCount} active · ${recentCount} recent ${recentClosedVisible ? "shown" : "hidden"}`
+        );
+      }
+
       function syncFireAttribution() {
         const shouldShow = (
           wildfiresVisible && (ignitionsVisible || perimetersVisible)
@@ -2025,14 +1962,25 @@
       }
 
       async function fetchArcgis(service, parameters, signal) {
-        const response = await fetch(arcgisQueryUrl(service, parameters), {
-          cache: "no-store",
-          signal
-        });
-        if (!response.ok) throw new Error(`WFIGS request failed (${response.status})`);
-        const result = await response.json();
-        if (result?.error) throw new Error(result.error.message || "WFIGS request failed");
-        return result;
+        const requestUrl = arcgisQueryUrl(service, parameters);
+        let lastError = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const response = await fetch(requestUrl, {
+              cache: "no-store",
+              signal
+            });
+            if (!response.ok) throw new Error(`WFIGS request failed (${response.status})`);
+            const result = await response.json();
+            if (result?.error) throw new Error(result.error.message || "WFIGS request failed");
+            return result;
+          } catch (error) {
+            if (error.name === "AbortError") throw error;
+            lastError = error;
+            if (attempt < 2) await delay(attempt === 0 ? 350 : 800);
+          }
+        }
+        throw lastError || new Error("WFIGS request failed");
       }
 
       async function fetchArcgisFeaturePages(service, parameters, signal) {
@@ -2087,7 +2035,8 @@
           cause: properties.FireCause,
           county: properties.POOCounty,
           state: properties.POOState,
-          modified: properties.ModifiedOnDateTime_dt
+          modified: properties.ModifiedOnDateTime_dt,
+          reportStatus: properties.ICS209ReportStatus
         };
       }
 
@@ -2138,6 +2087,7 @@
           county: null,
           state: null,
           modified: null,
+          reportStatus: null,
           polygonTime: null,
           active: false,
           recent: false,
@@ -2172,11 +2122,16 @@
       }
 
       function fireStatus(record) {
+        // A final ICS-209 report means ongoing reporting has ended. WFIGS may
+        // retain these records in its Current service without a closure date.
+        if (record.reportStatus === "F" && !(record.out || record.control || record.containment)) {
+          return "Not current";
+        }
         if (record.active) return "Active";
         if (record.out) return "Out";
         if (record.control) return "Controlled";
         if (record.containment) return "Contained";
-        return record.recent ? "Contained" : "Active";
+        return "Not current";
       }
 
       function rebuildFireEvents() {
@@ -2287,6 +2242,7 @@
         const perimeterFeatures = [];
         const pointFeatures = [];
         fireEvents.forEach((record) => {
+          if (fireStatus(record) !== "Active" && (!record.recent || !recentClosedVisible)) return;
           record.perimeterFeatures.forEach((feature) => {
             perimeterFeatures.push({
               ...feature,
@@ -2346,53 +2302,97 @@
           .map(ensurePointGeometry);
       }
 
-      async function loadPerimeterSource(source, service, where, signal) {
-        const indexFeatures = await fetchArcgisFeaturePages(service, {
+      async function fetchFullPerimeterSource(source, service, where, signal) {
+        const result = await fetchArcgis(service, {
+          f: "geojson",
           where,
-          outFields: "OBJECTID,attr_IrwinID,poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_IncidentTypeCategory",
-          returnGeometry: false,
-          orderByFields: "OBJECTID ASC"
+          outFields: FIRE_PERIMETER_FIELDS,
+          returnGeometry: true,
+          outSR: 4326,
+          geometryPrecision: 5,
+          maxAllowableOffset: 0.0001,
+          orderByFields: "OBJECTID ASC",
+          resultRecordCount: 2000
         }, signal);
-        const expected = new Map();
-        indexFeatures.forEach(({ attributes }) => {
-          if (attributes?.attr_IncidentTypeCategory !== "WF") return;
-          const objectId = String(attributes.OBJECTID);
-          expected.set(objectId, `${attributes.poly_PolygonDateTime || ""}:${attributes.attr_ModifiedOnDateTime_dt || ""}`);
-        });
-
         const next = new Map();
-        const changedIds = [];
-        expected.forEach((signature, objectId) => {
-          const previous = firePerimeterCache.get(`${source}:${objectId}`);
-          if (previous?.signature === signature && previous.feature) {
-            next.set(`${source}:${objectId}`, previous);
-          } else {
-            changedIds.push(objectId);
-          }
-        });
-
-        for (let index = 0; index < changedIds.length; index += 250) {
-          const objectIds = changedIds.slice(index, index + 250);
-          const result = await fetchArcgis(service, {
-            f: "geojson",
-            objectIds: objectIds.join(","),
-            outFields: FIRE_PERIMETER_FIELDS,
-            returnGeometry: true,
-            outSR: 4326,
-            geometryPrecision: 5,
-            maxAllowableOffset: 0.0001
-          }, signal);
-          (result.features || []).forEach((feature) => {
-            if (feature.properties?.attr_IncidentTypeCategory !== "WF") return;
-            const objectId = String(feature.properties.OBJECTID);
-            next.set(`${source}:${objectId}`, {
-              source,
-              signature: expected.get(objectId) || "",
-              feature
-            });
+        (result.features || []).forEach((feature) => {
+          const properties = feature.properties || {};
+          if (properties.attr_IncidentTypeCategory !== "WF") return;
+          const objectId = String(properties.OBJECTID);
+          next.set(`${source}:${objectId}`, {
+            source,
+            signature: `${properties.poly_PolygonDateTime || ""}:${properties.attr_ModifiedOnDateTime_dt || ""}`,
+            feature
           });
-        }
+        });
         return next;
+      }
+
+      async function loadPerimeterSource(source, service, where, signal) {
+        const hasCachedGeometry = [...firePerimeterCache.values()].some(
+          (entry) => entry.source === source && entry.feature
+        );
+        if (!hasCachedGeometry) {
+          return fetchFullPerimeterSource(source, service, where, signal);
+        }
+
+        try {
+          const indexFeatures = await fetchArcgisFeaturePages(service, {
+            where,
+            outFields: "OBJECTID,attr_IrwinID,poly_PolygonDateTime,attr_ModifiedOnDateTime_dt,attr_IncidentTypeCategory",
+            returnGeometry: false,
+            orderByFields: "OBJECTID ASC"
+          }, signal);
+          const expected = new Map();
+          indexFeatures.forEach(({ attributes }) => {
+            if (attributes?.attr_IncidentTypeCategory !== "WF") return;
+            const objectId = String(attributes.OBJECTID);
+            expected.set(objectId, `${attributes.poly_PolygonDateTime || ""}:${attributes.attr_ModifiedOnDateTime_dt || ""}`);
+          });
+
+          const next = new Map();
+          const changedIds = [];
+          expected.forEach((signature, objectId) => {
+            const previous = firePerimeterCache.get(`${source}:${objectId}`);
+            if (previous?.signature === signature && previous.feature) {
+              next.set(`${source}:${objectId}`, previous);
+            } else {
+              changedIds.push(objectId);
+            }
+          });
+
+          for (let index = 0; index < changedIds.length; index += 250) {
+            const objectIds = changedIds.slice(index, index + 250);
+            const result = await fetchArcgis(service, {
+              f: "geojson",
+              objectIds: objectIds.join(","),
+              outFields: FIRE_PERIMETER_FIELDS,
+              returnGeometry: true,
+              outSR: 4326,
+              geometryPrecision: 5,
+              maxAllowableOffset: 0.0001
+            }, signal);
+            (result.features || []).forEach((feature) => {
+              if (feature.properties?.attr_IncidentTypeCategory !== "WF") return;
+              const objectId = String(feature.properties.OBJECTID);
+              next.set(`${source}:${objectId}`, {
+                source,
+                signature: expected.get(objectId) || "",
+                feature
+              });
+            });
+          }
+          return next;
+        } catch (error) {
+          if (error.name === "AbortError") throw error;
+          return fetchFullPerimeterSource(source, service, where, signal);
+        }
+      }
+
+      function cachedPerimetersForSource(source) {
+        return new Map(
+          [...firePerimeterCache].filter(([, entry]) => entry.source === source)
+        );
       }
 
       async function refreshWildfires(options = {}) {
@@ -2407,31 +2407,64 @@
         try {
           const recentPointWhere = recentFireWhere();
           const recentPerimeterWhere = recentFireWhere("attr_");
-          const pointPromise = Promise.all([
-            fetchPointFeatures(FIRE_SERVICES.currentLocations, "IncidentTypeCategory='WF'", controller.signal),
-            fetchPointFeatures(FIRE_SERVICES.ytdLocations, recentPointWhere, controller.signal)
-          ]);
-          const perimeterPromise = Promise.all([
-            loadPerimeterSource("current", FIRE_SERVICES.currentPerimeters, "attr_IncidentTypeCategory='WF'", controller.signal),
-            loadPerimeterSource("recent", FIRE_SERVICES.ytdPerimeters, recentPerimeterWhere, controller.signal)
-          ]);
-          perimeterPromise.catch(() => {});
-
-          const [currentPoints, recentPoints] = await pointPromise;
+          const currentPoints = await fetchPointFeatures(
+            FIRE_SERVICES.currentLocations,
+            "IncidentTypeCategory='WF'",
+            controller.signal
+          );
           if (generation !== fireRefreshGeneration) return false;
 
-          const activeIds = new Set(currentPoints.map((feature) => featureId(feature, "current-point")));
-          const filteredRecentPoints = recentPoints.filter((feature) => !activeIds.has(featureId(feature, "recent-point")));
           if (!fireEvents.size) {
             currentFirePoints = currentPoints;
-            recentFirePoints = filteredRecentPoints;
+            recentFirePoints = [];
             rebuildFireEvents();
             renderFireLayers();
             const activePointCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
             setFireLayerStatus("loading", `${activePointCount} active points · loading perimeters`);
           }
 
-          const [currentPerimeters, recentPerimeters] = await perimeterPromise;
+          let refreshPartial = false;
+          let recentPoints;
+          try {
+            recentPoints = await fetchPointFeatures(
+              FIRE_SERVICES.ytdLocations,
+              recentPointWhere,
+              controller.signal
+            );
+          } catch (error) {
+            if (error.name === "AbortError") throw error;
+            refreshPartial = true;
+            recentPoints = recentFirePoints;
+          }
+
+          const activeIds = new Set(currentPoints.map((feature) => featureId(feature, "current-point")));
+          const filteredRecentPoints = recentPoints.filter((feature) => !activeIds.has(featureId(feature, "recent-point")));
+          let currentPerimeters;
+          let recentPerimeters;
+          try {
+            currentPerimeters = await loadPerimeterSource(
+              "current",
+              FIRE_SERVICES.currentPerimeters,
+              "attr_IncidentTypeCategory='WF'",
+              controller.signal
+            );
+          } catch (error) {
+            if (error.name === "AbortError") throw error;
+            refreshPartial = true;
+            currentPerimeters = cachedPerimetersForSource("current");
+          }
+          try {
+            recentPerimeters = await loadPerimeterSource(
+              "recent",
+              FIRE_SERVICES.ytdPerimeters,
+              recentPerimeterWhere,
+              controller.signal
+            );
+          } catch (error) {
+            if (error.name === "AbortError") throw error;
+            refreshPartial = true;
+            recentPerimeters = cachedPerimetersForSource("recent");
+          }
           if (generation !== fireRefreshGeneration) return false;
 
           currentFirePoints = currentPoints;
@@ -2441,10 +2474,13 @@
           recentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
           rebuildFireEvents();
           renderFireLayers();
+          if (refreshPartial) {
+            const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
+            setFireLayerStatus("error", `${activeCount} active · some recent data unavailable`);
+            return false;
+          }
           lastFireRefreshAt = Date.now();
-          const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
-          const recentCount = fireEvents.size - activeCount;
-          setFireLayerStatus("ready", `${activeCount} active · ${recentCount} closed in 24 h`);
+          updateFireReadyStatus();
           return true;
         } catch (error) {
           if (!controller.signal.aborted) controller.abort();
@@ -2538,7 +2574,7 @@
         name.textContent = record.name || "Unnamed wildfire";
         const badge = document.createElement("span");
         badge.className = "pm-fire-badge";
-        badge.dataset.status = status.toLowerCase();
+        badge.dataset.status = status.toLowerCase().replace(/\s+/g, "-");
         badge.textContent = status;
         head.append(name, badge);
         const grid = document.createElement("div");
@@ -2575,14 +2611,15 @@
         popup.openOn(map);
       }
 
-      function fireRecordFromPointFeature(feature) {
+      function fireRecordFromPointFeature(feature, currentMember = false) {
         const pointFeature = ensurePointGeometry(feature);
         const record = blankFireRecord(featureId(pointFeature, "database"));
+        const liveRecord = fireEvents.get(record.id);
         record.rawIrwinId = pointFeature.properties?.IrwinID || null;
         record.pointFeature = pointFeature;
         mergeFireAttributes(record, pointAttributes(pointFeature.properties));
-        record.active = !(record.containment || record.control || record.out);
-        record.recent = !record.active;
+        record.active = currentMember || Boolean(liveRecord?.active);
+        record.recent = Boolean(liveRecord?.recent);
         return record;
       }
 
@@ -2590,14 +2627,13 @@
         return String(value || "").replace(/'/g, "''");
       }
 
-      function fireDatabaseWhere() {
+      function fireDatabaseWhere(currentMembersOnly = false) {
         const clauses = ["IncidentTypeCategory='WF'"];
         const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
         if (search) clauses.push(`IncidentName LIKE '%${sqlString(search)}%'`);
         if (fireDatabaseLargeOnly) clauses.push(`IncidentSize >= ${FIRE_LARGE_ACRES}`);
-        if (fireDatabaseFilter === "active") {
-          clauses.push("ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
-        } else if (fireDatabaseFilter === "contained") {
+        if (currentMembersOnly) clauses.push("(ICS209ReportStatus IS NULL OR ICS209ReportStatus <> 'F')");
+        if (fireDatabaseFilter === "contained") {
           clauses.push("ContainmentDateTime IS NOT NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
         } else if (fireDatabaseFilter === "controlled") {
           clauses.push("ControlDateTime IS NOT NULL AND FireOutDateTime IS NULL");
@@ -2607,8 +2643,8 @@
         return clauses.join(" AND ");
       }
 
-      function appendFireDatabaseRow(feature) {
-        const record = fireRecordFromPointFeature(feature);
+      function appendFireDatabaseRow(feature, currentMember = false) {
+        const record = fireRecordFromPointFeature(feature, currentMember);
         const status = fireStatus(record);
         const button = document.createElement("button");
         button.type = "button";
@@ -2624,7 +2660,7 @@
         name.textContent = record.name || "Unnamed wildfire";
         const badge = document.createElement("span");
         badge.className = "pm-fire-badge";
-        badge.dataset.status = status.toLowerCase();
+        badge.dataset.status = status.toLowerCase().replace(/\s+/g, "-");
         badge.textContent = status;
         head.append(name, badge);
         const dateLocation = document.createElement("span");
@@ -2634,7 +2670,7 @@
         sizeContainment.className = "pm-fire-row-meta";
         sizeContainment.textContent = `${formatFireAcres(record.size)} · ${formatFirePercent(record.percentContained)} contained`;
         button.append(head, dateLocation, sizeContainment);
-        button.addEventListener("click", () => selectDatabaseFire(feature));
+        button.addEventListener("click", () => selectDatabaseFire(feature, currentMember));
         fireList.append(button);
       }
 
@@ -2652,27 +2688,34 @@
         fireLoadMore.disabled = true;
         fireLoadMore.hidden = false;
         fireLoadMore.textContent = "Loading…";
-        fireDatabaseStatus.textContent = fireDatabaseOffset ? "Loading more wildfires" : "Loading year-to-date wildfires";
+        const currentMembersOnly = fireDatabaseFilter === "active";
+        fireDatabaseStatus.textContent = fireDatabaseOffset
+          ? "Loading more wildfires"
+          : (currentMembersOnly ? "Loading active wildfires" : "Loading year-to-date wildfires");
 
         try {
-          const result = await fetchArcgis(FIRE_SERVICES.ytdLocations, {
-            f: "geojson",
-            where: fireDatabaseWhere(),
-            outFields: FIRE_POINT_FIELDS,
-            returnGeometry: true,
-            outSR: 4326,
-            orderByFields: fireDatabaseSort === "size"
-              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
-              : "FireDiscoveryDateTime DESC,OBJECTID DESC",
-            resultOffset: fireDatabaseOffset,
-            resultRecordCount: FIRE_PAGE_SIZE + 1
-          }, controller.signal);
+          const result = await fetchArcgis(
+            currentMembersOnly ? FIRE_SERVICES.currentLocations : FIRE_SERVICES.ytdLocations,
+            {
+              f: "geojson",
+              where: fireDatabaseWhere(currentMembersOnly),
+              outFields: FIRE_POINT_FIELDS,
+              returnGeometry: true,
+              outSR: 4326,
+              orderByFields: fireDatabaseSort === "size"
+                ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+                : "FireDiscoveryDateTime DESC,OBJECTID DESC",
+              resultOffset: fireDatabaseOffset,
+              resultRecordCount: FIRE_PAGE_SIZE + 1
+            },
+            controller.signal
+          );
           if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
           const features = (result.features || []).filter((feature) => (
             feature.properties?.IncidentTypeCategory === "WF"
           ));
           const visible = features.slice(0, FIRE_PAGE_SIZE);
-          visible.forEach(appendFireDatabaseRow);
+          visible.forEach((feature) => appendFireDatabaseRow(feature, currentMembersOnly));
           fireDatabaseOffset += visible.length;
           fireDatabaseHasMore = features.length > FIRE_PAGE_SIZE;
           fireLoadMore.hidden = !fireDatabaseHasMore;
@@ -2715,7 +2758,7 @@
         record.rawIrwinId = pointRecord.rawIrwinId;
         record.pointFeature = pointRecord.pointFeature || liveRecord?.pointFeature || null;
         record.active = pointRecord.active || liveRecord?.active || false;
-        record.recent = !record.active;
+        record.recent = pointRecord.recent || liveRecord?.recent || false;
         mergeFireAttributes(record, pointRecord);
         if (liveRecord) mergeFireAttributes(record, liveRecord);
         record.perimeterFeatures = perimeterFeatures.length
@@ -2769,8 +2812,8 @@
         return { perimeterLayer, pointLayer };
       }
 
-      async function selectDatabaseFire(feature) {
-        const pointRecord = fireRecordFromPointFeature(feature);
+      async function selectDatabaseFire(feature, currentMember = false) {
+        const pointRecord = fireRecordFromPointFeature(feature, currentMember);
         fireDatabaseStatus.textContent = `Locating ${pointRecord.name || "wildfire"}`;
         const generation = ++fireDatabaseGeneration;
         if (fireDatabaseController) fireDatabaseController.abort();
@@ -2893,6 +2936,13 @@
         if (selectedFireRecord) renderFireSelection(selectedFireRecord);
         syncFireAttribution();
         updateMapAccessibleName();
+      }
+
+      function setRecentClosedVisibility(visible) {
+        recentClosedVisible = visible;
+        recentFireToggle.checked = visible;
+        renderFireLayers();
+        if (!fireRefreshController && fireEvents.size) updateFireReadyStatus();
       }
 
       const MapUtilityControl = L.Control.extend({
@@ -5375,6 +5425,7 @@
       wildfireToggle.addEventListener("change", () => setWildfireVisibility(wildfireToggle.checked));
       ignitionToggle.addEventListener("change", () => setIgnitionVisibility(ignitionToggle.checked));
       perimeterToggle.addEventListener("change", () => setPerimeterVisibility(perimeterToggle.checked));
+      recentFireToggle.addEventListener("change", () => setRecentClosedVisibility(recentFireToggle.checked));
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
@@ -5392,7 +5443,7 @@
       fireSort.addEventListener("click", () => {
         fireDatabaseSort = fireDatabaseSort === "date" ? "size" : "date";
         const sizeFirst = fireDatabaseSort === "size";
-        fireSort.setAttribute("aria-pressed", String(sizeFirst));
+        fireSort.dataset.sort = fireDatabaseSort;
         fireSort.setAttribute(
           "aria-label",
           sizeFirst
@@ -5537,6 +5588,7 @@
         if (
           document.visibilityState !== "visible" ||
           combinedRefreshActive ||
+          fireRefreshController ||
           !wildfiresVisible ||
           Date.now() - lastFireRefreshAt < FIRE_REFRESH_MS
         ) return;
