@@ -2158,11 +2158,11 @@
         const time = Number(discovery);
         if (!Number.isFinite(time) || time <= 0) return "#d84a2f";
         const ageHours = Math.max(0, (now - time) / HOUR);
-        if (ageHours <= 24) return "#861d1d";
-        if (ageHours <= 72) return "#bd3426";
+        if (ageHours <= 24) return "#f2c75c";
+        if (ageHours <= 72) return "#ee9138";
         if (ageHours <= 168) return "#e45b2f";
-        if (ageHours <= 336) return "#ee9138";
-        return "#f2c75c";
+        if (ageHours <= 336) return "#bd3426";
+        return "#861d1d";
       }
 
       function firePointChronologicalCompare(left, right) {
@@ -2244,22 +2244,49 @@
         };
       }
 
+      function firePointZoomScale(zoom = map.getZoom()) {
+        const safeZoom = Number.isFinite(zoom) ? zoom : 6;
+        return Math.min(2.1, 1 + Math.max(0, safeZoom - 6) * 0.14);
+      }
+
       function firePointStyle(record, selected = false, hovered = false) {
         const active = fireStatus(record) === "Active";
         const radius = record.pointRadius ?? firePointRadius(record.size);
         const displayRadius = active ? radius : Math.max(3.25, radius - 1.25);
+        const scaledRadius = displayRadius * firePointZoomScale();
         const activeColor = record.pointColor || activeFirePointColor(record.discovery);
         return {
           pane: "firePane",
           renderer: fireRenderer,
           bubblingMouseEvents: false,
-          radius: selected ? Math.min(11, radius + 3) : (hovered ? displayRadius + 1.5 : displayRadius),
+          radius: selected
+            ? Math.min(17, scaledRadius + 3)
+            : (hovered ? scaledRadius + 1.5 : scaledRadius),
           color: selected ? "#fff" : (active ? "#fff" : "#77716b"),
           weight: selected ? 3 : (hovered ? 3 : (active ? 2 : 1.5)),
           opacity: active || selected ? 1 : 0.74,
-          fillColor: active ? activeColor : "#fff",
-          fillOpacity: active ? 1 : (selected ? 0.88 : 0.22)
+          fillColor: active ? activeColor : (selected ? "#77716b" : "#fff"),
+          fillOpacity: active ? 1 : (selected ? 0.62 : 0.22)
         };
+      }
+
+      function refreshFirePointZoomStyles() {
+        fireIgnitionGroup.eachLayer((geoJson) => {
+          geoJson.eachLayer?.((layer) => {
+            const record = fireEvents.get(layer.feature?.properties?.__pmFireId);
+            if (record && layer.feature?.geometry?.type === "Point") {
+              layer.setStyle(firePointStyle(record));
+            }
+          });
+        });
+        if (!selectedFireRecord) return;
+        fireSelectionGroup.eachLayer((geoJson) => {
+          geoJson.eachLayer?.((layer) => {
+            if (layer.feature?.geometry?.type === "Point") {
+              layer.setStyle(firePointStyle(selectedFireRecord, true));
+            }
+          });
+        });
       }
 
       function markFireEvent(event) {
@@ -2656,7 +2683,12 @@
             .setContent(buildFirePopup(record));
           return;
         }
-        const popup = L.popup({ maxWidth: 310, offset: [0, -5], closeButton: true })
+        const popup = L.popup({
+          maxWidth: 310,
+          offset: [0, -5],
+          closeButton: true,
+          autoPan: !selected
+        })
           .setLatLng(latlng)
           .setContent(buildFirePopup(record));
         popup._pmFirePopup = true;
@@ -2917,6 +2949,31 @@
         return record;
       }
 
+      async function resolveDatabasePointFeature(feature, currentMember, signal) {
+        const listedRecord = fireRecordFromPointFeature(feature, currentMember);
+        const livePoint = fireEvents.get(listedRecord.id)?.pointFeature;
+        if (livePoint?.geometry?.type === "Point") return livePoint;
+
+        const objectId = Number(feature?.properties?.OBJECTID);
+        if (!Number.isInteger(objectId) || objectId < 0) return listedRecord.pointFeature;
+        const service = currentMember
+          ? FIRE_SERVICES.currentLocations
+          : FIRE_SERVICES.ytdLocations;
+        const result = await fetchArcgis(service, {
+          f: "geojson",
+          where: `IncidentTypeCategory='WF' AND OBJECTID=${objectId}`,
+          outFields: FIRE_POINT_FIELDS,
+          returnGeometry: true,
+          outSR: 4326,
+          resultRecordCount: 1
+        }, signal);
+        const exactFeature = (result.features || []).find((item) => (
+          item.properties?.IncidentTypeCategory === "WF" &&
+          Number(item.properties?.OBJECTID) === objectId
+        ));
+        return exactFeature ? ensurePointGeometry(exactFeature) : listedRecord.pointFeature;
+      }
+
       function clearFireSelection(closePopup = false) {
         const popup = map._popup;
         selectedFireRecord = null;
@@ -2959,8 +3016,24 @@
         return { perimeterLayer, pointLayer };
       }
 
+      function boundsCenteredOnIgnition(bounds, ignitionLatLng) {
+        if (!bounds?.isValid() || !ignitionLatLng) return bounds;
+        const latitudeRadius = Math.max(
+          Math.abs(bounds.getNorth() - ignitionLatLng.lat),
+          Math.abs(ignitionLatLng.lat - bounds.getSouth())
+        );
+        const longitudeRadius = Math.max(
+          Math.abs(bounds.getEast() - ignitionLatLng.lng),
+          Math.abs(ignitionLatLng.lng - bounds.getWest())
+        );
+        return L.latLngBounds(
+          [ignitionLatLng.lat - latitudeRadius, ignitionLatLng.lng - longitudeRadius],
+          [ignitionLatLng.lat + latitudeRadius, ignitionLatLng.lng + longitudeRadius]
+        );
+      }
+
       async function selectDatabaseFire(feature, currentMember = false) {
-        const pointRecord = fireRecordFromPointFeature(feature, currentMember);
+        let pointRecord = fireRecordFromPointFeature(feature, currentMember);
         fireDatabaseStatus.textContent = `Locating ${pointRecord.name || "wildfire"}`;
         const generation = ++fireDatabaseGeneration;
         if (fireDatabaseController) fireDatabaseController.abort();
@@ -2969,6 +3042,17 @@
         let perimeterFeatures = [];
 
         try {
+          try {
+            const exactPointFeature = await resolveDatabasePointFeature(
+              feature,
+              currentMember,
+              controller.signal
+            );
+            pointRecord = fireRecordFromPointFeature(exactPointFeature, currentMember);
+          } catch (error) {
+            if (error.name === "AbortError") throw error;
+            // The list's reported initial coordinates remain a last-resort fallback.
+          }
           if (pointRecord.rawIrwinId) {
             const result = await fetchArcgis(FIRE_SERVICES.ytdPerimeters, {
               f: "geojson",
@@ -2997,20 +3081,23 @@
         let popupLatLng = null;
         const mobile = window.matchMedia("(max-width: 560px)").matches;
         if (mobile) closeFireDrawer(false);
+        map.stop();
+        map.invalidateSize({ pan: false, animate: false });
+
+        const pointBounds = pointLayer?.getBounds();
+        const ignitionLatLng = pointBounds?.isValid() ? pointBounds.getCenter() : null;
 
         if (perimeterLayer?.getBounds()?.isValid()) {
           const paddingBottomRight = mobile ? [24, 120] : [400, 120];
-          map.fitBounds(perimeterLayer.getBounds(), {
+          map.fitBounds(boundsCenteredOnIgnition(perimeterLayer.getBounds(), ignitionLatLng), {
             paddingTopLeft: [28, 70],
             paddingBottomRight,
             maxZoom: 15,
             animate: !reducedMotion
           });
-          popupLatLng = pointLayer?.getBounds()?.isValid()
-            ? pointLayer.getBounds().getCenter()
-            : perimeterLayer.getBounds().getCenter();
-        } else if (pointLayer?.getBounds()?.isValid()) {
-          popupLatLng = pointLayer.getBounds().getCenter();
+          popupLatLng = ignitionLatLng || perimeterLayer.getBounds().getCenter();
+        } else if (ignitionLatLng) {
+          popupLatLng = ignitionLatLng;
           map.flyTo(popupLatLng, 13, { animate: !reducedMotion, duration: reducedMotion ? 0 : 0.75 });
         }
 
@@ -5660,6 +5747,7 @@
       map.on("popupclose", (event) => {
         if (event.popup?._pmFireSelection && selectedFireRecord) clearFireSelection();
       });
+      map.on("zoomend", refreshFirePointZoomStyles);
 
       function settleScrub() {
         cancelScheduledProcessing();
