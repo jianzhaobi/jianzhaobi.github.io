@@ -2522,8 +2522,11 @@
           const filteredRecentPoints = recentPoints.filter((feature) => !activeIds.has(featureId(feature, "recent-point")));
           let currentPerimeters;
           let recentPerimeters;
+          const loadPerimeters = options.fullReload
+            ? fetchFullPerimeterSource
+            : loadPerimeterSource;
           try {
-            currentPerimeters = await loadPerimeterSource(
+            currentPerimeters = await loadPerimeters(
               "current",
               FIRE_SERVICES.currentPerimeters,
               "attr_IncidentTypeCategory='WF'",
@@ -2535,7 +2538,7 @@
             currentPerimeters = cachedPerimetersForSource("current");
           }
           try {
-            recentPerimeters = await loadPerimeterSource(
+            recentPerimeters = await loadPerimeters(
               "recent",
               FIRE_SERVICES.ytdPerimeters,
               recentPerimeterWhere,
@@ -3859,6 +3862,13 @@
         const assetBase = timeline.assetBaseUrl
           ? new URL(timeline.assetBaseUrl, cacheManifestUrl)
           : cacheManifestUrl;
+        const assetUrl = (path, base) => {
+          const url = new URL(path, base);
+          if (options.cacheBust) {
+            url.searchParams.set("refresh", String(options.cacheBust));
+          }
+          return url.href;
+        };
         const value = {
           frameWidth: timeline.frameWidth,
           frameHeight: timeline.frameHeight,
@@ -3870,14 +3880,14 @@
               ? pack.channels.map(Number)
               : pack.hours.map((_, channel) => channel),
             atlasUrl: schemaFive
-              ? new URL(pack.path, assetBase).href
+              ? assetUrl(pack.path, assetBase)
               : "",
             weightedUrl: schemaFive
               ? ""
-              : new URL(pack.weightedPath, cacheManifestUrl).href,
+              : assetUrl(pack.weightedPath, cacheManifestUrl),
             coverageUrl: schemaFive
               ? ""
-              : new URL(pack.coveragePath, cacheManifestUrl).href,
+              : assetUrl(pack.coveragePath, cacheManifestUrl),
             weightedImage: null,
             coverageImage: null,
             frameWidth: timeline.frameWidth,
@@ -5386,7 +5396,7 @@
             nextWindow.maximumHour !== activeTimelineWindow.maximumHour ||
             nextWindow.hourOffset !== activeTimelineWindow.hourOffset
           );
-          if (!cacheChanged && !alignmentChanged) {
+          if (!cacheChanged && !alignmentChanged && !options.forceReload) {
             cacheUpdateDelayHours = nextWindow.updateDelayHours;
             setFrameStatus("ready", "Forecast cache is current");
             if (!options.combined) {
@@ -5429,7 +5439,11 @@
             nextManifest,
             nextWindow,
             refreshDatasetName,
-            { priorityHour: nextSelectedHour, showFirstPack: false }
+            {
+              priorityHour: nextSelectedHour,
+              showFirstPack: false,
+              cacheBust: options.forceReload ? checkNow.getTime() : 0
+            }
           );
           if (!stagedPreview?.ready) {
             throw new Error("Updated forecast fields unavailable");
@@ -5511,6 +5525,11 @@
             playbackGeneration += 1;
             playbackLoop(playbackGeneration);
           }
+          previewCache.forEach((entry, key) => {
+            if (key === refreshDatasetName) return;
+            releasePreviewDataset(entry.value);
+            previewCache.delete(key);
+          });
           return true;
         } catch {
           if (rollbackState) {
@@ -5571,11 +5590,101 @@
         }
       }
 
+      function setBasemap(basemap) {
+        const choice = BASEMAPS[basemap] || BASEMAPS.day;
+        if (root.dataset.basemap !== basemap) {
+          map.removeLayer(baseLayer);
+          baseLayer = L.tileLayer(choice.url, choice.options).addTo(map);
+          baseLayer.bringToBack();
+        }
+        root.dataset.basemap = basemap;
+        basemapInputs.forEach((input) => {
+          input.checked = input.value === basemap;
+        });
+        document.getElementById("pm-map-menu").open = false;
+      }
+
+      function resetMapToInitialState() {
+        stopPlayback();
+        datasetGeneration += 1;
+        transitionGeneration += 1;
+        cancelScheduledProcessing();
+        cancelScrubPreview();
+        renderLayer.finishTransition();
+
+        menus.forEach((menu) => { menu.open = false; });
+        if (!fireDrawer.hidden) closeFireDrawer(false);
+        if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
+        fireSearchTimer = 0;
+        if (fireDatabaseController) fireDatabaseController.abort();
+        fireDatabaseController = null;
+        fireDatabaseGeneration += 1;
+        fireDatabaseOffset = 0;
+        fireDatabaseHasMore = true;
+        fireDatabaseFilter = "all";
+        fireDatabaseLargeOnly = false;
+        fireDatabaseSort = "date";
+        fireDatabaseNeedsReset = true;
+        fireSearch.value = "";
+        fireFilters.forEach((button) => {
+          button.setAttribute(
+            "aria-pressed",
+            String(button.dataset.fireStatus === "all")
+          );
+        });
+        fireLargeFilter.setAttribute("aria-pressed", "false");
+        fireSort.dataset.sort = "date";
+        fireSort.setAttribute(
+          "aria-label",
+          "Sort order: newest discovery first. Activate for largest fires first"
+        );
+        fireSort.title = "Newest discovery first";
+        fireLoadMore.hidden = true;
+        fireLoadMore.disabled = false;
+        fireLoadMore.textContent = "Load more";
+        fireDatabaseStatus.textContent = "Open the database to load fires.";
+
+        clearFireSelection(true);
+        map.closePopup();
+        particle = "smoke";
+        extent = "surface";
+        particleSelect.value = particle;
+        extentSelect.value = extent;
+        setSmokeVisibility(true);
+        wildfiresVisible = true;
+        ignitionsVisible = true;
+        perimetersVisible = true;
+        recentClosedVisible = false;
+        wildfireToggle.checked = true;
+        ignitionToggle.checked = true;
+        perimeterToggle.checked = true;
+        recentFireToggle.checked = false;
+        wildfireOptions.hidden = false;
+        renderFireLayers();
+        setBasemap("day");
+        updateLegend();
+        selectedHour = 0;
+        slider.value = "0";
+        updateLabels(0, true);
+
+        map.stop();
+        map.invalidateSize({ pan: false, animate: false });
+        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
+        updateMapAccessibleName();
+      }
+
       async function refreshAllData() {
         if (combinedRefreshActive || cacheRefreshActive) return false;
+        const previousSmokeState = {
+          particle,
+          extent,
+          selectedHour,
+          timelineInteractionLocked
+        };
         combinedRefreshActive = true;
         fireDatabasePageCache.clear();
         fireDatabaseNeedsReset = true;
+        resetMapToInitialState();
         updateControlAvailability();
         setCacheRefreshState(
           "loading",
@@ -5585,10 +5694,27 @@
 
         try {
           const [smokeReady, wildfiresReady] = await Promise.all([
-            refreshCache({ combined: true }),
-            refreshWildfires({ force: true })
+            refreshCache({ combined: true, forceReload: true }),
+            refreshWildfires({ force: true, fullReload: true })
           ]);
-          if (!fireDrawer.hidden) loadFireDatabase(true);
+          if (!smokeReady) {
+            particle = previousSmokeState.particle;
+            extent = previousSmokeState.extent;
+            particleSelect.value = particle;
+            extentSelect.value = extent;
+            selectedHour = Math.max(
+              minimumHour,
+              Math.min(maximumHour, previousSmokeState.selectedHour)
+            );
+            timelineInteractionLocked = previousSmokeState.timelineInteractionLocked;
+            updateLegend();
+            scrubPairKey = "";
+            renderScrubPreview(selectedHour);
+            updateLabels(selectedHour, false);
+          }
+          if (!fireDrawer.hidden && !fireDatabaseController) {
+            loadFireDatabase(true);
+          }
           const bothReady = smokeReady && wildfiresReady;
           const eitherReady = smokeReady || wildfiresReady;
           setCacheRefreshState(
@@ -5665,13 +5791,7 @@
       }
 
       function changeBasemap(event) {
-        const basemap = event.target.value;
-        const choice = BASEMAPS[basemap] || BASEMAPS.day;
-        map.removeLayer(baseLayer);
-        baseLayer = L.tileLayer(choice.url, choice.options).addTo(map);
-        baseLayer.bringToBack();
-        root.dataset.basemap = basemap;
-        document.getElementById("pm-map-menu").open = false;
+        setBasemap(event.target.value);
       }
 
       renderLayer = makeContinuousLayer().addTo(map);
