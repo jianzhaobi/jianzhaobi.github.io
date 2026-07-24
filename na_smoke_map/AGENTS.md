@@ -210,6 +210,7 @@ During the initial service-health investigation, direct official queries returne
 
 ### 2026-07-23 wildfire selection and recency update
 
+- A documentation-only repository submission check confirmed the project instructions can be updated independently of application behavior.
 - Database selections now locate an ignition from canonical service geometry rather than normally drawing the attribute-only list record at its reported initial coordinates. Active selections reuse the already-loaded Current point when possible; other selections make one bounded point query against the same source service, with reported initial coordinates retained only as an availability fallback. This fixes the visible offset between a selected list ignition and its normal map position without restoring geometry to every list-page response.
 - Active ignition colors now run from light golden yellow for the newest discoveries to deep burgundy red for the oldest, reversing the earlier age direction while retaining the same five age buckets and missing-date fallback.
 - The application continues to enforce `IncidentTypeCategory='WF'` in every location query and checks returned point attributes again before rendering. Consequently, an urban ignition displayed in Los Angeles is classified as `WF` by WFIGS; that source classification does not independently establish fuel, severity, or exact real-world conditions.
