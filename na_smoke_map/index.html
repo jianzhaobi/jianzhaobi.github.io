@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
@@ -146,6 +146,16 @@
       color: var(--pm-text);
       background: #e9edf0;
       font-size: 14px;
+    }
+
+    /* iOS Safari: suppress double-tap page zoom on controls; pan/pinch still reach the map. */
+    #north-america-pm25 button,
+    #north-america-pm25 summary,
+    #north-america-pm25 label,
+    #north-america-pm25 input,
+    #north-america-pm25 select,
+    #north-america-pm25 a {
+      touch-action: manipulation;
     }
 
     #north-america-pm25[data-particle="total"] {
@@ -361,7 +371,8 @@
         linear-gradient(135deg, var(--pm-muted) 50%, transparent 50%) calc(100% - 11px) 50% / 5px 5px no-repeat,
         var(--pm-ui-solid);
       cursor: pointer;
-      font-size: 14px;
+      /* ≥16px keeps iOS Safari from auto-zooming the page when the select gains focus. */
+      font-size: 16px;
       font-weight: 500;
     }
 
@@ -556,6 +567,8 @@
       border-radius: 10px;
       color: var(--pm-text);
       background: var(--pm-ui-solid);
+      /* ≥16px keeps iOS Safari from auto-zooming the page when the field gains focus. */
+      font-size: 16px;
     }
 
     #north-america-pm25 .pm-fire-sort {

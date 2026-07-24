@@ -250,6 +250,14 @@ A systematic bug review fixed the following. Each item below is now normative be
 - Service selection notes: LANDFIRE's `lfps.usgs.gov` ArcGIS ImageServers carry the same products but would need one tile layer per geographic area and per-layer export requests; the GeoServer WMS merges CONUS/AK/HI in one GetMap and is GeoWebCache-backed, so it was chosen. `LF2024_FBFM40_PRVI` was attempted and removed after the live WMS returned `LayerNotDefined`, which broke every merged tile.
 - Verified: node syntax check; local HTTP server; basemap switching in all directions removes and restores WMS tiles and attribution; fuel tiles load without failures at continental and deep zooms; unified refresh still resets Fuel back to Day; 375 px mobile menu shows all four options without horizontal overflow; no console errors.
 
+### 2026-07-24 iOS page-zoom suppression update
+
+- Fixed iPhone Safari's sudden page zoom when tapping controls (double-tap zoom) and when focusing text fields (automatic input-focus zoom on form controls with text smaller than 16 px).
+- Viewport meta now includes `maximum-scale=1, user-scalable=no`. This suppresses the automatic focus zoom and the double-tap page zoom; note iOS Safari still honors deliberate pinch as an accessibility override in the in-browser context, while installed (standalone) mode locks the scale fully. Map pinch is unaffected because Leaflet handles map gestures itself.
+- `.pm-fire-search` and `.pm-select` use `font-size: 16px` (previously inherited/declared 14 px) so form-control focus can never trigger the iOS auto zoom even if viewport hints are ignored.
+- Added `touch-action: manipulation` to `button`, `summary`, `label`, `input`, `select`, and `a` within the app container to remove browser double-tap zoom on tappable controls (including Leaflet's `+`/`−` anchors, a frequent rapid-tap zoom trigger). The timeline slider's more specific `touch-action: pan-y` still wins by specificity.
+- Verified: local HTTP server; computed styles confirm 16 px form-control text, `manipulation` on buttons/summaries/inputs/selects, and `pan-y` retained on `.pm-range`; Layers panel, Fires sheet, and search row show no clipping or horizontal overflow at 320 px and 375 px widths or at desktop size; no console errors.
+
 ## Rendering architecture
 
 Use Leaflet with four selectable basemaps:
@@ -414,6 +422,7 @@ The custom horizontal legend should use the same particle-specific progression a
 Cell-phone usability is a core requirement, not a later enhancement.
 
 - The page must not overflow horizontally at narrow widths.
+- The page scale must never change on phones. Keep `maximum-scale=1, user-scalable=no` in the viewport meta, keep every text-entry and select control at a font size of at least 16 px so iOS never auto-zooms on focus, and keep `touch-action: manipulation` on tappable controls (buttons, summaries, labels, inputs, selects, and links) so double-tap cannot zoom the page. Map pinch gestures belong to Leaflet and must remain unaffected.
 - Controls stack into a single column on small phones.
 - Touch targets should remain at least approximately 38 px high.
 - The legend must fit within the map width.
