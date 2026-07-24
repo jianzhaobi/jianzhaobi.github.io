@@ -243,15 +243,41 @@ A systematic bug review fixed the following. Each item below is now normative be
 - **Icon fallback.** If the lucide icon script fails to load, toolbar and play text labels are revealed instead of leaving blank icon-only buttons.
 - `scripts/build_static_cache.py` dropped the dead per-hour display-frame generator, its palette lookup tables, and the unused `--process-jobs` argument; `--blur-radius` (default 0.55) is now actually applied to field-pack smoothing, preserving byte-identical output for default builds.
 
+### 2026-07-24 wildfire fuel-type basemap addition
+
+- Added the fourth `fuel` basemap option (Map menu radio labeled `Fuel`, lucide `trees` icon) composed of CARTO no-label tiles, LANDFIRE LF2024 FBFM40 WMS for the US, CWFIS FBP fuel-types WMS for Canada, and CARTO label-only tiles, as specified in the Fuel basemap section.
+- Refactored `BASEMAPS` so every entry declares a `layers` array and `setBasemap`/`createBasemapLayers` manage a `baseLayers` array instead of a single `baseLayer` tile layer. Explicit `zIndex` options replace the old `bringToBack()` call for in-pane ordering.
+- Service selection notes: LANDFIRE's `lfps.usgs.gov` ArcGIS ImageServers carry the same products but would need one tile layer per geographic area and per-layer export requests; the GeoServer WMS merges CONUS/AK/HI in one GetMap and is GeoWebCache-backed, so it was chosen. `LF2024_FBFM40_PRVI` was attempted and removed after the live WMS returned `LayerNotDefined`, which broke every merged tile.
+- Verified: node syntax check; local HTTP server; basemap switching in all directions removes and restores WMS tiles and attribution; fuel tiles load without failures at continental and deep zooms; unified refresh still resets Fuel back to Day; 375 px mobile menu shows all four options without horizontal overflow; no console errors.
+
 ## Rendering architecture
 
-Use Leaflet with three selectable basemaps:
+Use Leaflet with four selectable basemaps:
 
 - **Day**: CARTO Positron, and the default.
 - **Dark**: CARTO Dark Matter.
 - **Satellite**: Esri World Imagery.
+- **Fuel**: a wildfire fuel-type composite described below.
 
 Preserve the corresponding Leaflet, OpenStreetMap, CARTO, and Esri attribution.
+
+### Fuel basemap
+
+The Fuel basemap is a thematic wildfire fuel-type view composed of four stacked tile layers created and removed together as one basemap choice:
+
+1. CARTO Positron `light_nolabels` raster tiles as the neutral background (`zIndex` 1).
+2. LANDFIRE FBFM40 (Scott & Burgan 40 fire behavior fuel models) for the United States via tiled WMS from the official USGS GeoServer at `https://edcintl.cr.usgs.gov/geoserver/landfire/ows`, requesting the merged layers `LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI` with `transparent=true` (`zIndex` 2).
+3. Canadian FBP System fuel types via tiled WMS from the official Natural Resources Canada CWFIS GeoServer at `https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms`, layer `cffdrs_fbp_fuel_types` (`zIndex` 2).
+4. CARTO Positron `light_only_labels` place-name tiles on top (`zIndex` 3).
+
+Constraints and rationale:
+
+- `LF2024` is the newest LANDFIRE release with complete CONUS, Alaska, and Hawaii FBFM40 coverage on the WMS. `LF2025_FBFM40` exists only for CONUS/AK plus seasonal variants, and `LF2024_FBFM40_PRVI` (Puerto Rico/USVI) is not published on this WMS — requesting it makes the whole merged GetMap fail with `LayerNotDefined`, so it must not be added without re-verifying capabilities.
+- Both services were verified to render correctly in EPSG:3857 through WMS 1.1.1 GetMap (Leaflet `L.tileLayer.wms` defaults) at continental and deep zooms, and both sit behind GeoWebCache, so tile responses are fast after warm-up.
+- Mexico and other non-US/Canada areas intentionally show only the neutral background: neither national fuel product covers them.
+- The US and Canadian layers use different national classification systems and palettes; the border seam is expected and must not be "fixed" by recoloring either official rendering.
+- When the Fuel basemap is active, add the LANDFIRE (USGS) and CWFIS (NRCan) attribution entries; they must disappear when another basemap is selected.
+- Basemaps are now built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url` or `wms` endpoint specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
 
 Frame the initial map around the United States and Canada instead of showing the full RAQDPS data domain. Use a comparable regional scale on desktop and mobile, while allowing a slightly wider integer zoom on narrow screens so the view remains useful.
 
@@ -366,7 +392,7 @@ The desired direction is a modern, map-first weather interface inspired by The W
 
 Maintain these preferences:
 
-- Light daytime basemap by default, with compact options for dark and satellite maps.
+- Light daytime basemap by default, with compact options for dark, satellite, and wildfire fuel-type maps.
 - Warm orange/coral primary accent rather than a generic bright blue interface.
 - Compact icon-led floating controls. Keep smoke, ignition, perimeter, and recently closed visibility plus particle/extent fields inside the temporary Layers menu; keep basemap choices inside the temporary Map menu so closed controls occupy very little map space.
 - Keep the separate Fires control for the WFIGS Year-to-Date database. Do not put a permanent wildfire-symbol legend in the Layers menu.
@@ -430,7 +456,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
 - Clamp timeline offsets to the full continuous range after aligning the manifest's cached valid hours to the browser's current integer model hour. Present the current-hour slider position as “Now” wherever it falls, earlier positions with negative relative hours, and later positions with positive relative hours.
 - Use generation counters or an equivalent cancellation mechanism so stale asynchronous image loads cannot replace a newer user selection.
-- Preserve the default `day` basemap and the `day`, `dark`, and `satellite` basemap option values.
+- Preserve the default `day` basemap and the `day`, `dark`, `satellite`, and `fuel` basemap option values.
 - Keep fallback canvas recoloring off the visible layer and return the processed offscreen canvas directly to the WebGL renderer so the visible frame is never cleared while recoloring occurs.
 - Use integer Leaflet zoom levels (`zoomSnap: 1`) for raster basemaps. Fractional zoom scaling exposed visible tile seams.
 - Keep basemap tiles at their native size and use only a transparent outline seam guard; do not enlarge tiles, which made grid lines more visible.
@@ -466,7 +492,7 @@ Before handing off a material change:
 8. Confirm the timeline is always visible, places “Now” at its correct possibly non-central position, and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
-11. Switch among Day, Dark, and Satellite and verify both appearance and attribution.
+11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm LANDFIRE tiles over the US, CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken WMS tiles at continental and deep zooms.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
@@ -503,6 +529,7 @@ Before handing off a material change:
 - Direct WFIGS loading avoids maintaining another publication pipeline and keeps incidents timely, but availability depends on an official ArcGIS organization-wide quota. In-memory geometry reuse, quota-aware retry, partial map refresh, old-layer retention, and a clearly labeled bounded stale database fallback mitigate transient failures. The persistent fallback may be up to 24 hours old and must never be presented as live data.
 - WFIGS perimeters are simplified for display and may not preserve survey-level boundary detail. They are operational map context, not cadastral or evacuation-boundary data.
 - The 300-acre large-fire threshold and compressed point-radius classes are visualization and browsing aids. Acreage remains printed in text, and circle radius must not be interpreted as an exact area-to-scale symbol.
+- The Fuel basemap depends on two live government WMS services (USGS LANDFIRE and NRCan CWFIS) with no local cache; an outage leaves the neutral no-label background visible. Mexico has no fuel coverage, the US and Canadian classifications and palettes differ at the border by design, and no in-app class legend is shown because FBFM40 alone has 40 classes and the Map menu must stay compact.
 
 ## Primary artifacts
 

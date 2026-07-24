@@ -1469,6 +1469,10 @@
               <input type="radio" name="pm-basemap" value="satellite">
               <span><i data-lucide="satellite" aria-hidden="true"></i>Satellite</span>
             </label>
+            <label class="pm-radio">
+              <input type="radio" name="pm-basemap" value="fuel">
+              <span><i data-lucide="trees" aria-hidden="true"></i>Fuel</span>
+            </label>
           </fieldset>
         </details>
       </nav>
@@ -1909,33 +1913,94 @@
 
       map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
+      const CARTO_ATTRIBUTION = "&copy; OpenStreetMap contributors &copy; CARTO";
       const BASEMAPS = {
         day: {
-          url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-          options: {
-            subdomains: "abcd",
-            maxZoom: 20,
-            attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
-          }
+          layers: [{
+            url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            options: {
+              subdomains: "abcd",
+              maxZoom: 20,
+              zIndex: 1,
+              attribution: CARTO_ATTRIBUTION
+            }
+          }]
         },
         dark: {
-          url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-          options: {
-            subdomains: "abcd",
-            maxZoom: 20,
-            attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
-          }
+          layers: [{
+            url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            options: {
+              subdomains: "abcd",
+              maxZoom: 20,
+              zIndex: 1,
+              attribution: CARTO_ATTRIBUTION
+            }
+          }]
         },
         satellite: {
-          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-          options: {
-            maxZoom: 19,
-            attribution: "Tiles &copy; Esri"
-          }
+          layers: [{
+            url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            options: {
+              maxZoom: 19,
+              zIndex: 1,
+              attribution: "Tiles &copy; Esri"
+            }
+          }]
+        },
+        fuel: {
+          layers: [
+            {
+              url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+              options: {
+                subdomains: "abcd",
+                maxZoom: 20,
+                zIndex: 1,
+                attribution: CARTO_ATTRIBUTION
+              }
+            },
+            {
+              wms: "https://edcintl.cr.usgs.gov/geoserver/landfire/ows",
+              options: {
+                layers: "LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI",
+                format: "image/png",
+                transparent: true,
+                maxZoom: 20,
+                zIndex: 2,
+                attribution: "Fuel: <a href=\"https://landfire.gov\">LANDFIRE FBFM40</a> (USGS)"
+              }
+            },
+            {
+              wms: "https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms",
+              options: {
+                layers: "cffdrs_fbp_fuel_types",
+                format: "image/png",
+                transparent: true,
+                maxZoom: 20,
+                zIndex: 2,
+                attribution: "<a href=\"https://cwfis.cfs.nrcan.gc.ca\">CWFIS FBP fuel types</a> (NRCan)"
+              }
+            },
+            {
+              url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+              options: {
+                subdomains: "abcd",
+                maxZoom: 20,
+                zIndex: 3,
+                attribution: CARTO_ATTRIBUTION
+              }
+            }
+          ]
         }
       };
 
-      let baseLayer = L.tileLayer(BASEMAPS.day.url, BASEMAPS.day.options).addTo(map);
+      function createBasemapLayers(choice) {
+        return choice.layers.map((spec) => (
+          spec.wms ? L.tileLayer.wms(spec.wms, spec.options) : L.tileLayer(spec.url, spec.options)
+        ));
+      }
+
+      let baseLayers = createBasemapLayers(BASEMAPS.day);
+      baseLayers.forEach((layer) => layer.addTo(map));
 
       map.createPane("firePane").style.zIndex = "450";
       const fireRenderer = L.canvas({ pane: "firePane", padding: 0.5, tolerance: 7 });
@@ -5776,9 +5841,9 @@
       function setBasemap(basemap) {
         const choice = BASEMAPS[basemap] || BASEMAPS.day;
         if (root.dataset.basemap !== basemap) {
-          map.removeLayer(baseLayer);
-          baseLayer = L.tileLayer(choice.url, choice.options).addTo(map);
-          baseLayer.bringToBack();
+          baseLayers.forEach((layer) => map.removeLayer(layer));
+          baseLayers = createBasemapLayers(choice);
+          baseLayers.forEach((layer) => layer.addTo(map));
         }
         root.dataset.basemap = basemap;
         basemapInputs.forEach((input) => {
