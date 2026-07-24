@@ -3217,8 +3217,14 @@
           );
           cacheRefreshLabel.textContent = "Update";
           L.DomEvent.disableClickPropagation(container);
-          L.DomEvent.on(locateButton, "click", () => requestLocation(true));
-          L.DomEvent.on(cacheRefreshButton, "click", () => refreshAllData());
+          L.DomEvent.on(locateButton, "click", (event) => {
+            L.DomEvent.stop(event);
+            requestLocation(true);
+          });
+          L.DomEvent.on(cacheRefreshButton, "click", (event) => {
+            L.DomEvent.stop(event);
+            refreshAllData();
+          });
           return container;
         }
       });
