@@ -228,7 +228,9 @@
 
     #north-america-pm25 .pm-toolbar {
       position: absolute;
-      z-index: 700;
+      /* Above Leaflet's 1000 control layer so the fuel-legend popover is not
+         overlapped by the zoom stack; the fire drawer (1100) stays above. */
+      z-index: 1010;
       top: calc(10px + var(--pm-safe-top));
       right: calc(10px + var(--pm-safe-right));
       left: calc(10px + var(--pm-safe-left));
@@ -344,6 +346,106 @@
 
     #north-america-pm25 fieldset.pm-popover {
       margin: 0;
+    }
+
+    #north-america-pm25 .pm-fuel-legend-menu .pm-popover {
+      right: 0;
+      left: auto;
+      width: min(320px, calc(100vw - 20px));
+      max-height: min(62vh, 520px);
+      overflow-y: auto;
+      padding: 11px;
+    }
+
+    #north-america-pm25 .pm-fuel-region + .pm-fuel-region {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-fuel-region-title {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--pm-muted);
+    }
+
+    #north-america-pm25 .pm-fuel-group summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fuel-group summary:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fuel-group summary::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-left: auto;
+      border-right: 1.6px solid var(--pm-muted);
+      border-bottom: 1.6px solid var(--pm-muted);
+      transform: rotate(-45deg);
+      transition: transform 150ms ease;
+      flex: 0 0 auto;
+    }
+
+    #north-america-pm25 .pm-fuel-group[open] > summary::after {
+      transform: rotate(45deg);
+    }
+
+    #north-america-pm25 .pm-fuel-strip {
+      display: flex;
+      width: 64px;
+      height: 14px;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--pm-line);
+      border-radius: 4px;
+    }
+
+    #north-america-pm25 .pm-fuel-strip span {
+      flex: 1 1 auto;
+    }
+
+    #north-america-pm25 .pm-fuel-classes {
+      list-style: none;
+      margin: 2px 0 6px;
+      padding: 0 6px 0 10px;
+    }
+
+    #north-america-pm25 .pm-fuel-classes li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+
+    #north-america-pm25 .pm-fuel-swatch {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      border: 1px solid var(--pm-line);
+      border-radius: 4px;
+    }
+
+    #north-america-pm25 .pm-fuel-code {
+      flex: 0 0 auto;
+      min-width: 32px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-fuel-desc {
+      color: var(--pm-muted);
     }
 
     #north-america-pm25 .pm-field {
@@ -1488,6 +1590,14 @@
             </label>
           </fieldset>
         </details>
+
+        <details class="pm-menu pm-fuel-legend-menu" id="pm-fuel-legend" hidden>
+          <summary class="pm-button" aria-label="Legend — fuel type classes">
+            <i data-lucide="palette" aria-hidden="true"></i>
+            <span class="pm-menu-label">Legend</span>
+          </summary>
+          <div class="pm-popover pm-fuel-legend-panel" id="pm-fuel-legend-panel" role="group" aria-label="Fuel type legend"></div>
+        </details>
       </nav>
 
       <aside class="pm-fire-drawer pm-glass" id="pm-fire-drawer" aria-labelledby="pm-fire-drawer-title" hidden>
@@ -2003,6 +2113,159 @@
           ]
         }
       };
+
+      // Class colors below are copied verbatim from each service's GetLegendGraphic
+      // JSON (LF2024_FBFM40_CONUS and cffdrs_fbp_fuel_types, fetched 2026-07-24) so
+      // legend swatches match the rendered basemap exactly.
+      const FUEL_LEGEND = [
+        {
+          region: "United States — LANDFIRE FBFM40",
+          groups: [
+            { name: "Grass (GR)", classes: [
+              ["GR1", "#FFEBBD", "Short sparse dry climate grass"],
+              ["GR2", "#FFD372", "Low load dry climate grass"],
+              ["GR3", "#FFEB8A", "Low load very coarse humid climate grass"],
+              ["GR4", "#FFFF72", "Moderate load dry climate grass"],
+              ["GR5", "#F4DD28", "Low load humid climate grass"],
+              ["GR6", "#E6E63F", "Moderate load humid climate grass"],
+              ["GR7", "#CDC672", "High load dry climate grass"],
+              ["GR8", "#8A854D", "High load very coarse humid climate grass"]
+            ] },
+            { name: "Grass-shrub (GS)", classes: [
+              ["GS1", "#FFAA00", "Low load dry climate grass-shrub"],
+              ["GS2", "#FFA77E", "Moderate load dry climate grass-shrub"],
+              ["GS3", "#FF6200", "Moderate load humid climate grass-shrub"],
+              ["GS4", "#CD6600", "High load humid climate grass-shrub"]
+            ] },
+            { name: "Shrub (SH)", classes: [
+              ["SH1", "#D6C19E", "Low load dry climate shrub"],
+              ["SH2", "#D6AF9E", "Moderate load dry climate shrub"],
+              ["SH3", "#CD8966", "Moderate load humid climate shrub"],
+              ["SH4", "#895944", "Low load humid climate timber-shrub"],
+              ["SH5", "#CDAA66", "High load dry climate shrub"],
+              ["SH6", "#ED7044", "Low load humid climate shrub"],
+              ["SH7", "#CD7C38", "Very high load dry climate shrub"],
+              ["SH8", "#A83800", "High load humid climate shrub"],
+              ["SH9", "#721A00", "Very high load humid climate shrub"]
+            ] },
+            { name: "Timber-understory (TU)", classes: [
+              ["TU1", "#E8FFBD", "Low load dry climate timber-grass-shrub"],
+              ["TU2", "#AAFF00", "Moderate load humid climate timber-shrub"],
+              ["TU3", "#B3D69E", "Moderate load humid climate timber-grass-shrub"],
+              ["TU4", "#70A800", "Dwarf conifer with understory"],
+              ["TU5", "#267200", "Very high load dry climate timber-shrub"]
+            ] },
+            { name: "Timber litter (TL)", classes: [
+              ["TL1", "#BDFFE8", "Low load compact conifer litter"],
+              ["TL2", "#00FFC4", "Low load broadleaf litter"],
+              ["TL3", "#BDD1FF", "Moderate load conifer litter"],
+              ["TL4", "#7B67ED", "Small downed logs"],
+              ["TL5", "#BDE8FF", "High load conifer litter"],
+              ["TL6", "#00C4FF", "Moderate load broadleaf litter"],
+              ["TL7", "#0083A8", "Large downed logs"],
+              ["TL8", "#005BE6", "Long-needle litter"],
+              ["TL9", "#4D6E90", "Very high load broadleaf litter"]
+            ] },
+            { name: "Slash-blowdown (SB)", classes: [
+              ["SB1", "#E8BDFF", "Low load activity fuel"],
+              ["SB2", "#C400FF", "Moderate load activity fuel or low load blowdown"],
+              ["SB3", "#FFBDE8", "High load activity fuel or moderate load blowdown"],
+              ["SB4", "#FF7E7E", "High load blowdown"]
+            ] },
+            { name: "Non-burnable (NB)", classes: [
+              ["NB1", "#676767", "Urban or developed"],
+              ["NB2", "#E1E1E1", "Snow or ice"],
+              ["NB3", "#FFEDED", "Agriculture"],
+              ["NB8", "#000ED6", "Open water"],
+              ["NB9", "#4D6E70", "Bare ground"]
+            ] }
+          ]
+        },
+        {
+          region: "Canada — FBP fuel types",
+          groups: [
+            { name: "Conifer (C)", classes: [
+              ["C-1", "#D1FF73", "Spruce-lichen woodland"],
+              ["C-2", "#226633", "Boreal spruce"],
+              ["C-3", "#83C795", "Mature jack or lodgepole pine"],
+              ["C-4", "#70A800", "Immature jack or lodgepole pine"],
+              ["C-5", "#DFB8E6", "Red and white pine"],
+              ["C-7", "#700CF2", "Ponderosa pine / Douglas-fir"]
+            ] },
+            { name: "Deciduous (D)", classes: [
+              ["D-1", "#C4BD97", "Leafless aspen"],
+              ["D-1/D-2", "#897044", "Aspen"]
+            ] },
+            { name: "Mixedwood (M)", classes: [
+              ["M-1", "#FFD37F", "Boreal mixedwood, leafless (15% conifer)"],
+              ["M-1/M-2", "#FFD37F", "Boreal mixedwood (25% conifer)"],
+              ["M-1/M-2", "#FFC55A", "Boreal mixedwood (50% conifer)"],
+              ["M-1/M-2", "#FFB121", "Boreal mixedwood (75% conifer)"]
+            ] },
+            { name: "Grass (O)", classes: [
+              ["O-1a", "#FFFFBE", "Matted grass"]
+            ] },
+            { name: "Non-fuel", classes: [
+              ["", "#828282", "Non-fuel"],
+              ["", "#CCCCCC", "Vegetated non-fuel"],
+              ["", "#73DFFF", "Water"]
+            ] }
+          ]
+        }
+      ];
+
+      const fuelLegendMenu = document.getElementById("pm-fuel-legend");
+
+      function buildFuelLegend() {
+        const panel = document.getElementById("pm-fuel-legend-panel");
+        FUEL_LEGEND.forEach((regionData) => {
+          const region = document.createElement("section");
+          region.className = "pm-fuel-region";
+          const title = document.createElement("h3");
+          title.className = "pm-fuel-region-title";
+          title.textContent = regionData.region;
+          region.appendChild(title);
+          regionData.groups.forEach((groupData) => {
+            const group = document.createElement("details");
+            group.className = "pm-fuel-group";
+            const summary = document.createElement("summary");
+            const strip = document.createElement("span");
+            strip.className = "pm-fuel-strip";
+            strip.setAttribute("aria-hidden", "true");
+            groupData.classes.forEach(([, color]) => {
+              const cell = document.createElement("span");
+              cell.style.background = color;
+              strip.appendChild(cell);
+            });
+            const name = document.createElement("span");
+            name.textContent = groupData.name;
+            summary.append(strip, name);
+            group.appendChild(summary);
+            const list = document.createElement("ul");
+            list.className = "pm-fuel-classes";
+            groupData.classes.forEach(([code, color, description]) => {
+              const item = document.createElement("li");
+              const swatch = document.createElement("span");
+              swatch.className = "pm-fuel-swatch";
+              swatch.style.background = color;
+              const codeEl = document.createElement("span");
+              codeEl.className = "pm-fuel-code";
+              codeEl.textContent = code;
+              const desc = document.createElement("span");
+              desc.className = "pm-fuel-desc";
+              desc.textContent = description;
+              if (code) item.append(swatch, codeEl, desc);
+              else item.append(swatch, desc);
+              list.appendChild(item);
+            });
+            group.appendChild(list);
+            region.appendChild(group);
+          });
+          panel.appendChild(region);
+        });
+      }
+
+      buildFuelLegend();
 
       // Single-image WMS layer: one viewport-sized GetMap per settled view instead of
       // 256 px tiles. The LANDFIRE GeoServer takes seconds per dynamic tile and its
@@ -5964,6 +6227,8 @@
           baseLayers = createBasemapLayers(choice);
           baseLayers.forEach((layer) => layer.addTo(map));
         }
+        fuelLegendMenu.hidden = basemap !== "fuel";
+        if (fuelLegendMenu.hidden) fuelLegendMenu.open = false;
         root.dataset.basemap = basemap;
         basemapInputs.forEach((input) => {
           input.checked = input.value === basemap;

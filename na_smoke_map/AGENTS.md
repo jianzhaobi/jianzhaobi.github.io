@@ -257,6 +257,12 @@ A systematic bug review fixed the following. Each item below is now normative be
 - CWFIS remains a normal tiled WMS layer (sub-second tile responses). New Leaflet panes `fuelPane` (250) and `fuelLabelPane` (260) keep the LANDFIRE image above the base tiles and below the place labels, smoke canvas, and wildfire geometry.
 - Verified: node syntax check; basemap switch to Fuel issues exactly one LANDFIRE request and renders US/AK/HI plus CWFIS Canada; zoom-in issues one replacement request and sharpens without a blank gap; switching back to Day removes the fuel image, label tiles, and both attribution entries; no console errors.
 
+### 2026-07-24 fuel legend addition
+
+- Added the collapsible fuel-type Legend control described in the Fuel legend section: visible only on the Fuel basemap, grouped by fuel family with expandable per-class rows, colors copied from both services' GetLegendGraphic JSON. Grouping was chosen deliberately — a flat 60-row list defeats quick visual matching, while 12 family strips are scannable and each expands on demand.
+- Raised the toolbar z-index from 700 to 1010 so tall toolbar popovers are not overlapped by Leaflet's zoom/location/refresh control stack (Leaflet controls sit at 1000; the fire drawer remains above at 1100).
+- Verified: node syntax check; Legend appears/disappears with basemap switches and stays hidden on Day/Dark/Satellite; group expansion, scrolling, accent open-state, and chevron rotation; no zoom-control punch-through; 375 px mobile fit without horizontal overflow; no console errors.
+
 ### 2026-07-24 iOS page-zoom suppression update
 
 - Fixed iPhone Safari's sudden page zoom when tapping controls (double-tap zoom) and when focusing text fields (automatic input-focus zoom on form controls with text smaller than 16 px).
@@ -305,6 +311,16 @@ Constraints and rationale:
 - When the Fuel basemap is active, add the LANDFIRE (USGS) and CWFIS (NRCan) attribution entries; they must disappear when another basemap is selected.
 - Basemaps are built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url`, tiled `wms`, or single-image `singleWms` specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
 - The `fuelPane` (250) and `fuelLabelPane` (260) sit above the tile pane (200) and below the smoke overlay pane (400) and `firePane` (450).
+
+### Fuel legend
+
+A collapsible `Legend` control (lucide `palette` icon) appears in the toolbar next to the Map menu only while the Fuel basemap is active; `setBasemap` hides and closes it for every other basemap, so the unified refresh reset also removes it. It is a standard `.pm-menu` details element and therefore inherits the shared menu behavior (mutual exclusion, outside-pointerdown close, Escape close with focus return).
+
+- Because 44 US FBFM40 classes plus 16 Canadian FBP classes are unreadable as a flat list, the panel groups classes into fuel families: US GR/GS/SH/TU/TL/SB/NB and Canada Conifer/Deciduous/Mixedwood/Grass/Non-fuel. Each family row shows a strip of its member colors and expands (nested `<details>`) into per-class swatch, code, and short name rows.
+- Swatch colors are hard-coded in `FUEL_LEGEND`, copied verbatim from each service's `GetLegendGraphic&format=application/json` output (fetched 2026-07-24) so they match the rendered basemap exactly. If the WMS layer versions change (for example LF2024 → a newer LANDFIRE release), re-fetch both legend JSONs and update `FUEL_LEGEND` in the same change.
+- The Canadian 2024 grid renders only 16 classes (C-1…C-5, C-7, D-1, D-1/D-2, M-1 variants, O-1a, non-fuel/water); do not pad the legend with theoretical FBP classes the map never shows.
+- Legend DOM is built once at startup with `textContent`/`createElement` only; the panel scrolls within `min(62vh, 520px)` and fits 320–390 px phones.
+- The toolbar z-index is 1010 (above Leaflet's 1000 control layer) so the legend popover is not overlapped by the zoom stack; the fire drawer (1100) intentionally stays above both.
 
 Frame the initial map around the United States and Canada instead of showing the full RAQDPS data domain. Use a comparable regional scale on desktop and mobile, while allowing a slightly wider integer zoom on narrow screens so the view remains useful.
 
@@ -520,7 +536,7 @@ Before handing off a material change:
 8. Confirm the timeline is always visible, places “Now” at its correct possibly non-central position, and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
-11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm the LANDFIRE single image over the US (exactly one `edcintl` request per settled view, replaced after zoom without a blank gap), CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken imagery at continental and deep zooms.
+11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm the LANDFIRE single image over the US (exactly one `edcintl` request per settled view, replaced after zoom without a blank gap), CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken imagery at continental and deep zooms. Confirm the Legend control appears only on Fuel, opens above the zoom controls, expands family groups into class rows whose swatches match the map, scrolls within its capped height, closes on Escape/outside click, and disappears (closed) when the basemap changes or the unified refresh runs.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
