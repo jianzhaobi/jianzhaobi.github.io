@@ -525,7 +525,8 @@ Before handing off a material change:
 32. Inspect WFIGS request count and payload behavior: initial full simplified perimeter query, later unchanged-geometry reuse, changed-ID fetches, removal of expired Current records, full-query fallback after incremental failure, five-minute database-page reuse, 24-page eviction, explicit memory-cache clearing during unified manual refresh, and bounded 12-page persistent fallback retention.
 33. Simulate an ArcGIS code-429 database response with and without a stored page. With a stored page, confirm immediate clearly labeled cached rendering and no rapid retry loop. Without one, confirm a single abortable wait using the reported retry interval, a successful retry after recovery, and immediate cancellation when the drawer closes.
 34. At 320–390 px widths, verify the Fires bottom sheet, Layers checkboxes, filter wrapping, search/sort row, neutral sort-button background in both modes, popup width, timeline coexistence, and absence of horizontal overflow.
-35. Confirm `AGENTS.md` was updated for the current project change and no instruction in it contradicts the final code, data behavior, or workflow.
+35. Confirm mobile page-zoom suppression is intact: the viewport meta still declares `maximum-scale=1, user-scalable=no`; every text-entry input and select has a computed font size of at least 16 px (any new form control must comply); tappable controls (buttons, summaries, labels, inputs, selects, and links, including Leaflet's zoom anchors) keep `touch-action: manipulation`; the timeline slider keeps `touch-action: pan-y`; and Leaflet map pan/pinch gestures still work.
+36. Confirm `AGENTS.md` was updated for the current project change and no instruction in it contradicts the final code, data behavior, or workflow.
 
 ## Known tradeoffs
 
