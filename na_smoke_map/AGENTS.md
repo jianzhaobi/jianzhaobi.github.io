@@ -65,11 +65,13 @@ Use the following official ArcGIS items and their layer-0 FeatureServer endpoint
 
 The Current services supply the normal live map. The Year-to-Date services supply the incident database, the optional recently closed layer, and on-demand geometry for a database selection. The database intentionally covers only the current calendar year in the first implementation; do not imply that it is an all-years archive.
 
-Every WFIGS request must enforce the official wildfire category:
+Every WFIGS request must enforce the official wildfire categories:
 
-- Point services: `IncidentTypeCategory='WF'`.
-- Perimeter services: `attr_IncidentTypeCategory='WF'`.
-- Do not display prescribed fire (`RX`) or complex (`CX`) records as wildfires.
+- Live map point services: `IncidentTypeCategory='WF'`. The persistent map layers remain WF-only; complex parents never render as normal live wildfires.
+- Live map perimeter services: `attr_IncidentTypeCategory='WF'`.
+- Database list queries use the complex roll-up clause `((IncidentTypeCategory='WF' AND (IsCpxChild = 0 OR IsCpxChild IS NULL)) OR IncidentTypeCategory='CX')` so each complex appears as one CX parent row and its member fires (`IsCpxChild = 1`) are excluded from the list. Database selection and selection-perimeter queries may use `IN ('WF','CX')` so a CX parent row can resolve its geometry.
+- Never display prescribed fire (`RX`) records anywhere. CX records appear only as database roll-up rows, database selections, and mirror-mode geometry — never in the normal live layers.
+- Caution: sampled CX parent records carry placeholder `InitialLatitude`/`InitialLongitude` values (a dispatch-center coordinate such as NIFC Boise), so a parent point location must not be treated as the fire's real position when member geometry is available.
 
 When WFIGS is visible, add the `NIFC WFIGS` item link to Leaflet attribution. Remove the attribution when no persistent or selected wildfire geometry is visible.
 
@@ -96,6 +98,9 @@ Point attributes are authoritative when available. Perimeter `attr_*` values and
 - `POOCounty` and `POOState`
 - `ModifiedOnDateTime_dt`
 - `ICS209ReportStatus`
+- `ICS209ReportDateTime`
+- `IsCpxChild`, `CpxName`, and `CpxID` (a member fire's `CpxID` equals its parent complex's `IrwinID`)
+- `IncidentTypeCategory` (retained on records as `category` for the Complex list badge)
 - `poly_PolygonDateTime`
 
 If a point lacks GeoJSON geometry, use its reported `InitialLongitude` and `InitialLatitude` when both are finite. Missing display values must read `Not reported`; do not infer a cause, date, size, containment, or location.
@@ -146,7 +151,7 @@ Fire interaction has priority over the pollution probe:
 
 Keep ignition layers above perimeter layers, stop Leaflet event propagation on wildfire clicks, mark handled pointer events, and suppress the smoke probe while a wildfire geometry is hovered. The Canvas renderer uses a modest hit tolerance so desktop and touch interaction remains practical. Hover must visibly respond on desktop.
 
-Clicking either geometry of the same merged event must produce the same popup data and status. Anchor an ignition click at the point and a perimeter click at the clicked polygon location. Build all WFIGS-derived popup text with DOM nodes and `textContent`, never raw HTML. The card contains incident name, textual status, discovery time, acres, percent contained, county/state, cause, last update, and whether ignition, perimeter, or both are available.
+Clicking either geometry of the same merged event must produce the same popup data and status. Anchor an ignition click at the point and a perimeter click at the clicked polygon location. Build all WFIGS-derived popup text with DOM nodes and `textContent`, never raw HTML. The card contains incident name, textual status, discovery time, acres, percent contained, county/state, cause, last update, and whether ignition, perimeter, or both are available. Two conditional rows use logic identical for every event: an `ICS-209 report` row with the relative `ICS209ReportDateTime` whenever the record has a valid one (the report time can lag or lead other WFIGS attributes, so it is surfaced uniformly rather than only for filtered fires), and a `Complex` row reading `Part of <CpxName>` whenever the record carries a complex name.
 
 The map itself permits integer zoom through level 17, while basemaps advertise their native higher limits. A database perimeter selection fits all matching polygons with a maximum fit zoom of 15; when an ignition is available, use bounds mirrored around that point so the point is centered in the usable padded viewport while every perimeter remains visible. A point-only selection flies to integer zoom 13. Stop any previous map animation before starting a selection move, and disable popup auto-pan for database selections so it cannot race or override the requested camera. Do not reintroduce a regional maximum zoom that prevents city- or incident-level inspection.
 
@@ -158,15 +163,17 @@ Database behavior:
 
 - Load the live database lazily on first open; do not add an eager startup request.
 - Use a bounded 24-page in-memory cache with a five-minute lifetime for successful query/filter/sort/page combinations.
-- Persist at most 12 recently successful database pages for 24 hours in local storage solely as a stale-on-error fallback. A live response always replaces the stored page; a stored page must be labeled `cached` and used only when live WFIGS is unavailable or rate-limited.
+- Persist at most 12 recently successful database pages for 24 hours in local storage solely as a stale-on-error fallback. A live response always replaces the stored page; a stored page must be labeled `cached` and used only when live WFIGS is unavailable or rate-limited. The storage key is `na-smoke-map:wfigs-database:v2` (bumped from v1 when the field list and where clauses gained complex/IMSR support; the old key is removed once at startup).
 - Default to `FireDiscoveryDateTime DESC, OBJECTID DESC`.
 - The sort icon toggles between newest discovery first and `IncidentSize DESC, FireDiscoveryDateTime DESC, OBJECTID DESC`.
 - Keep the sort button neutral white with accent text/border in both modes; do not reuse the generic solid-orange `aria-pressed` button treatment.
 - Fetch 50 visible records plus one look-ahead record and require an explicit `Load more` action.
 - Debounce incident-name search by approximately 300 ms and escape SQL quote characters.
-- Provide All, Active, Contained, Controlled, and Out status filters plus an independent `Large · 300+ acres` toggle.
+- Provide All, Active, Contained, Controlled, and Out status filters plus independent `Large · 300+ acres` and `IMSR` toggles. **Active is the default status filter**, so the default list population matches the map's normal active view.
+- The `IMSR` toggle filters to fires with ongoing ICS-209 incident reporting that are not fully contained: `ICS209ReportStatus IN ('U','I') AND (PercentContained < 100 OR PercentContained IS NULL)`. This clause was validated against the 2026-07-24 IMSR report (it covered all 77 listed large fires; ~103 Current records matched, mostly the IMSR list plus Alaska monitor-status fires and initial-209 new fires). The client-side twin is `isImsrGradeFire()`; keep the SQL and the function in sync, and keep the `IS NULL` containment branch — a missing percentage means "not known to be contained", never 0.
 - All, Contained, Controlled, and Out query the Year-to-Date location service.
 - Active queries the Current location service and excludes final ICS-209 reports with `(ICS209ReportStatus IS NULL OR ICS209ReportStatus <> 'F')`.
+- Every list where clause starts from the complex roll-up base described in the official-sources section; CX parent rows carry an outline `Complex` badge next to the status badge.
 - Contained means containment is present while control and out are absent. Controlled means control is present while out is absent. Out means out is present.
 - Cancel obsolete search, filter, sort, pagination, and selection requests with `AbortController` and generation counters. Late results must not overwrite the latest user action.
 - A reset request must leave the previously rendered rows in place until its replacement page succeeds. On failure, report temporary unavailability, keep the current list, and make Retry repeat the pending reset rather than append duplicate rows.
@@ -174,6 +181,19 @@ Database behavior:
 - Database queries get up to three attempts against the valid shard host. On ArcGIS error code 429, do not burn retries inside the same quota window: use an available stored page immediately, or wait once for the server-specified interval—approximately 60 seconds—then retry. Closing the drawer must abort that wait.
 
 Selecting a database record queries all Year-to-Date perimeter polygons with the same `attr_IrwinID`. Draw both ignition and every matching perimeter when available, including for an older event not normally visible. Fit perimeter bounds, fall back to the ignition point, or retain the current map and report `Location unavailable` when neither exists. Keep the temporary selection until the popup is closed, another event is selected, or the selection is otherwise cleared.
+
+### Filtered map mirror mode
+
+The drawer's filter state and the map display are unified: when the filter state differs from the default, the map mirrors exactly the rows currently loaded in the list instead of the normal active view.
+
+- **Default state** means status `Active`, empty search, `Large` off, and `IMSR` off. Sort is deliberately excluded — it reorders rows without changing membership. In the default state the map uses its normal rendering (`Active` events plus the optional recently closed layer), and the default list population matches it.
+- **Trigger**: `fireFilterStateIsDefault()` is evaluated only after a list page applies successfully (`updateFireMirrorState()`), so an in-flight or failed load never blanks the map, and a late page cannot flip the mode after the wildfire master toggle went off (the function re-checks `wildfiresVisible`).
+- **Mirror set**: `fireMirrorRecords` is maintained at exactly the two points where the list DOM mutates — cleared alongside `fireList.replaceChildren()` and extended as each row is appended — so `Load more` adds map markers in lockstep and an aborted load leaves the mirror untouched.
+- **Rendering**: `renderFireLayers()` branches on `fireMirrorActive` and skips the normal Active/recent predicate; the mirrored rows *are* the visibility set. Feature-to-record lookups go through `fireRenderRecord()` (mirror first, then live events). At render time a mirrored fire prefers the live in-memory record's point and perimeter geometry by normalized IrwinID, so the five-minute WFIGS refresh keeps mirrored geometry current; a historical fire not in memory renders point-only from the list row's `ensurePointGeometry` fallback. Mirrored list attributes themselves are a snapshot of the last user-driven list load — mirror mode adds **zero** recurring WFIGS requests.
+- **CX parents in the mirror**: prefer the member fires found in memory (`complexMemberRecords()`, an in-memory scan matching `CpxID` to the parent id — never a request) and suppress the parent's placeholder point when members exist; fall back to the parent point only when no member is loaded.
+- **Banner**: while mirroring, a `pm-glass` banner under the toolbar shows `Filtered · N fires` with a clear (`×`) button that resets every filter control to the default and re-renders; it works with the drawer open or closed. The Layers-menu status line reports the filtered count, and the map's accessible name says "filtered WFIGS wildfire …".
+- **Teardown paths** (all four must keep working): restoring the default filters via the chips/search, the banner clear button, the unified manual refresh (`resetMapToInitialState`), and turning the Wildfires master toggle off (`clearFireMirror(false)` so re-enabling shows the default active view). Closing the drawer deliberately does **not** exit mirror mode — that is what the banner is for.
+- **Status honesty caveat**: a CX parent reached through a Year-to-Date-backed filter resolves status from date fields only (the live map never ingests CX), so an actively burning complex may badge `Not current`. The `fireStatus` rules are normative and are not modified for this case.
 
 ### WFIGS performance, refresh, and caching policy
 
@@ -192,7 +212,7 @@ The current lightweight client strategy is:
 - Refresh while the page is visible every five minutes. On `pageshow` or visibility resume, do not start a second refresh while one is already running.
 - Preserve the old wildfire layer on any refresh failure and expose a concise Layers-menu error plus `Retry`.
 
-The map's manual refresh button is a unified refresh-and-reset action. It must refetch the smoke cache manifest and every field atlas for the initial wildfire-smoke/surface dataset, fully reload Current and recent WFIGS point and perimeter data, and restore the opening map state: North America center and zoom, Day basemap, wildfire-smoke surface PM2.5 at Now, stopped playback, Smoke/Wildfires/Ignitions/Perimeters on, Recently closed off, closed menus and database drawer, default database search/filter/sort state, and no popup or selected wildfire. A known current-location dot may remain, matching startup behavior after location permission has already been granted. Clear the database page cache, mark the visible list for replacement, and reload it on the next drawer open (or immediately if the drawer is opened while refresh remains in progress). Its accessible name is `Refresh smoke and wildfire data`. Report success only if both primary systems succeed, partial success if one succeeds, and retain the prior visible smoke frame or wildfire layer for any failed source; if the default smoke reload fails, restore its prior particle, extent, and hour labels so they continue to match the retained frame.
+The map's manual refresh button is a unified refresh-and-reset action. It must refetch the smoke cache manifest and every field atlas for the initial wildfire-smoke/surface dataset, fully reload Current and recent WFIGS point and perimeter data, and restore the opening map state: North America center and zoom, Day basemap, wildfire-smoke surface PM2.5 at Now, stopped playback, Smoke/Wildfires/Ignitions/Perimeters on, Recently closed off, closed menus and database drawer, default database search/filter/sort state (status `Active`, `Large` and `IMSR` off), exited mirror mode with the filtered banner hidden, and no popup or selected wildfire. A known current-location dot may remain, matching startup behavior after location permission has already been granted. Clear the database page cache, mark the visible list for replacement, and reload it on the next drawer open (or immediately if the drawer is opened while refresh remains in progress). Its accessible name is `Refresh smoke and wildfire data`. Report success only if both primary systems succeed, partial success if one succeeds, and retain the prior visible smoke frame or wildfire layer for any failed source; if the default smoke reload fails, restore its prior particle, extent, and hour labels so they continue to match the retained frame.
 
 Do not change `scripts/build_static_cache.py`, the schema-v5 smoke cache format, or `.github/workflows/deploy-pages-with-smoke-cache.yml` merely to support WFIGS. Smoke cache behavior and wildfire in-memory caching are separate systems.
 
@@ -262,6 +282,14 @@ A systematic bug review fixed the following. Each item below is now normative be
 - Added the collapsible fuel-type Legend control described in the Fuel legend section: visible only on the Fuel basemap, grouped by fuel family with expandable per-class rows, colors copied from both services' GetLegendGraphic JSON. Grouping was chosen deliberately — a flat 60-row list defeats quick visual matching, while 12 family strips are scannable and each expands on demand.
 - Raised the toolbar z-index from 700 to 1010 so tall toolbar popovers are not overlapped by Leaflet's zoom/location/refresh control stack (Leaflet controls sit at 1000; the fire drawer remains above at 1100).
 - Verified: node syntax check; Legend appears/disappears with basemap switches and stays hidden on Day/Dark/Satellite; group expansion, scrolling, accent open-state, and chevron rotation; no zoom-control punch-through; 375 px mobile fit without horizontal overflow; no console errors.
+
+### 2026-07-24 IMSR filter, list/map mirror mode, and complex roll-up
+
+- Added the `IMSR` database toggle (`ICS209ReportStatus IN ('U','I') AND (PercentContained < 100 OR PercentContained IS NULL)`). The clause reproduces the fires the NIFC Incident Management Situation Report tracks: validated the same day against the live IMSR PDF, it covered all 77 listed large fires; extra matches were Alaska monitor-status fires (which the IMSR omits while they still produce smoke) and initial-209 new fires the next IMSR lists as new large incidents. IMSR and WFIGS share the same upstream ICS-209/IRWIN data, so no IMSR PDF parsing is needed or wanted.
+- Unified the drawer filter with the map: the default status chip changed from `All` to `Active` (matching the map's normal view), and any non-default filter state switches the map into the mirror mode documented in the Filtered map mirror mode section, showing exactly the loaded list rows with a dismissible `Filtered · N fires` banner.
+- Complex handling: list queries roll complexes up to one CX parent row (`Complex` badge) and exclude member fires; the live map still renders member fires only; selection queries widened to `IN ('WF','CX')`; popups gained uniform `ICS-209 report` and `Part of <CpxName>` rows. Live sampling found CX parents carry placeholder dispatch coordinates (NIFC Boise), so mirror rendering prefers in-memory member geometry and suppresses the placeholder parent point.
+- Plumbing: `FIRE_POINT_FIELDS` gained `ICS209ReportDateTime`, `IsCpxChild`, `CpxName`, `CpxID`; records gained the matching attributes plus `category`; the database storage key bumped to v2 with one-time v1 cleanup.
+- API sanity checks the same day: the roll-up + active clause counted 537 Current records and the IMSR clause 103, both plausible against the ~78 uncontained large fires in that morning's IMSR at national Preparedness Level 5.
 
 ### 2026-07-24 iOS page-zoom suppression update
 
@@ -546,7 +574,7 @@ Before handing off a material change:
 18. Confirm the initial view focuses on the United States and Canada at desktop and phone sizes, and that the location control displays a blue current-location marker and zooms to it after permission is granted.
 19. Confirm playback loops from the final forecast frame to Now and continues, and switch pollutant or vertical extent during playback to verify the current hour is preserved and animation resumes without a blank map.
 20. Validate a generated schema-v5 cache manifest and lossless weighted/coverage WebP atlas set. Confirm that a delayed manifest is re-aligned without discarding valid hours, the page loads only the selected dataset's field atlases before enabling the timeline, performs no field or GeoMet request when dragging or releasing, and still falls back safely when a field asset is absent.
-21. Confirm every Current and Year-to-Date WFIGS request contains its correct WF category filter and that no RX or CX event appears.
+21. Confirm every live-map Current and Year-to-Date WFIGS request contains its correct WF category filter and that no RX event appears anywhere. Confirm CX records appear only where documented: as database roll-up rows (with the `Complex` badge, no complex-child rows alongside), database selections, and mirror-mode geometry — never in the normal live layers.
 22. Exercise WFIGS point-only, perimeter-only, point-plus-perimeter, multiple-polygons, missing attributes, missing geometry with reported initial coordinates, missing location, duplicate IrwinID, and perimeter-only event cases.
 23. Confirm status priority for final ICS-209/Not current, Current/Active, Out, Controlled, Contained, and fallback Not current. Test the exact 24-hour recent boundary and confirm `PercentContained = 100` alone does not create an end state.
 24. Confirm recently closed ignition and perimeter geometry is hidden on first load, appears immediately without a request when its checkbox is enabled, and disappears again without changing Active geometry.
@@ -561,7 +589,9 @@ Before handing off a material change:
 33. Simulate an ArcGIS code-429 database response with and without a stored page. With a stored page, confirm immediate clearly labeled cached rendering and no rapid retry loop. Without one, confirm a single abortable wait using the reported retry interval, a successful retry after recovery, and immediate cancellation when the drawer closes.
 34. At 320–390 px widths, verify the Fires bottom sheet, Layers checkboxes, filter wrapping, search/sort row, neutral sort-button background in both modes, popup width, timeline coexistence, and absence of horizontal overflow.
 35. Confirm mobile page-zoom suppression is intact: the viewport meta still declares `maximum-scale=1, user-scalable=no`; every text-entry input and select has a computed font size of at least 16 px (any new form control must comply); tappable controls (buttons, summaries, labels, inputs, selects, and links, including Leaflet's zoom anchors) keep `touch-action: manipulation`; the timeline slider keeps `touch-action: pan-y`; and Leaflet map pan/pinch gestures still work.
-36. Confirm `AGENTS.md` was updated for the current project change and no instruction in it contradicts the final code, data behavior, or workflow.
+36. Exercise the filter/map mirror: default open shows the Active chip pressed with the map unchanged; enabling `IMSR`, `Large`, a non-default status, or a search switches the map to exactly the loaded list rows with the `Filtered · N fires` banner (N equals the row count); `Load more` grows list and map together; sort changes membership of neither. Verify all four teardown paths (default chips restored, banner clear with the drawer open and closed, unified refresh, Wildfires master toggle off/on) and confirm mirror mode issues no recurring WFIGS requests beyond the user-driven list loads.
+37. Confirm the popup's `ICS-209 report` row appears for any fire with a valid report time and is absent otherwise, and that a complex member fire shows `Part of <CpxName>`. Select a CX parent row and confirm the selection prefers fitted perimeter bounds (CX perimeters resolve through the widened `IN ('WF','CX')` selection queries); its point-only fallback may sit at the documented placeholder dispatch coordinate, which is source data, not a rendering bug. In mirror mode confirm a CX parent row draws its in-memory member fires instead of the placeholder parent point.
+38. Confirm `AGENTS.md` was updated for the current project change and no instruction in it contradicts the final code, data behavior, or workflow.
 
 ## Known tradeoffs
 
