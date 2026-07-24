@@ -250,6 +250,13 @@ A systematic bug review fixed the following. Each item below is now normative be
 - Service selection notes: LANDFIRE's `lfps.usgs.gov` ArcGIS ImageServers carry the same products but would need one tile layer per geographic area and per-layer export requests; the GeoServer WMS merges CONUS/AK/HI in one GetMap and is GeoWebCache-backed, so it was chosen. `LF2024_FBFM40_PRVI` was attempted and removed after the live WMS returned `LayerNotDefined`, which broke every merged tile.
 - Verified: node syntax check; local HTTP server; basemap switching in all directions removes and restores WMS tiles and attribution; fuel tiles load without failures at continental and deep zooms; unified refresh still resets Fuel back to Day; 375 px mobile menu shows all four options without horizontal overflow; no console errors.
 
+### 2026-07-24 fuel basemap performance rework
+
+- The initial tiled-WMS LANDFIRE layer was near-unusable in practice: measured 2–20 s per dynamic 256 px tile from `edcintl.cr.usgs.gov`, so a 24-tile viewport behind the browser's 6-connection-per-host limit took tens of seconds. Investigated alternatives that did not help: the server's GeoWebCache WMTS (16–22 s even on repeated identical tiles — evidently load-balanced nodes with independent cold caches), `lfps.usgs.gov` ImageServer `exportImage` (5–24 s), and an ArcGIS Online search that found no public pre-tiled national FBFM40 service (only county-scale CWPP tile sets).
+- The same server answers one viewport-sized GetMap in ~0.5–4 s regardless of scale, so the US layer now uses the `SingleImageWmsLayer` described in the LANDFIRE single-image rendering section: one padded `image/png8` request per settled view, previous image retained until the replacement loads, stale loads discarded by generation counter. Measured in-app: initial fuel activation 1 request ≈ 0.5 s; a zoom change 1 request ≈ 1 s.
+- CWFIS remains a normal tiled WMS layer (sub-second tile responses). New Leaflet panes `fuelPane` (250) and `fuelLabelPane` (260) keep the LANDFIRE image above the base tiles and below the place labels, smoke canvas, and wildfire geometry.
+- Verified: node syntax check; basemap switch to Fuel issues exactly one LANDFIRE request and renders US/AK/HI plus CWFIS Canada; zoom-in issues one replacement request and sharpens without a blank gap; switching back to Day removes the fuel image, label tiles, and both attribution entries; no console errors.
+
 ### 2026-07-24 iOS page-zoom suppression update
 
 - Fixed iPhone Safari's sudden page zoom when tapping controls (double-tap zoom) and when focusing text fields (automatic input-focus zoom on form controls with text smaller than 16 px).
@@ -271,21 +278,33 @@ Preserve the corresponding Leaflet, OpenStreetMap, CARTO, and Esri attribution.
 
 ### Fuel basemap
 
-The Fuel basemap is a thematic wildfire fuel-type view composed of four stacked tile layers created and removed together as one basemap choice:
+The Fuel basemap is a thematic wildfire fuel-type view composed of four stacked layers created and removed together as one basemap choice:
 
-1. CARTO Positron `light_nolabels` raster tiles as the neutral background (`zIndex` 1).
-2. LANDFIRE FBFM40 (Scott & Burgan 40 fire behavior fuel models) for the United States via tiled WMS from the official USGS GeoServer at `https://edcintl.cr.usgs.gov/geoserver/landfire/ows`, requesting the merged layers `LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI` with `transparent=true` (`zIndex` 2).
-3. Canadian FBP System fuel types via tiled WMS from the official Natural Resources Canada CWFIS GeoServer at `https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms`, layer `cffdrs_fbp_fuel_types` (`zIndex` 2).
-4. CARTO Positron `light_only_labels` place-name tiles on top (`zIndex` 3).
+1. CARTO Positron `light_nolabels` raster tiles as the neutral background (tile pane, `zIndex` 1).
+2. LANDFIRE FBFM40 (Scott & Burgan 40 fire behavior fuel models) for the United States from the official USGS GeoServer at `https://edcintl.cr.usgs.gov/geoserver/landfire/ows`, merged layers `LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI`, rendered through the custom `SingleImageWmsLayer` (one viewport-sized `image/png8` GetMap per settled view, `fuelPane`, z-index 250).
+3. Canadian FBP System fuel types via tiled WMS from the official Natural Resources Canada CWFIS GeoServer at `https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms`, layer `cffdrs_fbp_fuel_types` (tile pane, `zIndex` 2).
+4. CARTO Positron `light_only_labels` place-name tiles on top (`fuelLabelPane`, z-index 260, above the LANDFIRE image).
+
+### LANDFIRE single-image rendering (performance-critical)
+
+Do not render the LANDFIRE fuel layer as `L.tileLayer.wms`. Measured 2026-07-24: the LANDFIRE GeoServer takes roughly 2–20 seconds per dynamic 256 px GetMap tile, its GeoWebCache WMTS returned 16–22 second responses even on repeats (multiple backend nodes with independent, mostly cold caches), and the `lfps.usgs.gov` ImageServer `exportImage` path measured 5–24 seconds — so a 24-tile viewport was effectively unusable, while a single viewport-sized GetMap for the same coverage consistently returned in roughly 0.5–4 seconds. CWFIS does not have this problem (sub-second tiles) and stays tiled.
+
+`SingleImageWmsLayer` therefore mirrors the smoke-frame architecture:
+
+- On `moveend` (debounced ~200 ms) and Leaflet `resize`, request one EPSG:3857 WMS 1.1.1 GetMap for the viewport padded by 25% per side, capped at 2048 px on the long edge, clamped to world mercator bounds, as `image/png8` (categorical palette, ~45% smaller than `image/png`).
+- Preload via an `Image`, then swap an `L.imageOverlay` in `fuelPane`; the previous image stays visible until its replacement has fully loaded, and a failed load keeps the old image (the next settled move retries).
+- Skip the request when the settled view is still inside the last loaded padded bounds at the same or lower zoom; zooming in past the loaded zoom always re-requests so the raster sharpens.
+- A generation counter discards stale loads, matching the project-wide cancellation convention.
+- A refresh while the map has zero size returns early; the `resize` listener re-triggers it once the container is sized (hidden-tab/bfcache activation case).
 
 Constraints and rationale:
 
 - `LF2024` is the newest LANDFIRE release with complete CONUS, Alaska, and Hawaii FBFM40 coverage on the WMS. `LF2025_FBFM40` exists only for CONUS/AK plus seasonal variants, and `LF2024_FBFM40_PRVI` (Puerto Rico/USVI) is not published on this WMS — requesting it makes the whole merged GetMap fail with `LayerNotDefined`, so it must not be added without re-verifying capabilities.
-- Both services were verified to render correctly in EPSG:3857 through WMS 1.1.1 GetMap (Leaflet `L.tileLayer.wms` defaults) at continental and deep zooms, and both sit behind GeoWebCache, so tile responses are fast after warm-up.
 - Mexico and other non-US/Canada areas intentionally show only the neutral background: neither national fuel product covers them.
 - The US and Canadian layers use different national classification systems and palettes; the border seam is expected and must not be "fixed" by recoloring either official rendering.
 - When the Fuel basemap is active, add the LANDFIRE (USGS) and CWFIS (NRCan) attribution entries; they must disappear when another basemap is selected.
-- Basemaps are now built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url` or `wms` endpoint specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
+- Basemaps are built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url`, tiled `wms`, or single-image `singleWms` specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
+- The `fuelPane` (250) and `fuelLabelPane` (260) sit above the tile pane (200) and below the smoke overlay pane (400) and `firePane` (450).
 
 Frame the initial map around the United States and Canada instead of showing the full RAQDPS data domain. Use a comparable regional scale on desktop and mobile, while allowing a slightly wider integer zoom on narrow screens so the view remains useful.
 
@@ -501,7 +520,7 @@ Before handing off a material change:
 8. Confirm the timeline is always visible, places “Now” at its correct possibly non-central position, and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
-11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm LANDFIRE tiles over the US, CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken WMS tiles at continental and deep zooms.
+11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm the LANDFIRE single image over the US (exactly one `edcintl` request per settled view, replaced after zoom without a blank gap), CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken imagery at continental and deep zooms.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
@@ -539,7 +558,7 @@ Before handing off a material change:
 - Direct WFIGS loading avoids maintaining another publication pipeline and keeps incidents timely, but availability depends on an official ArcGIS organization-wide quota. In-memory geometry reuse, quota-aware retry, partial map refresh, old-layer retention, and a clearly labeled bounded stale database fallback mitigate transient failures. The persistent fallback may be up to 24 hours old and must never be presented as live data.
 - WFIGS perimeters are simplified for display and may not preserve survey-level boundary detail. They are operational map context, not cadastral or evacuation-boundary data.
 - The 300-acre large-fire threshold and compressed point-radius classes are visualization and browsing aids. Acreage remains printed in text, and circle radius must not be interpreted as an exact area-to-scale symbol.
-- The Fuel basemap depends on two live government WMS services (USGS LANDFIRE and NRCan CWFIS) with no local cache; an outage leaves the neutral no-label background visible. Mexico has no fuel coverage, the US and Canadian classifications and palettes differ at the border by design, and no in-app class legend is shown because FBFM40 alone has 40 classes and the Map menu must stay compact.
+- The Fuel basemap depends on two live government WMS services (USGS LANDFIRE and NRCan CWFIS) with no local cache; an outage leaves the neutral no-label background visible. Mexico has no fuel coverage, the US and Canadian classifications and palettes differ at the border by design, and no in-app class legend is shown because FBFM40 alone has 40 classes and the Map menu must stay compact. The LANDFIRE half is one image per settled view: for the ~1–4 s after a zoom or large pan the previous, coarser image remains visible (brief softness or a padded-edge gap) instead of a loading indicator, which is the accepted cost of avoiding the server's multi-second per-tile latency.
 
 ## Primary artifacts
 

@@ -1972,13 +1972,11 @@
               }
             },
             {
-              wms: "https://edcintl.cr.usgs.gov/geoserver/landfire/ows",
+              singleWms: "https://edcintl.cr.usgs.gov/geoserver/landfire/ows",
               options: {
                 layers: "LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI",
-                format: "image/png",
-                transparent: true,
-                maxZoom: 20,
-                zIndex: 2,
+                format: "image/png8",
+                pane: "fuelPane",
                 attribution: "Fuel: <a href=\"https://landfire.gov\">LANDFIRE FBFM40</a> (USGS)"
               }
             },
@@ -1998,7 +1996,7 @@
               options: {
                 subdomains: "abcd",
                 maxZoom: 20,
-                zIndex: 3,
+                pane: "fuelLabelPane",
                 attribution: CARTO_ATTRIBUTION
               }
             }
@@ -2006,15 +2004,123 @@
         }
       };
 
+      // Single-image WMS layer: one viewport-sized GetMap per settled view instead of
+      // 256 px tiles. The LANDFIRE GeoServer takes seconds per dynamic tile and its
+      // GeoWebCache is unreliable, so a tile grid multiplies that latency by the tile
+      // count; one padded request is the same pattern the smoke frames already use.
+      // The previous image stays visible until its replacement has fully loaded.
+      const SingleImageWmsLayer = L.Layer.extend({
+        initialize(url, options) {
+          this._endpoint = url;
+          L.setOptions(this, options);
+        },
+        onAdd(map) {
+          this._mapRef = map;
+          this._overlay = null;
+          this._generation = 0;
+          this._loadedBounds = null;
+          this._loadedZoom = null;
+          this._debounce = null;
+          map.on("moveend resize", this._onMoveEnd, this);
+          this._refresh();
+          return this;
+        },
+        onRemove(map) {
+          map.off("moveend resize", this._onMoveEnd, this);
+          clearTimeout(this._debounce);
+          this._generation += 1;
+          if (this._overlay) map.removeLayer(this._overlay);
+          this._overlay = null;
+          this._mapRef = null;
+          return this;
+        },
+        _onMoveEnd() {
+          clearTimeout(this._debounce);
+          this._debounce = setTimeout(() => {
+            if (!this._mapRef) return;
+            const zoom = this._mapRef.getZoom();
+            const covered = this._loadedBounds
+              && this._loadedBounds.contains(this._mapRef.getBounds())
+              && zoom <= this._loadedZoom;
+            if (!covered) this._refresh();
+          }, 200);
+        },
+        _refresh() {
+          const map = this._mapRef;
+          const generation = ++this._generation;
+          const zoom = map.getZoom();
+          const size = map.getSize();
+          if (size.x < 1 || size.y < 1) return;
+          const PAD = 0.25;
+          const MAX_PX = 2048;
+          const WORLD = 20037508.342789244;
+          const pixelBounds = map.getPixelBounds();
+          const padded = L.bounds(
+            pixelBounds.min.subtract([size.x * PAD, size.y * PAD]),
+            pixelBounds.max.add([size.x * PAD, size.y * PAD])
+          );
+          const nw = L.CRS.EPSG3857.project(map.unproject(padded.min, zoom));
+          const se = L.CRS.EPSG3857.project(map.unproject(padded.max, zoom));
+          const west = Math.max(nw.x, -WORLD);
+          const east = Math.min(se.x, WORLD);
+          const south = Math.max(se.y, -WORLD);
+          const north = Math.min(nw.y, WORLD);
+          if (west >= east || south >= north) return;
+          const metersPerPixel = (se.x - nw.x) / (padded.max.x - padded.min.x);
+          let width = Math.round((east - west) / metersPerPixel);
+          let height = Math.round((north - south) / metersPerPixel);
+          const scale = Math.min(1, MAX_PX / Math.max(width, height));
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+          const params = new URLSearchParams({
+            service: "WMS",
+            request: "GetMap",
+            version: "1.1.1",
+            layers: this.options.layers,
+            styles: "",
+            format: this.options.format || "image/png",
+            transparent: "true",
+            srs: "EPSG:3857",
+            bbox: `${west},${south},${east},${north}`,
+            width: String(width),
+            height: String(height)
+          });
+          const url = `${this._endpoint}?${params.toString()}`;
+          const overlayBounds = L.latLngBounds(
+            L.CRS.EPSG3857.unproject(L.point(west, south)),
+            L.CRS.EPSG3857.unproject(L.point(east, north))
+          );
+          const image = new Image();
+          image.onload = () => {
+            if (generation !== this._generation || !this._mapRef) return;
+            const overlay = L.imageOverlay(url, overlayBounds, {
+              pane: this.options.pane,
+              interactive: false
+            });
+            overlay.addTo(this._mapRef);
+            const previous = this._overlay;
+            this._overlay = overlay;
+            if (previous) this._mapRef.removeLayer(previous);
+            this._loadedBounds = overlayBounds;
+            this._loadedZoom = zoom;
+          };
+          // On failure keep the previous image; the next settled move retries.
+          image.src = url;
+        }
+      });
+
       function createBasemapLayers(choice) {
-        return choice.layers.map((spec) => (
-          spec.wms ? L.tileLayer.wms(spec.wms, spec.options) : L.tileLayer(spec.url, spec.options)
-        ));
+        return choice.layers.map((spec) => {
+          if (spec.singleWms) return new SingleImageWmsLayer(spec.singleWms, spec.options);
+          return spec.wms ? L.tileLayer.wms(spec.wms, spec.options) : L.tileLayer(spec.url, spec.options);
+        });
       }
 
       let baseLayers = createBasemapLayers(BASEMAPS.day);
       baseLayers.forEach((layer) => layer.addTo(map));
 
+      map.createPane("fuelPane").style.zIndex = "250";
+      map.createPane("fuelLabelPane").style.zIndex = "260";
       map.createPane("firePane").style.zIndex = "450";
       const fireRenderer = L.canvas({ pane: "firePane", padding: 0.5, tolerance: 7 });
       const firePerimeterGroup = L.layerGroup();
