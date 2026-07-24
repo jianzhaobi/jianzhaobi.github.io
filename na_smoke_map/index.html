@@ -1619,6 +1619,10 @@
               <input type="radio" name="pm-basemap" value="fuel">
               <span><i data-lucide="trees" aria-hidden="true"></i>Fuel</span>
             </label>
+            <label class="pm-radio">
+              <input type="radio" name="pm-basemap" value="landcover">
+              <span><i data-lucide="leaf" aria-hidden="true"></i>Land cover</span>
+            </label>
           </fieldset>
         </details>
 
@@ -2131,11 +2135,12 @@
               }
             },
             {
-              singleWms: "https://edcintl.cr.usgs.gov/geoserver/landfire/ows",
+              singleImage: "https://edcintl.cr.usgs.gov/geoserver/landfire/ows",
               options: {
+                mode: "wms",
                 layers: "LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI",
                 format: "image/png8",
-                pane: "fuelPane",
+                pane: "themePane",
                 attribution: "Fuel: <a href=\"https://landfire.gov\">LANDFIRE FBFM40</a> (USGS)"
               }
             },
@@ -2155,7 +2160,40 @@
               options: {
                 subdomains: "abcd",
                 maxZoom: 20,
-                pane: "fuelLabelPane",
+                pane: "themeLabelPane",
+                attribution: CARTO_ATTRIBUTION
+              }
+            }
+          ]
+        },
+        landcover: {
+          layers: [
+            {
+              url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+              options: {
+                subdomains: "abcd",
+                maxZoom: 20,
+                zIndex: 1,
+                attribution: CARTO_ATTRIBUTION
+              }
+            },
+            {
+              singleImage: "https://ic.imagery1.arcgis.com/arcgis/rest/services/Sentinel2_10m_LandCover/ImageServer",
+              options: {
+                mode: "arcgis",
+                // 2020 annual composite: 2020-01-01 .. 2021-01-01 UTC in epoch ms.
+                time: "1577836800000,1609459200000",
+                format: "png32",
+                pane: "themePane",
+                attribution: "Land cover: <a href=\"https://livingatlas.arcgis.com/landcoverexplorer/\">Sentinel-2 10 m Land Cover 2020</a> — Impact Observatory, Microsoft, Esri"
+              }
+            },
+            {
+              url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+              options: {
+                subdomains: "abcd",
+                maxZoom: 20,
+                pane: "themeLabelPane",
                 attribution: CARTO_ATTRIBUTION
               }
             }
@@ -2163,10 +2201,15 @@
         }
       };
 
-      // Class colors below are copied verbatim from each service's GetLegendGraphic
-      // JSON (LF2024_FBFM40_CONUS and cffdrs_fbp_fuel_types, fetched 2026-07-24) so
-      // legend swatches match the rendered basemap exactly.
-      const FUEL_LEGEND = [
+      // Legend content per thematic basemap. Class colors are copied verbatim from
+      // each service's official legend (fuel: GetLegendGraphic JSON for
+      // LF2024_FBFM40_CONUS and cffdrs_fbp_fuel_types; land cover: the Sentinel-2
+      // ImageServer /legend swatches), all fetched 2026-07-24, so the swatches match
+      // the rendered basemap exactly. A region with `groups` renders as collapsible
+      // family rows (fuel); a region with a flat `classes` array renders as a simple
+      // swatch list (land cover, only nine classes).
+      const LEGENDS = {
+        fuel: [
         {
           region: "United States — LANDFIRE FBFM40",
           groups: [
@@ -2261,67 +2304,111 @@
             ] }
           ]
         }
-      ];
+        ],
+        landcover: [
+          {
+            region: "North America — Sentinel-2 10 m (2020)",
+            classes: [
+              ["", "#358221", "Trees"],
+              ["", "#EFCFA8", "Rangeland"],
+              ["", "#FFDB5C", "Crops"],
+              ["", "#87D19E", "Flooded vegetation"],
+              ["", "#1A5BAB", "Water"],
+              ["", "#F2FAFF", "Snow / ice"],
+              ["", "#EDE9E4", "Bare ground"],
+              ["", "#ED022A", "Built area"],
+              ["", "#C8C8C8", "Clouds (no valid observation)"]
+            ]
+          }
+        ]
+      };
 
-      const fuelLegendMenu = document.getElementById("pm-fuel-legend");
+      const legendMenu = document.getElementById("pm-fuel-legend");
+      const legendPanel = document.getElementById("pm-fuel-legend-panel");
+      const legendSummary = legendMenu.querySelector("summary");
+      let legendBasemap = null;
 
-      function buildFuelLegend() {
-        const panel = document.getElementById("pm-fuel-legend-panel");
-        FUEL_LEGEND.forEach((regionData) => {
+      function legendClassRow([code, color, description]) {
+        const item = document.createElement("li");
+        const swatch = document.createElement("span");
+        swatch.className = "pm-fuel-swatch";
+        swatch.style.background = color;
+        const desc = document.createElement("span");
+        desc.className = "pm-fuel-desc";
+        desc.textContent = description;
+        if (code) {
+          const codeEl = document.createElement("span");
+          codeEl.className = "pm-fuel-code";
+          codeEl.textContent = code;
+          item.append(swatch, codeEl, desc);
+        } else {
+          item.append(swatch, desc);
+        }
+        return item;
+      }
+
+      // Rebuild the legend panel for the given basemap. Idempotent: rerendering the
+      // same basemap is a no-op so reopening the menu keeps expanded groups.
+      function renderLegend(basemap) {
+        const regions = LEGENDS[basemap];
+        if (!regions || basemap === legendBasemap) return Boolean(regions);
+        legendBasemap = basemap;
+        legendPanel.replaceChildren();
+        const label = basemap === "fuel" ? "Fuel type legend" : "Land cover legend";
+        legendPanel.setAttribute("aria-label", label);
+        legendSummary.setAttribute("aria-label", `Legend — ${basemap === "fuel" ? "fuel type classes" : "land cover classes"}`);
+        regions.forEach((regionData) => {
           const region = document.createElement("section");
           region.className = "pm-fuel-region";
           const title = document.createElement("h3");
           title.className = "pm-fuel-region-title";
           title.textContent = regionData.region;
           region.appendChild(title);
-          regionData.groups.forEach((groupData) => {
-            const group = document.createElement("details");
-            group.className = "pm-fuel-group";
-            const summary = document.createElement("summary");
-            const strip = document.createElement("span");
-            strip.className = "pm-fuel-strip";
-            strip.setAttribute("aria-hidden", "true");
-            groupData.classes.forEach(([, color]) => {
-              const cell = document.createElement("span");
-              cell.style.background = color;
-              strip.appendChild(cell);
+          if (regionData.groups) {
+            regionData.groups.forEach((groupData) => {
+              const group = document.createElement("details");
+              group.className = "pm-fuel-group";
+              const summary = document.createElement("summary");
+              const strip = document.createElement("span");
+              strip.className = "pm-fuel-strip";
+              strip.setAttribute("aria-hidden", "true");
+              groupData.classes.forEach(([, color]) => {
+                const cell = document.createElement("span");
+                cell.style.background = color;
+                strip.appendChild(cell);
+              });
+              const name = document.createElement("span");
+              name.textContent = groupData.name;
+              summary.append(strip, name);
+              group.appendChild(summary);
+              const list = document.createElement("ul");
+              list.className = "pm-fuel-classes";
+              groupData.classes.forEach((cls) => list.appendChild(legendClassRow(cls)));
+              group.appendChild(list);
+              region.appendChild(group);
             });
-            const name = document.createElement("span");
-            name.textContent = groupData.name;
-            summary.append(strip, name);
-            group.appendChild(summary);
+          } else {
             const list = document.createElement("ul");
-            list.className = "pm-fuel-classes";
-            groupData.classes.forEach(([code, color, description]) => {
-              const item = document.createElement("li");
-              const swatch = document.createElement("span");
-              swatch.className = "pm-fuel-swatch";
-              swatch.style.background = color;
-              const codeEl = document.createElement("span");
-              codeEl.className = "pm-fuel-code";
-              codeEl.textContent = code;
-              const desc = document.createElement("span");
-              desc.className = "pm-fuel-desc";
-              desc.textContent = description;
-              if (code) item.append(swatch, codeEl, desc);
-              else item.append(swatch, desc);
-              list.appendChild(item);
-            });
-            group.appendChild(list);
-            region.appendChild(group);
-          });
-          panel.appendChild(region);
+            list.className = "pm-fuel-classes pm-fuel-classes-flat";
+            regionData.classes.forEach((cls) => list.appendChild(legendClassRow(cls)));
+            region.appendChild(list);
+          }
+          legendPanel.appendChild(region);
         });
+        return true;
       }
-
-      buildFuelLegend();
 
       // Single-image WMS layer: one viewport-sized GetMap per settled view instead of
       // 256 px tiles. The LANDFIRE GeoServer takes seconds per dynamic tile and its
       // GeoWebCache is unreliable, so a tile grid multiplies that latency by the tile
       // count; one padded request is the same pattern the smoke frames already use.
       // The previous image stays visible until its replacement has fully loaded.
-      const SingleImageWmsLayer = L.Layer.extend({
+      // Supports two endpoint modes selected by options.mode: "wms" (OGC WMS 1.1.1
+      // GetMap, the LANDFIRE default) and "arcgis" (ArcGIS ImageServer exportImage,
+      // used for the Esri Sentinel-2 land-cover layer whose export is enabled while
+      // its tiles are LERC-only). Only the request URL differs; the mercator viewport
+      // math, padding, size cap, preload/swap, and generation guard are shared.
+      const SingleImageLayer = L.Layer.extend({
         initialize(url, options) {
           this._endpoint = url;
           L.setOptions(this, options);
@@ -2384,20 +2471,35 @@
           const scale = Math.min(1, MAX_PX / Math.max(width, height));
           width = Math.max(1, Math.round(width * scale));
           height = Math.max(1, Math.round(height * scale));
-          const params = new URLSearchParams({
-            service: "WMS",
-            request: "GetMap",
-            version: "1.1.1",
-            layers: this.options.layers,
-            styles: "",
-            format: this.options.format || "image/png",
-            transparent: "true",
-            srs: "EPSG:3857",
-            bbox: `${west},${south},${east},${north}`,
-            width: String(width),
-            height: String(height)
-          });
-          const url = `${this._endpoint}?${params.toString()}`;
+          let url;
+          if (this.options.mode === "arcgis") {
+            const params = new URLSearchParams({
+              f: "image",
+              bbox: `${west},${south},${east},${north}`,
+              bboxSR: "3857",
+              imageSR: "3857",
+              size: `${width},${height}`,
+              format: this.options.format || "png32",
+              transparent: "true"
+            });
+            if (this.options.time) params.set("time", this.options.time);
+            url = `${this._endpoint}/exportImage?${params.toString()}`;
+          } else {
+            const params = new URLSearchParams({
+              service: "WMS",
+              request: "GetMap",
+              version: "1.1.1",
+              layers: this.options.layers,
+              styles: "",
+              format: this.options.format || "image/png",
+              transparent: "true",
+              srs: "EPSG:3857",
+              bbox: `${west},${south},${east},${north}`,
+              width: String(width),
+              height: String(height)
+            });
+            url = `${this._endpoint}?${params.toString()}`;
+          }
           const overlayBounds = L.latLngBounds(
             L.CRS.EPSG3857.unproject(L.point(west, south)),
             L.CRS.EPSG3857.unproject(L.point(east, north))
@@ -2423,7 +2525,7 @@
 
       function createBasemapLayers(choice) {
         return choice.layers.map((spec) => {
-          if (spec.singleWms) return new SingleImageWmsLayer(spec.singleWms, spec.options);
+          if (spec.singleImage) return new SingleImageLayer(spec.singleImage, spec.options);
           return spec.wms ? L.tileLayer.wms(spec.wms, spec.options) : L.tileLayer(spec.url, spec.options);
         });
       }
@@ -2431,8 +2533,12 @@
       let baseLayers = createBasemapLayers(BASEMAPS.day);
       baseLayers.forEach((layer) => layer.addTo(map));
 
-      map.createPane("fuelPane").style.zIndex = "250";
-      map.createPane("fuelLabelPane").style.zIndex = "260";
+      // Shared by all thematic single-image basemaps (fuel, land cover): the raster
+      // sits above base tiles (200) and below the smoke overlay (400) and fire (450);
+      // place labels ride just above the thematic raster. Only one such basemap is
+      // active at a time, so a single shared pair of panes is sufficient.
+      map.createPane("themePane").style.zIndex = "250";
+      map.createPane("themeLabelPane").style.zIndex = "260";
       map.createPane("firePane").style.zIndex = "450";
       const fireRenderer = L.canvas({ pane: "firePane", padding: 0.5, tolerance: 7 });
       const firePerimeterGroup = L.layerGroup();
@@ -6438,8 +6544,9 @@
           baseLayers = createBasemapLayers(choice);
           baseLayers.forEach((layer) => layer.addTo(map));
         }
-        fuelLegendMenu.hidden = basemap !== "fuel";
-        if (fuelLegendMenu.hidden) fuelLegendMenu.open = false;
+        const hasLegend = renderLegend(basemap);
+        legendMenu.hidden = !hasLegend;
+        if (legendMenu.hidden) legendMenu.open = false;
         root.dataset.basemap = basemap;
         basemapInputs.forEach((input) => {
           input.checked = input.value === basemap;

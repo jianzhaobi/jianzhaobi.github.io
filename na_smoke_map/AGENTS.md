@@ -291,6 +291,15 @@ A systematic bug review fixed the following. Each item below is now normative be
 - Plumbing: `FIRE_POINT_FIELDS` gained `ICS209ReportDateTime`, `IsCpxChild`, `CpxName`, `CpxID`; records gained the matching attributes plus `category`; the database storage key bumped to v2 with one-time v1 cleanup.
 - API sanity checks the same day: the roll-up + active clause counted 537 Current records and the IMSR clause 103, both plausible against the ~78 uncontained large fires in that morning's IMSR at national Preparedness Level 5.
 
+### 2026-07-24 land-cover basemap addition
+
+- Added the fifth `landcover` basemap option (Map menu radio labeled `Land cover`, lucide `leaf` icon): CARTO no-label background, the Esri/Impact Observatory Sentinel-2 10 m Land Cover 2020 raster via ArcGIS `exportImage`, and CARTO labels, as specified in the Land cover basemap section. One global layer covers all of North America including Mexico.
+- Generalized the fuel single-image layer for reuse: `SingleImageWmsLayer` → `SingleImageLayer` with an `options.mode` of `"wms"` (LANDFIRE GetMap) or `"arcgis"` (Sentinel-2 `exportImage`); the mercator viewport math, padding, size cap, preload/swap, skip-when-covered, generation guard, and zero-size handling are shared. The basemap spec key `singleWms` became `singleImage`. The shared panes `fuelPane`/`fuelLabelPane` were renamed `themePane`/`themeLabelPane` since two thematic basemaps now use them (dated records above predate this rename).
+- Generalized the legend: `FUEL_LEGEND` → `LEGENDS` keyed by basemap, and `buildFuelLegend()` (built once at startup) → `renderLegend(basemap)` (rebuilds on basemap change, idempotent per basemap). A region with `groups` renders collapsible family rows (Fuel); a region with a flat `classes` array renders a simple swatch list (Land cover's 9 classes). `setBasemap` shows the Legend control for any basemap present in `LEGENDS`.
+- Product-selection record: CEC NALCMS 2020 (the original request) and ESA WorldCover were both investigated and rejected for lack of a reachable mercator/PNG render path — CEC's only official service is LERC + Lambert Azimuthal Equal-Area + tiles-only (`gis.cec.org` WMS returns 403 from here; the CECAtlas hosted tiled image service and all third-party re-hosts keep the LAEA scheme), and ESA WorldCover's rendered Terrascope WMS was unreachable from both the sandbox and the in-app browser while the Esri-hosted copies are LERC tiles-only. Sentinel-2 10 m LULC exposes `exportImage` (verified mercator PNG, 2020 selectable, ~0.5–1.4 s per viewport image) and covers all three countries.
+- Format note: `exportImage` must use `format=png32` (RGBA) so ocean/no-data are transparent; `png`/`png8` return opaque RGB that paints the sea black over the CARTO background.
+- Verified: node syntax check; no stale identifiers (`singleWms`, `fuelPane`, `SingleImageWmsLayer`, `buildFuelLegend` all gone); Land cover renders full North America incl. Mexico with transparent ocean; one `exportImage` per settled view, one replacement per zoom, sharper at deep zoom; Fuel↔Land cover legend content swaps (12 groups vs 9 flat rows) with correct aria-labels; switching to Day removes the theme image, labels, legend, and attribution; 375 px mobile fit without overflow; no console errors.
+
 ### 2026-07-24 iOS page-zoom suppression update
 
 - Fixed iPhone Safari's sudden page zoom when tapping controls (double-tap zoom) and when focusing text fields (automatic input-focus zoom on form controls with text smaller than 16 px).
@@ -301,35 +310,39 @@ A systematic bug review fixed the following. Each item below is now normative be
 
 ## Rendering architecture
 
-Use Leaflet with four selectable basemaps:
+Use Leaflet with five selectable basemaps:
 
 - **Day**: CARTO Positron, and the default.
 - **Dark**: CARTO Dark Matter.
 - **Satellite**: Esri World Imagery.
 - **Fuel**: a wildfire fuel-type composite described below.
+- **Land cover**: a tri-national Sentinel-2 10 m land-cover view described below.
 
 Preserve the corresponding Leaflet, OpenStreetMap, CARTO, and Esri attribution.
 
+### Thematic single-image basemaps
+
+Fuel and Land cover are thematic basemaps: a CARTO `light_nolabels` background, one dynamic raster rendered through the custom `SingleImageLayer`, and CARTO `light_only_labels` place names on top. `SingleImageLayer` requests one viewport-sized image per settled view instead of a tile grid, because the source servers render a single padded image in ~0.5–4 s but take multiple seconds per individual tile. It supports two endpoint modes via `options.mode`:
+
+- `"wms"` — OGC WMS 1.1.1 `GetMap` (the LANDFIRE fuel layer).
+- `"arcgis"` — ArcGIS ImageServer `exportImage` with `bboxSR/imageSR=3857`, `format=png32`, and an optional `time` window (the Sentinel-2 land-cover layer, whose tiles are LERC-only but whose `exportImage` is enabled).
+
+Only the request URL differs between modes; the mercator viewport math, 25%-per-side padding, 2048 px long-edge cap, world-bounds clamp, `Image` preload then `L.imageOverlay` swap (previous image retained until the replacement loads; failed load keeps the old image and the next settled move retries), the skip-when-still-covered check (re-request when zooming in past the loaded zoom so the raster sharpens), the generation-counter stale guard, and the zero-size early return with `resize` re-trigger are all shared.
+
+Both thematic rasters render into the shared `themePane` (z-index 250) with labels in `themeLabelPane` (260); these sit above the tile pane (200) and below the smoke overlay pane (400) and `firePane` (450). Only one thematic basemap is active at a time, so a single shared pair of panes is sufficient.
+
+Basemaps are built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url`, tiled `wms`, or `singleImage` endpoint specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
+
 ### Fuel basemap
 
-The Fuel basemap is a thematic wildfire fuel-type view composed of four stacked layers created and removed together as one basemap choice:
+The Fuel basemap composes CARTO `light_nolabels`, the LANDFIRE fuel raster, the CWFIS fuel tiles, and CARTO `light_only_labels`:
 
 1. CARTO Positron `light_nolabels` raster tiles as the neutral background (tile pane, `zIndex` 1).
-2. LANDFIRE FBFM40 (Scott & Burgan 40 fire behavior fuel models) for the United States from the official USGS GeoServer at `https://edcintl.cr.usgs.gov/geoserver/landfire/ows`, merged layers `LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI`, rendered through the custom `SingleImageWmsLayer` (one viewport-sized `image/png8` GetMap per settled view, `fuelPane`, z-index 250).
+2. LANDFIRE FBFM40 (Scott & Burgan 40 fire behavior fuel models) for the United States from the official USGS GeoServer at `https://edcintl.cr.usgs.gov/geoserver/landfire/ows`, merged layers `LF2024_FBFM40_CONUS,LF2024_FBFM40_AK,LF2024_FBFM40_HI`, rendered through `SingleImageLayer` in `"wms"` mode (one viewport-sized `image/png8` GetMap per settled view, `themePane`).
 3. Canadian FBP System fuel types via tiled WMS from the official Natural Resources Canada CWFIS GeoServer at `https://cwfis.cfs.nrcan.gc.ca/geoserver/public/wms`, layer `cffdrs_fbp_fuel_types` (tile pane, `zIndex` 2).
-4. CARTO Positron `light_only_labels` place-name tiles on top (`fuelLabelPane`, z-index 260, above the LANDFIRE image).
+4. CARTO Positron `light_only_labels` place-name tiles on top (`themeLabelPane`, above the LANDFIRE image).
 
-### LANDFIRE single-image rendering (performance-critical)
-
-Do not render the LANDFIRE fuel layer as `L.tileLayer.wms`. Measured 2026-07-24: the LANDFIRE GeoServer takes roughly 2–20 seconds per dynamic 256 px GetMap tile, its GeoWebCache WMTS returned 16–22 second responses even on repeats (multiple backend nodes with independent, mostly cold caches), and the `lfps.usgs.gov` ImageServer `exportImage` path measured 5–24 seconds — so a 24-tile viewport was effectively unusable, while a single viewport-sized GetMap for the same coverage consistently returned in roughly 0.5–4 seconds. CWFIS does not have this problem (sub-second tiles) and stays tiled.
-
-`SingleImageWmsLayer` therefore mirrors the smoke-frame architecture:
-
-- On `moveend` (debounced ~200 ms) and Leaflet `resize`, request one EPSG:3857 WMS 1.1.1 GetMap for the viewport padded by 25% per side, capped at 2048 px on the long edge, clamped to world mercator bounds, as `image/png8` (categorical palette, ~45% smaller than `image/png`).
-- Preload via an `Image`, then swap an `L.imageOverlay` in `fuelPane`; the previous image stays visible until its replacement has fully loaded, and a failed load keeps the old image (the next settled move retries).
-- Skip the request when the settled view is still inside the last loaded padded bounds at the same or lower zoom; zooming in past the loaded zoom always re-requests so the raster sharpens.
-- A generation counter discards stale loads, matching the project-wide cancellation convention.
-- A refresh while the map has zero size returns early; the `resize` listener re-triggers it once the container is sized (hidden-tab/bfcache activation case).
+Why single-image for LANDFIRE (performance-critical). Do not render the LANDFIRE fuel layer as `L.tileLayer.wms`. Measured 2026-07-24: the LANDFIRE GeoServer takes roughly 2–20 seconds per dynamic 256 px GetMap tile, its GeoWebCache WMTS returned 16–22 second responses even on repeats (multiple backend nodes with independent, mostly cold caches), and the `lfps.usgs.gov` ImageServer `exportImage` path measured 5–24 seconds — so a 24-tile viewport was effectively unusable, while a single viewport-sized GetMap for the same coverage consistently returned in roughly 0.5–4 seconds. CWFIS does not have this problem (sub-second tiles) and stays tiled.
 
 Constraints and rationale:
 
@@ -337,17 +350,31 @@ Constraints and rationale:
 - Mexico and other non-US/Canada areas intentionally show only the neutral background: neither national fuel product covers them.
 - The US and Canadian layers use different national classification systems and palettes; the border seam is expected and must not be "fixed" by recoloring either official rendering.
 - When the Fuel basemap is active, add the LANDFIRE (USGS) and CWFIS (NRCan) attribution entries; they must disappear when another basemap is selected.
-- Basemaps are built through `createBasemapLayers()`, which turns each `BASEMAPS` entry's `layers` array (plain tile `url`, tiled `wms`, or single-image `singleWms` specs) into Leaflet layers tracked in the `baseLayers` array; `setBasemap` removes and recreates the whole array. Single-layer basemaps keep the same structure with a one-element array.
-- The `fuelPane` (250) and `fuelLabelPane` (260) sit above the tile pane (200) and below the smoke overlay pane (400) and `firePane` (450).
 
-### Fuel legend
+### Land cover basemap
 
-A collapsible `Legend` control (lucide `palette` icon) appears in the toolbar next to the Map menu only while the Fuel basemap is active; `setBasemap` hides and closes it for every other basemap, so the unified refresh reset also removes it. It is a standard `.pm-menu` details element and therefore inherits the shared menu behavior (mutual exclusion, outside-pointerdown close, Escape close with focus return).
+The Land cover basemap composes CARTO `light_nolabels`, the Sentinel-2 land-cover raster, and CARTO `light_only_labels`:
 
-- Because 44 US FBFM40 classes plus 16 Canadian FBP classes are unreadable as a flat list, the panel groups classes into fuel families: US GR/GS/SH/TU/TL/SB/NB and Canada Conifer/Deciduous/Mixedwood/Grass/Non-fuel. Each family row shows a strip of its member colors and expands (nested `<details>`) into per-class swatch, code, and short name rows.
-- Swatch colors are hard-coded in `FUEL_LEGEND`, copied verbatim from each service's `GetLegendGraphic&format=application/json` output (fetched 2026-07-24) so they match the rendered basemap exactly. If the WMS layer versions change (for example LF2024 → a newer LANDFIRE release), re-fetch both legend JSONs and update `FUEL_LEGEND` in the same change.
-- The Canadian 2024 grid renders only 16 classes (C-1…C-5, C-7, D-1, D-1/D-2, M-1 variants, O-1a, non-fuel/water); do not pad the legend with theoretical FBP classes the map never shows.
-- Legend DOM is built once at startup with `textContent`/`createElement` only; the panel scrolls within `min(62vh, 520px)` and fits 320–390 px phones.
+1. CARTO Positron `light_nolabels` background (tile pane, `zIndex` 1).
+2. Sentinel-2 10 m Land Cover (Impact Observatory / Microsoft / Esri) from the ArcGIS ImageServer `https://ic.imagery1.arcgis.com/arcgis/rest/services/Sentinel2_10m_LandCover/ImageServer`, rendered through `SingleImageLayer` in `"arcgis"` mode (`themePane`). The service is a global annual time series (2017–present); the layer pins the 2020 composite with `time=1577836800000,1609459200000` (2020-01-01 .. 2021-01-01 UTC in epoch ms). `format=png32` is required so ocean/no-data are transparent — the default `png` returns opaque RGB and paints the sea black.
+3. CARTO Positron `light_only_labels` place names on top (`themeLabelPane`).
+
+Constraints and rationale:
+
+- This is a single global layer, so unlike Fuel it covers all of North America including Mexico with one continuous classification — no US/Canada split and no border seam.
+- The service exposes `exportImage` (mercator PNG) even though its cached tiles are LERC-encoded in a Lambert Azimuthal Equal-Area scheme; the LERC tiles cannot drop into a mercator Leaflet map, so `exportImage` is the required path.
+- CEC NALCMS 2020 was the originally requested product but was rejected after investigation: its only official service (CECAtlas hosted, plus the blocked `gis.cec.org` WMS) is LERC + LAEA + tiles-only with no reachable mercator/PNG endpoint, so it cannot be added without a self-hosted reprojection pipeline. ESA WorldCover was also rejected: Terrascope's rendered WMS was unreachable from both the build sandbox and the in-app browser, and the Esri-hosted copies are LERC tiles-only like CEC. Sentinel-2 10 m LULC was the one tri-national land-cover product with a verified, reachable mercator render path.
+- When the Land cover basemap is active, add the Sentinel-2 / Impact Observatory attribution entry; it must disappear when another basemap is selected.
+
+### Thematic legend
+
+A collapsible `Legend` control (lucide `palette` icon) appears in the toolbar next to the Map menu only while a thematic basemap (Fuel or Land cover) is active; `setBasemap` calls `renderLegend(basemap)` and hides/closes the control for any basemap without legend content, so the unified refresh reset also removes it. It is a standard `.pm-menu` details element and inherits the shared menu behavior (mutual exclusion, outside-pointerdown close, Escape close with focus return).
+
+- Legend content lives in `LEGENDS`, keyed by basemap. `renderLegend` rebuilds the panel only when the basemap changes (idempotent: reopening the same basemap's legend keeps expanded groups) and updates the panel and summary `aria-label` for the active theme.
+- A region with a `groups` array renders as collapsible family rows (Fuel): US FBFM40 GR/GS/SH/TU/TL/SB/NB and Canada Conifer/Deciduous/Mixedwood/Grass/Non-fuel, each a color strip that expands into per-class swatch/code/name rows. This grouping exists because a flat 60-row list defeats quick visual matching.
+- A region with a flat `classes` array renders as a simple swatch list (Land cover): the nine Sentinel-2 classes (Trees, Rangeland, Crops, Flooded vegetation, Water, Snow/ice, Bare ground, Built area, Clouds), which are few enough not to need grouping.
+- Swatch colors are hard-coded in `LEGENDS`, copied verbatim from each service's official legend (fuel: `GetLegendGraphic&format=application/json`; land cover: the ImageServer `/legend` swatch PNGs), all fetched 2026-07-24, so they match the rendered basemap exactly. If a source layer version changes (for example LF2024 → a newer LANDFIRE release, or the LULC year pin), re-fetch that legend and update `LEGENDS` in the same change.
+- Legend DOM is built with `textContent`/`createElement` only; the panel scrolls within `min(62vh, 520px)` and fits 320–390 px phones.
 - The toolbar z-index is 1010 (above Leaflet's 1000 control layer) so the legend popover is not overlapped by the zoom stack; the fire drawer (1100) intentionally stays above both.
 
 Frame the initial map around the United States and Canada instead of showing the full RAQDPS data domain. Use a comparable regional scale on desktop and mobile, while allowing a slightly wider integer zoom on narrow screens so the view remains useful.
@@ -463,7 +490,7 @@ The desired direction is a modern, map-first weather interface inspired by The W
 
 Maintain these preferences:
 
-- Light daytime basemap by default, with compact options for dark, satellite, and wildfire fuel-type maps.
+- Light daytime basemap by default, with compact options for dark, satellite, wildfire fuel-type, and land-cover maps.
 - Warm orange/coral primary accent rather than a generic bright blue interface.
 - Compact icon-led floating controls. Keep smoke, ignition, perimeter, and recently closed visibility plus particle/extent fields inside the temporary Layers menu; keep basemap choices inside the temporary Map menu so closed controls occupy very little map space.
 - Keep the separate Fires control for the WFIGS Year-to-Date database. Do not put a permanent wildfire-symbol legend in the Layers menu.
@@ -528,7 +555,7 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
 - Clamp timeline offsets to the full continuous range after aligning the manifest's cached valid hours to the browser's current integer model hour. Present the current-hour slider position as “Now” wherever it falls, earlier positions with negative relative hours, and later positions with positive relative hours.
 - Use generation counters or an equivalent cancellation mechanism so stale asynchronous image loads cannot replace a newer user selection.
-- Preserve the default `day` basemap and the `day`, `dark`, `satellite`, and `fuel` basemap option values.
+- Preserve the default `day` basemap and the `day`, `dark`, `satellite`, `fuel`, and `landcover` basemap option values.
 - Keep fallback canvas recoloring off the visible layer and return the processed offscreen canvas directly to the WebGL renderer so the visible frame is never cleared while recoloring occurs.
 - Use integer Leaflet zoom levels (`zoomSnap: 1`) for raster basemaps. Fractional zoom scaling exposed visible tile seams.
 - Keep basemap tiles at their native size and use only a transparent outline seam guard; do not enlarge tiles, which made grid lines more visible.
@@ -564,7 +591,7 @@ Before handing off a material change:
 8. Confirm the timeline is always visible, places “Now” at its correct possibly non-central position, and has correct Play/Pause and Reset states and accessible labels.
 9. Check desktop and phone layouts for clipping and horizontal overflow.
 10. Check the browser console and data status for relevant errors.
-11. Switch among Day, Dark, Satellite, and Fuel and verify both appearance and attribution. For Fuel, confirm the LANDFIRE single image over the US (exactly one `edcintl` request per settled view, replaced after zoom without a blank gap), CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken imagery at continental and deep zooms. Confirm the Legend control appears only on Fuel, opens above the zoom controls, expands family groups into class rows whose swatches match the map, scrolls within its capped height, closes on Escape/outside click, and disappears (closed) when the basemap changes or the unified refresh runs.
+11. Switch among Day, Dark, Satellite, Fuel, and Land cover and verify both appearance and attribution. For Fuel, confirm the LANDFIRE single image over the US (exactly one `edcintl` request per settled view, replaced after zoom without a blank gap), CWFIS tiles over Canada, place labels on top, LANDFIRE/CWFIS attribution present only while Fuel is active, and no broken imagery at continental and deep zooms. For Land cover, confirm the Sentinel-2 single image (exactly one `exportImage` request per settled view, replaced after zoom, sharper at deeper zoom) covers all of North America including Mexico, ocean/no-data is transparent (not black), the Sentinel-2/Impact Observatory attribution appears only while active, and 10 m detail resolves at city zoom. Confirm the Legend control appears only on Fuel/Land cover, opens above the zoom controls, renders grouped family rows for Fuel and a flat swatch list for Land cover with swatches matching the map, its content swaps correctly when switching between the two thematic basemaps, scrolls within its capped height, closes on Escape/outside click, and disappears (closed) when the basemap changes to a non-thematic one or the unified refresh runs.
 12. Confirm light concentrations remain transparent, wildfire smoke uses the monochromatic orange/brown ramp, and total PM2.5 uses the distinct monochromatic yellow-brown ramp without hiding the basemap completely.
 13. Inspect the daytime basemap for tile-grid seams at the initial zoom and after zooming.
 14. Click a plume pixel and verify the popup shows pollutant type, vertical extent, and inferred concentration on three lines with the active layer's unit, without an approximation symbol or time. Verify its close “×” works on desktop and mobile. Then click a transparent or no-data pixel and verify that no popup remains.
@@ -605,6 +632,7 @@ Before handing off a material change:
 - WFIGS perimeters are simplified for display and may not preserve survey-level boundary detail. They are operational map context, not cadastral or evacuation-boundary data.
 - The 300-acre large-fire threshold and compressed point-radius classes are visualization and browsing aids. Acreage remains printed in text, and circle radius must not be interpreted as an exact area-to-scale symbol.
 - The Fuel basemap depends on two live government WMS services (USGS LANDFIRE and NRCan CWFIS) with no local cache; an outage leaves the neutral no-label background visible. Mexico has no fuel coverage, the US and Canadian classifications and palettes differ at the border by design, and no in-app class legend is shown because FBFM40 alone has 40 classes and the Map menu must stay compact. The LANDFIRE half is one image per settled view: for the ~1–4 s after a zoom or large pan the previous, coarser image remains visible (brief softness or a padded-edge gap) instead of a loading indicator, which is the accepted cost of avoiding the server's multi-second per-tile latency.
+- The Land cover basemap depends on one live Esri/Impact Observatory ArcGIS service with no local cache; an outage leaves the neutral background. It pins the 2020 annual composite and uses a 9-class scheme (Sentinel-2 10 m LULC), so it shows land cover, not fuel: it distinguishes trees vs rangeland vs crops but not conifer vs broadleaf, and its classes are coarser than CEC NALCMS's 19. It is the pragmatic tri-national choice because CEC and ESA WorldCover have no reachable mercator render path (see the Land cover basemap section). Same single-image tradeoff as Fuel: a brief coarse-image interval after zoom/pan.
 
 ## Primary artifacts
 
