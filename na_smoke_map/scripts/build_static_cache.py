@@ -70,30 +70,6 @@ SOURCE_COLORS = (
     (1.00, 92, 0, 16),
 )
 
-COLOR_RAMPS = {
-    "smoke": (
-        (0.00, 255, 248, 221, 0.00),
-        (0.08, 255, 231, 180, 0.06),
-        (0.22, 250, 193, 124, 0.16),
-        (0.40, 239, 143, 87, 0.32),
-        (0.58, 211, 94, 57, 0.48),
-        (0.74, 164, 62, 43, 0.64),
-        (0.88, 111, 41, 33, 0.78),
-        (1.00, 61, 25, 23, 0.88),
-    ),
-    "total": (
-        (0.00, 255, 250, 222, 0.00),
-        (0.08, 250, 235, 181, 0.06),
-        (0.22, 239, 208, 125, 0.16),
-        (0.40, 216, 172, 78, 0.32),
-        (0.58, 181, 129, 47, 0.48),
-        (0.74, 137, 91, 34, 0.64),
-        (0.88, 91, 56, 25, 0.78),
-        (1.00, 50, 31, 19, 0.88),
-    ),
-}
-
-
 @dataclass(frozen=True)
 class Frame:
     key: str
@@ -345,122 +321,7 @@ def source_position_lut() -> np.ndarray:
     return result
 
 
-def palette_color(position: float, particle: str) -> tuple[int, int, int, float]:
-    colors = COLOR_RAMPS[particle]
-    for start, end in zip(colors, colors[1:]):
-        if position > end[0]:
-            continue
-        amount = max(0.0, min(1.0, (position - start[0]) / (end[0] - start[0])))
-        return (
-            round(start[1] + (end[1] - start[1]) * amount),
-            round(start[2] + (end[2] - start[2]) * amount),
-            round(start[3] + (end[3] - start[3]) * amount),
-            start[4] + (end[4] - start[4]) * amount,
-        )
-    final = colors[-1]
-    return final[1], final[2], final[3], final[4]
-
-
 SOURCE_POSITION_LUT = source_position_lut()
-PIXEL_LUTS: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
-
-
-def pixel_lut(particle: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    if particle in PIXEL_LUTS:
-        return PIXEL_LUTS[particle]
-    colors = [palette_color(index / 1023, particle) for index in range(1024)]
-    result = (
-        np.asarray([color[0] for color in colors], dtype=np.uint8),
-        np.asarray([color[1] for color in colors], dtype=np.uint8),
-        np.asarray([color[2] for color in colors], dtype=np.uint8),
-        np.asarray([color[3] for color in colors], dtype=np.float32),
-    )
-    PIXEL_LUTS[particle] = result
-    return result
-
-
-def prepare_display_frame(
-    frame: Frame,
-    raw_output: Path,
-    output: Path,
-    source_size: tuple[int, int],
-    display_size: tuple[int, int],
-    blur_radius: float,
-) -> tuple[Frame, str | None]:
-    destination = output / frame.relative_path
-    if valid_png(destination, display_size):
-        return frame, None
-
-    temporary = destination.with_suffix(f".tmp-{os.getpid()}")
-    try:
-        raw_path = raw_output / frame.relative_path
-        if not valid_png(raw_path, source_size):
-            raise ValueError("raw frame unavailable")
-        with Image.open(raw_path) as source:
-            rgba = np.asarray(source.convert("RGBA"), dtype=np.uint8).copy()
-
-        source_alpha = rgba[:, :, 3].copy()
-        mask = source_alpha > 2
-        source_indexes = (
-            (rgba[:, :, 0].astype(np.uint16) >> 3) << 10
-            | (rgba[:, :, 1].astype(np.uint16) >> 3) << 5
-            | (rgba[:, :, 2].astype(np.uint16) >> 3)
-        )
-        positions = np.where(mask, SOURCE_POSITION_LUT[source_indexes], 0.0)
-
-        # Smooth the inferred scalar field before applying the display palette.
-        # Filtering already-colored pixels preserves visible cell boundaries;
-        # filtering the alpha-weighted scalar produces a continuous plume while
-        # keeping the work entirely in the scheduled Pages cache build.
-        weighted_source = np.rint(
-            positions * source_alpha.astype(np.float32)
-        ).astype(np.uint8)
-
-        def smooth_channel(channel: np.ndarray) -> np.ndarray:
-            image = Image.fromarray(channel).resize(
-                display_size,
-                resample=Image.Resampling.BICUBIC,
-            )
-            if blur_radius > 0:
-                image = image.filter(ImageFilter.GaussianBlur(blur_radius))
-            return np.asarray(image, dtype=np.float32)
-
-        smooth_weighted = smooth_channel(weighted_source)
-        smooth_coverage = smooth_channel(source_alpha)
-        smooth_positions = np.divide(
-            smooth_weighted,
-            smooth_coverage,
-            out=np.zeros_like(smooth_weighted),
-            where=smooth_coverage > 0.5,
-        )
-        color_indexes = np.clip(
-            np.rint(smooth_positions * 1023),
-            0,
-            1023,
-        ).astype(np.uint16)
-        red, green, blue, alpha = pixel_lut(frame.particle)
-        display_rgba = np.zeros(
-            (display_size[1], display_size[0], 4),
-            dtype=np.uint8,
-        )
-        visible = smooth_coverage > 0.5
-        display_rgba[:, :, 0][visible] = red[color_indexes[visible]]
-        display_rgba[:, :, 1][visible] = green[color_indexes[visible]]
-        display_rgba[:, :, 2][visible] = blue[color_indexes[visible]]
-        display_rgba[:, :, 3][visible] = np.rint(
-            smooth_coverage[visible] * alpha[color_indexes[visible]]
-        ).astype(np.uint8)
-
-        prepared = Image.fromarray(display_rgba)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        prepared.save(temporary, format="PNG", compress_level=6)
-        if not valid_png(temporary, display_size):
-            raise ValueError("display frame was incomplete")
-        temporary.replace(destination)
-        return frame, None
-    except Exception as exc:
-        temporary.unlink(missing_ok=True)
-        return frame, str(exc)
 
 
 def prune_stale_frames(root: Path, retained: set[Path]) -> None:
@@ -679,9 +540,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=1000)
     parser.add_argument("--height", type=int, default=625)
     parser.add_argument("--spatial-scale", type=float, default=1.5)
-    parser.add_argument("--blur-radius", type=float, default=1.0)
+    parser.add_argument("--blur-radius", type=float, default=0.55)
     parser.add_argument("--jobs", type=int, default=8)
-    parser.add_argument("--process-jobs", type=int, default=4)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--minimum-success-ratio", type=float, default=0.9)
     parser.add_argument("--now", type=parse_time)
@@ -706,7 +566,6 @@ def parse_args() -> argparse.Namespace:
         args.width < 1
         or args.height < 1
         or args.jobs < 1
-        or args.process_jobs < 1
         or args.retries < 1
         or args.spatial_scale <= 0
         or args.blur_radius < 0
@@ -783,6 +642,7 @@ def main() -> int:
             args.datasets,
             available_hours,
             (args.width, args.height),
+            blur_radius=args.blur_radius,
         )
     except Exception as exc:
         print(f"cache build rejected: unable to prepare smooth field packs: {exc}", file=sys.stderr)

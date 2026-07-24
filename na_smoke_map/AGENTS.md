@@ -222,6 +222,27 @@ During the initial service-health investigation, direct official queries returne
 - Refresh failure retention remains source-specific: the previous wildfire geometry stays visible when WFIGS fails, while a failed default smoke reload restores the prior particle, extent, and selected-hour state so the retained smoke frame is never mislabeled.
 - The location and unified-refresh utility buttons explicitly stop their click events before running their actions. A utility-button click must never fall through to the map's PM2.5 probe, open a concentration popup, or let popup auto-pan override the requested refresh viewport.
 
+### 2026-07-24 correctness and resilience update
+
+A systematic bug review fixed the following. Each item below is now normative behavior:
+
+- **No invented zeros.** Missing `IncidentSize` and `PercentContained` values (null/empty from WFIGS) render as `Not reported`; `Number(null)` coercion previously displayed fabricated `0 acres` / `0%`. A missing acreage also uses the documented 4.25 px missing-size point radius rather than the smallest size class.
+- **Perimeter dedup.** Current membership now wins over a duplicate recently closed perimeter as well as a duplicate point: an event with both a Current and a Year-to-Date perimeter draws only the Current geometry, never two stacked polygons.
+- **Paginated map queries.** Point and full-perimeter map queries page through `resultOffset` (2,000 records per page, bounded at 20 pages) until the service stops filling pages, so peak-season record counts cannot be silently truncated at the transfer limit. The incremental changed-ID perimeter fetch also carries the explicit WF `where` filter, satisfying the every-request rule literally.
+- **Database drawer resilience.** An aborted page load caused by a row selection or drawer close restores the `Load more` control instead of leaving it stuck on `Loading…`; closing the drawer clears any pending 300 ms search debounce so no request or 60-second quota wait can start after close; a stale stored fallback page is never written into the five-minute memory cache as fresh, so live retries resume immediately after recovery.
+- **Honest refresh reporting.** Turning the Wildfires layer off mid-refresh no longer reports a spurious WFIGS failure (deliberate aborts bump the refresh generation first, including on `pagehide`). A partially successful WFIGS refresh (Current data replaced, recent data retained) reports the unified refresh as partial, not as a total failure.
+- **Lifecycle.** The `pagehide` handler stays registered across back/forward-cache restores and no longer kills the periodic refresh timers, so the five-minute wildfire refresh survives bfcache navigation. The hourly smoke-cache check also runs on its own five-minute periodic tick so a continuously visible tab realigns `Now` without needing visibility events. The cache-manifest fetch carries a 45-second timeout so a stalled response cannot leave the refresh control stuck in its loading state.
+- **Timeline self-heal.** A locked timeline (failed startup manifest, failed atlas load, or a mid-session smooth-render failure) is retried by the periodic cache check via a `recover` path, and the unified refresh clears a transient `fieldRenderingFailed` flag before rebuilding. The unchanged-manifest early return does not short-circuit while the timeline is locked. On rollback, the prior lock state is restored rather than force-unlocking.
+- **Degraded unified refresh.** When smooth field rendering is unavailable (Canvas 2D fallback), the unified refresh refreshes the direct-GeoMet frame caches and re-renders the current hour instead of guaranteed-failing the smoke half.
+- **Unified-refresh integrity.** The particle/extent selects and the Layers-menu wildfire Retry button are disabled while the combined refresh runs, and the smoke-failure restore path bumps the dataset generation, so no concurrent dataset change can race the restore. During the in-flight window the legend and time labels keep describing the retained visible frame; they update only when the default dataset actually renders, extending the no-mislabeling rule to the whole refresh, not just its end state.
+- **Rendering.** Switching from smooth field rendering back to direct-frame mode cuts immediately instead of crossfading from the raw atlas texture (which flashed an opaque channel mosaic). Draw calls are refused while the WebGL context is lost so a blank canvas can never be reported as a ready frame, and the lost-context flag is cleared only after a successful renderer re-initialization. A stale `showFrame` failure cannot overwrite a newer selection's status, and a scrub whose cached blend state was superseded falls back to a full field re-upload instead of silently reporting success.
+- **Reduced motion.** The 250 ms zoom-transform transition on the pollution canvas is geographic synchronization with the basemap, not decorative motion, and is exempt from `prefers-reduced-motion`; disabling it desynchronized the plume from the tiles during zoom.
+- **Security.** The Leaflet and lucide CDN tags carry Subresource Integrity hashes with `crossorigin="anonymous"`. Keep the `integrity` attributes in sync whenever a CDN dependency version changes.
+- **Accessibility.** Escape closes an open Layers/Map menu and returns focus to its summary; the unified-refresh outcome is announced through a polite sr-only live region inside the refresh control; selecting a database row on a phone returns focus to the Fires button instead of stranding it in the hidden sheet; frame-status live-region text skips identical rewrites during playback; the Fires and Map controls include their visible text in their accessible names; the fire list, layer-toggle containers, and legend carry explicit roles.
+- **Touch targets.** Transport buttons are at least 38 px and the timeline keeps its 40 px touch box across the full ≤760 px range, not only ≤560 px.
+- **Icon fallback.** If the lucide icon script fails to load, toolbar and play text labels are revealed instead of leaving blank icon-only buttons.
+- `scripts/build_static_cache.py` dropped the dead per-hour display-frame generator, its palette lookup tables, and the unused `--process-jobs` argument; `--blur-radius` (default 0.55) is now actually applied to field-pack smoothing, preserving byte-identical output for default builds.
+
 ## Rendering architecture
 
 Use Leaflet with three selectable basemaps:
@@ -308,7 +329,7 @@ Do not change `actions/configure-pages` as part of the non-symmetric timeline an
 
 - Move `Configure GitHub Pages` out of the cache-build critical path and into the deploy job so a transient Pages API failure cannot prevent source-cache refresh and field generation.
 - Add bounded retries with backoff around Pages configuration and deployment.
-- Consider publishing the latest manifest as well as immutable field atlases through R2 so successful cache builds do not depend on a Pages deployment.
+- Immutable field atlases are already published to R2 by `scripts/publish_r2_cache.py` when the workflow's R2 secrets are configured (the manifest itself still ships in the Pages artifact). The remaining deferred item is publishing the latest manifest through R2 as well, so successful cache builds do not depend on a Pages deployment.
 - Add an external freshness/asset health check and alert only after repeated failures or a materially delayed manifest.
 
 Discuss the exact workflow design with the user before implementing these deferred items.
@@ -322,7 +343,7 @@ Interpolation is a presentation treatment and must not be described as creating 
 - Linearly interpolate premultiplied pixel color and alpha from the two adjacent field hours in the single WebGL canvas over approximately 900 ms during playback. Start the next ready hour on the following animation frame so the animation has no fixed pause between frames.
 - Keep visible timeline labels and resting thumb positions on integer model hours. During pointer dragging, allow a fine-grained internal slider value and synchronously set the adjacent field hours, channel masks, and fractional shader mix. On release, snap to the nearest integer hour without changing render source, resolution, canvas, or image quality.
 - Dragging must follow the pointer in either direction and during random jumps without debounce, delayed network requests, or a post-release clarity swap. Every intermediate and resting state must use the same smooth full-grid field renderer.
-- Disable visual interpolation transitions when `prefers-reduced-motion` is active.
+- Disable visual interpolation transitions when `prefers-reduced-motion` is active. This applies to temporal fades and decorative animation only; the 250 ms zoom-transform transition on the pollution canvas is geographic synchronization with the basemap tiles and must remain active under reduced motion.
 
 Do not call the spatial smoothing a 1 km forecast, and do not call interpolated states new 10-minute or sub-hourly model outputs. Neither treatment creates new atmospheric information.
 
@@ -350,7 +371,7 @@ Maintain these preferences:
 - Compact icon-led floating controls. Keep smoke, ignition, perimeter, and recently closed visibility plus particle/extent fields inside the temporary Layers menu; keep basemap choices inside the temporary Map menu so closed controls occupy very little map space.
 - Keep the separate Fires control for the WFIGS Year-to-Date database. Do not put a permanent wildfire-symbol legend in the Layers menu.
 - Horizontal color scale rather than a tall official legend that consumes map space.
-- Keep the horizontal legend compact—roughly 320 px on desktop and narrower on phones—so it does not obscure a large portion of the map.
+- Keep the horizontal legend compact—roughly 200 px on desktop; on phones it spans the bottom dock's width inside the fused panel—so it does not obscure a large portion of the map.
 - Forecast controls and time slider integrated as a floating bottom panel over the map.
 - Keep the legend, valid time, frame status, playback controls, and forecast slider fused into one coordinated bottom panel.
 - Keep the visible valid-time line compact while preserving weekday, month/day, time, and timezone while omitting the year; prefer a form such as `Sat · Jul 18 · 12:00 PM EDT`. Keep the fully expanded localized timestamp, including the year, in accessible labels.
@@ -401,9 +422,9 @@ Test at a representative desktop viewport and at phone widths around 320–390 p
 - Apply every future application, feature, design, and bug-fix update directly to `index.html`.
 - Do not create or maintain a duplicate standalone HTML entry point such as `north-america-smoke-forecast.html`.
 - Use plain HTML, CSS, and JavaScript; do not introduce a build step without a clear need.
-- Scope component styles beneath `#north-america-pm25` to avoid host-page collisions.
+- Scope component styles beneath `#north-america-pm25` to avoid host-page collisions. A deliberately minimal set of page-level rules (`:root` custom properties, `box-sizing`, `html/body` overflow, focus-visible styling, `[hidden]`, `.sr-only`) remains global because the page is currently the sole occupant; scope them if the map is ever embedded in a host page.
 - Use CSS custom properties for page and interface colors so the visualization can inherit a host theme.
-- Keep external resource URLs HTTPS-only.
+- Keep external resource URLs HTTPS-only, and keep Subresource Integrity (`integrity` + `crossorigin="anonymous"`) attributes on the version-pinned CDN script and stylesheet tags; recompute the hashes whenever a CDN dependency version changes.
 - Keep the static cache manifest and frame URLs relative to the deployed `na_smoke_map/` path so they work on the `jianzhaobi.github.io` project site.
 - Preserve the current particle/extent dataset matrix as a single source of truth in JavaScript.
 - Use `Intl.DateTimeFormat` for local and UTC timestamps rather than manually formatting dates.
@@ -487,6 +508,7 @@ Before handing off a material change:
 
 - `index.html`: the only standalone interactive map and the only application file to update for interface or runtime behavior.
 - `scripts/build_static_cache.py`: the bounded static-frame cache generator.
+- `scripts/publish_r2_cache.py`: uploads content-addressed schema-v5 field atlases to Cloudflare R2 when the workflow's R2 secrets are configured; verifies size and SHA-256 metadata and reuses already-uploaded immutable objects.
 - `cache/manifest.json`: an empty development fallback; production deployment replaces it with the generated manifest.
 - `.github/workflows/deploy-pages-with-smoke-cache.yml`: repository-root Pages build and scheduled cache deployment workflow.
 - `AGENTS.md`: required, current record of data sources, scientific terminology, UI behavior, implementation constraints, operational history, verification requirements, and known tradeoffs; update it with every project change.

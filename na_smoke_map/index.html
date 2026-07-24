@@ -45,7 +45,11 @@
   <link rel="icon" href="./icons/favicon-16x16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" sizes="180x180">
   <link rel="manifest" href="./site.webmanifest">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+    crossorigin="anonymous">
   <style>
     :root {
       color-scheme: light;
@@ -1234,6 +1238,29 @@
         right: calc(54px + var(--pm-safe-right));
         width: min(350px, calc(100% - 70px - var(--pm-safe-left) - var(--pm-safe-right)));
       }
+
+      /* Touch targets stay at or above ~38px across the full touch-likely
+         width range, not only on the narrowest phones. */
+      #north-america-pm25 .pm-transport .pm-button {
+        min-width: 38px;
+        min-height: 38px;
+      }
+
+      #north-america-pm25 .pm-range {
+        height: 40px;
+        margin-block: -5px 0;
+      }
+
+      #north-america-pm25 .pm-range::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+        margin-top: -9.5px;
+      }
+
+      #north-america-pm25 .pm-range::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+      }
     }
 
     @media (max-width: 560px) {
@@ -1250,6 +1277,13 @@
 
       #north-america-pm25 .pm-toolbar .pm-menu-label {
         display: none;
+      }
+
+      /* If the icon library failed to load, keep the text labels visible so
+         the toolbar does not collapse into blank buttons. */
+      #north-america-pm25.pm-no-icons .pm-toolbar .pm-menu-label,
+      #north-america-pm25.pm-no-icons .pm-play-label {
+        display: inline;
       }
 
       #north-america-pm25 .pm-toolbar > button.pm-button {
@@ -1303,29 +1337,13 @@
       }
 
       #north-america-pm25 .pm-transport .pm-button {
-        min-width: 36px;
-        min-height: 36px;
+        min-width: 38px;
+        min-height: 38px;
         padding-inline: 8px;
       }
 
       #north-america-pm25 .pm-play-label {
         display: none;
-      }
-
-      #north-america-pm25 .pm-range {
-        height: 40px;
-        margin-block: -5px 0;
-      }
-
-      #north-america-pm25 .pm-range::-webkit-slider-thumb {
-        width: 24px;
-        height: 24px;
-        margin-top: -9.5px;
-      }
-
-      #north-america-pm25 .pm-range::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
       }
 
       #north-america-pm25 .pm-range-labels {
@@ -1341,8 +1359,9 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      #north-america-pm25 .leaflet-image-layer,
-      #north-america-pm25 .leaflet-zoom-anim .leaflet-image-layer.leaflet-zoom-animated,
+      /* The 250 ms zoom-transform transition on the pollution canvas is
+         geographic synchronization with the basemap tiles, not decorative
+         motion, so it must survive reduced-motion preferences. */
       #north-america-pm25 .pm-legend,
       #north-america-pm25 .pm-button {
         transition: none;
@@ -1376,7 +1395,7 @@
             <span class="pm-menu-label">Layers</span>
           </summary>
           <div class="pm-popover">
-            <div class="pm-layer-toggles" aria-label="Visible layers">
+            <div class="pm-layer-toggles" role="group" aria-label="Visible layers">
               <label class="pm-check" for="pm-show-smoke">
                 <input id="pm-show-smoke" type="checkbox" checked>
                 <span>Smoke &amp; PM2.5</span>
@@ -1405,7 +1424,7 @@
             </section>
             <section class="pm-layer-section" id="pm-wildfire-options" aria-labelledby="pm-wildfire-options-title">
               <strong class="pm-layer-section-title" id="pm-wildfire-options-title">Wildfires</strong>
-              <div class="pm-fire-layer-toggles" aria-label="Visible wildfire geometry">
+              <div class="pm-fire-layer-toggles" role="group" aria-label="Visible wildfire geometry">
                 <label class="pm-check" for="pm-show-ignitions">
                   <input id="pm-show-ignitions" type="checkbox" checked>
                   <span>Ignition points</span>
@@ -1427,13 +1446,13 @@
           </div>
         </details>
 
-        <button type="button" class="pm-button pm-fires-button" id="pm-fires-button" aria-label="Open WFIGS wildfire database" aria-controls="pm-fire-drawer" aria-expanded="false">
+        <button type="button" class="pm-button pm-fires-button" id="pm-fires-button" aria-label="Fires — open the WFIGS wildfire database" aria-controls="pm-fire-drawer" aria-expanded="false">
           <i data-lucide="flame" aria-hidden="true"></i>
           <span class="pm-menu-label">Fires</span>
         </button>
 
         <details class="pm-menu pm-map-menu" id="pm-map-menu">
-          <summary class="pm-button" aria-label="Choose basemap">
+          <summary class="pm-button" aria-label="Map — choose basemap">
             <i data-lucide="map" aria-hidden="true"></i>
             <span class="pm-menu-label">Map</span>
           </summary>
@@ -1477,7 +1496,7 @@
           <button type="button" class="pm-fire-filter pm-fire-large-filter" id="pm-fire-large-filter" aria-pressed="false">Large · 300+ acres</button>
         </div>
         <div class="pm-fire-database-status" id="pm-fire-database-status" role="status" aria-live="polite">Open the database to load fires.</div>
-        <div class="pm-fire-list" id="pm-fire-list" aria-label="Wildfire incidents"></div>
+        <div class="pm-fire-list" id="pm-fire-list" role="group" aria-label="Wildfire incidents"></div>
         <div class="pm-fire-load-wrap">
           <button type="button" class="pm-button pm-fire-load-more" id="pm-fire-load-more" hidden>Load more</button>
         </div>
@@ -1486,7 +1505,7 @@
       <div class="pm-bottom-dock" id="pm-bottom-dock">
         <section class="pm-timeline pm-glass" id="pm-timeline" aria-label="PM2.5 forecast timeline">
           <div class="pm-timeline-top">
-            <div class="pm-legend" aria-label="Map color scale">
+            <div class="pm-legend" role="img" aria-label="Map color scale">
               <div class="pm-legend-head">
                 <strong id="pm-legend-title">Smoke · Surface</strong>
                 <span id="pm-legend-unit">µg/m³</span>
@@ -1530,8 +1549,14 @@
     <noscript>This map requires JavaScript.</noscript>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+    crossorigin="anonymous"></script>
+  <script
+    src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"
+    integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu"
+    crossorigin="anonymous"></script>
   <script>
     (() => {
       "use strict";
@@ -1811,10 +1836,12 @@
       let lastCacheCheckAt = Date.now();
       let fireRefreshController = null;
       let fireRefreshGeneration = 0;
+      let fireRefreshPartialResult = false;
       let fireRefreshTimer = 0;
       let lastFireRefreshAt = 0;
       let fireDatabaseController = null;
       let fireDatabaseGeneration = 0;
+      let fireDatabaseLoadGeneration = 0;
       let fireDatabaseOffset = 0;
       let fireDatabaseHasMore = true;
       let fireDatabaseFilter = "all";
@@ -1839,6 +1866,7 @@
       let scrubTargetHour = null;
       let scrubPairKey = "";
       let fieldRenderingFailed = false;
+      let datasetChangeDepth = 0;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
 
       function validCacheManifest(manifest) {
@@ -1856,7 +1884,11 @@
       async function fetchCacheManifest(cacheBust = false) {
         const requestUrl = new URL(cacheManifestUrl);
         if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
-        const response = await fetch(requestUrl, { cache: "no-store" });
+        // A stalled manifest response must not leave the refresh state stuck.
+        const response = await fetch(requestUrl, {
+          cache: "no-store",
+          signal: AbortSignal.timeout(45000)
+        });
         if (!response.ok) throw new Error("Static cache manifest unavailable");
         const manifest = validCacheManifest(await response.json());
         if (!manifest) throw new Error("Static cache manifest invalid");
@@ -2143,8 +2175,8 @@
 
       function firePointRadius(size) {
         // NWCG fire-size classes A–G, compressed into a restrained 3.25–7 px visual scale.
-        const acres = Number(size);
-        if (!Number.isFinite(acres) || acres < 0) return 4.25;
+        const acres = reportedFireNumber(size);
+        if (acres === null || acres < 0) return 4.25;
         if (acres <= 0.25) return 3.25;
         if (acres < 10) return 3.75;
         if (acres < 100) return 4.25;
@@ -2210,8 +2242,18 @@
           if (!record.pointFeature) record.pointFeature = feature;
           mergeFireAttributes(record, pointAttributes(feature.properties));
         });
+        // Current membership wins over a duplicate recently closed perimeter so
+        // one event is never drawn as two stacked polygons.
+        const currentPerimeterIds = new Set();
         firePerimeterCache.forEach((entry) => {
-          const record = getRecord(featureId(entry.feature, entry.source));
+          if (entry.source === "current") {
+            currentPerimeterIds.add(featureId(entry.feature, entry.source));
+          }
+        });
+        firePerimeterCache.forEach((entry) => {
+          const id = featureId(entry.feature, entry.source);
+          if (entry.source === "recent" && currentPerimeterIds.has(id)) return;
+          const record = getRecord(id);
           if (entry.source === "current") record.active = true;
           else record.recent = true;
           record.rawIrwinId = record.rawIrwinId || entry.feature.properties?.attr_IrwinID;
@@ -2368,35 +2410,53 @@
         updateMapAccessibleName();
       }
 
+      // Page through a GeoJSON query until the service stops filling pages so
+      // large seasons cannot be silently truncated at the transfer limit.
+      async function fetchGeojsonFeaturePages(service, parameters, signal) {
+        const pageSize = 2000;
+        const features = [];
+        let offset = 0;
+        for (let page = 0; page < 20; page += 1) {
+          const result = await fetchArcgis(service, {
+            ...parameters,
+            f: "geojson",
+            resultOffset: offset,
+            resultRecordCount: pageSize
+          }, signal);
+          const batch = Array.isArray(result.features) ? result.features : [];
+          features.push(...batch);
+          if (batch.length < pageSize && !result.exceededTransferLimit) break;
+          if (batch.length === 0) break;
+          offset += batch.length;
+        }
+        return features;
+      }
+
       async function fetchPointFeatures(service, where, signal) {
-        const result = await fetchArcgis(service, {
-          f: "geojson",
+        const features = await fetchGeojsonFeaturePages(service, {
           where,
           outFields: FIRE_POINT_FIELDS,
           returnGeometry: true,
           outSR: 4326,
-          orderByFields: "OBJECTID ASC",
-          resultRecordCount: 2000
+          orderByFields: "OBJECTID ASC"
         }, signal);
-        return (result.features || [])
+        return features
           .filter((feature) => feature.properties?.IncidentTypeCategory === "WF")
           .map(ensurePointGeometry);
       }
 
       async function fetchFullPerimeterSource(source, service, where, signal) {
-        const result = await fetchArcgis(service, {
-          f: "geojson",
+        const features = await fetchGeojsonFeaturePages(service, {
           where,
           outFields: FIRE_PERIMETER_FIELDS,
           returnGeometry: true,
           outSR: 4326,
           geometryPrecision: 5,
           maxAllowableOffset: 0.0001,
-          orderByFields: "OBJECTID ASC",
-          resultRecordCount: 2000
+          orderByFields: "OBJECTID ASC"
         }, signal);
         const next = new Map();
-        (result.features || []).forEach((feature) => {
+        features.forEach((feature) => {
           const properties = feature.properties || {};
           if (properties.attr_IncidentTypeCategory !== "WF") return;
           const objectId = String(properties.OBJECTID);
@@ -2447,6 +2507,7 @@
             const result = await fetchArcgis(service, {
               f: "geojson",
               objectIds: objectIds.join(","),
+              where: "attr_IncidentTypeCategory='WF'",
               outFields: FIRE_PERIMETER_FIELDS,
               returnGeometry: true,
               outSR: 4326,
@@ -2482,6 +2543,7 @@
         const controller = new AbortController();
         fireRefreshController = controller;
         const generation = ++fireRefreshGeneration;
+        fireRefreshPartialResult = false;
         const timeout = window.setTimeout(() => controller.abort(), 45000);
         setFireLayerStatus("loading", fireEvents.size ? "Refreshing WFIGS wildfires" : "Loading WFIGS wildfires");
 
@@ -2561,8 +2623,10 @@
           if (refreshPartial) {
             const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
             setFireLayerStatus("error", `${activeCount} active · some recent data unavailable`);
+            fireRefreshPartialResult = true;
             return false;
           }
+          fireRefreshPartialResult = false;
           lastFireRefreshAt = Date.now();
           updateFireReadyStatus();
           return true;
@@ -2614,14 +2678,22 @@
         return formatFireDate(time);
       }
 
-      function formatFireAcres(value) {
+      // `Number(null)` is 0, so missing WFIGS attributes must be rejected
+      // before coercion or absent values would render as invented zeros.
+      function reportedFireNumber(value) {
+        if (value === null || value === undefined || value === "") return null;
         const number = Number(value);
-        return Number.isFinite(number) ? `${fireNumberFormatter.format(number)} acres` : "Not reported";
+        return Number.isFinite(number) ? number : null;
+      }
+
+      function formatFireAcres(value) {
+        const number = reportedFireNumber(value);
+        return number === null ? "Not reported" : `${fireNumberFormatter.format(number)} acres`;
       }
 
       function formatFirePercent(value) {
-        const number = Number(value);
-        return Number.isFinite(number) ? `${Math.round(number)}%` : "Not reported";
+        const number = reportedFireNumber(value);
+        return number === null ? "Not reported" : `${Math.round(number)}%`;
       }
 
       function formatFireLocation(record) {
@@ -2816,6 +2888,7 @@
         const controller = new AbortController();
         fireDatabaseController = controller;
         const generation = ++fireDatabaseGeneration;
+        const loadGeneration = ++fireDatabaseLoadGeneration;
         fireLoadMore.disabled = true;
         fireLoadMore.hidden = false;
         fireLoadMore.textContent = "Loading…";
@@ -2873,17 +2946,21 @@
               features = storedPage.features;
               usedStoredPage = true;
             }
-            if (
-              !fireDatabasePageCache.has(cacheKey) &&
-              fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
-            ) {
-              fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+            // Only live responses earn the five-minute memory cache; a stale
+            // stored fallback must not suppress live retries after recovery.
+            if (!usedStoredPage) {
+              if (
+                !fireDatabasePageCache.has(cacheKey) &&
+                fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
+              ) {
+                fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+              }
+              fireDatabasePageCache.set(cacheKey, {
+                loadedAt: Date.now(),
+                stale: false,
+                features
+              });
             }
-            fireDatabasePageCache.set(cacheKey, {
-              loadedAt: Date.now(),
-              stale: usedStoredPage,
-              features
-            });
           }
           if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
           if (fireDatabaseNeedsReset && requestOffset === 0) {
@@ -2903,7 +2980,15 @@
                 : `${fireList.childElementCount.toLocaleString()}${fireDatabaseLargeOnly ? " large" : ""} wildfires shown · ${fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first"}`)
             : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
         } catch (error) {
-          if (error.name === "AbortError") return;
+          if (error.name === "AbortError") {
+            // A selection or drawer-close abort starts no newer page load, so
+            // it must restore the pagination control it interrupted.
+            if (loadGeneration === fireDatabaseLoadGeneration) {
+              fireLoadMore.disabled = false;
+              fireLoadMore.textContent = fireDatabaseNeedsReset ? "Retry" : "Load more";
+            }
+            return;
+          }
           fireDatabaseStatus.textContent = fireList.childElementCount
             ? "Wildfire database temporarily unavailable · keeping current list"
             : "Wildfire database temporarily unavailable";
@@ -2929,6 +3014,10 @@
         fireDrawer.hidden = true;
         firesButton.setAttribute("aria-expanded", "false");
         fireDatabaseGeneration += 1;
+        if (fireSearchTimer) {
+          window.clearTimeout(fireSearchTimer);
+          fireSearchTimer = 0;
+        }
         if (fireDatabaseController) fireDatabaseController.abort();
         fireDatabaseController = null;
         if (restoreFocus) firesButton.focus({ preventScroll: true });
@@ -3083,7 +3172,9 @@
         const { perimeterLayer, pointLayer } = renderFireSelection(record);
         let popupLatLng = null;
         const mobile = window.matchMedia("(max-width: 560px)").matches;
-        if (mobile) closeFireDrawer(false);
+        // Restore focus to the Fires button so closing the sheet does not
+        // strand keyboard/screen-reader focus inside a hidden subtree.
+        if (mobile) closeFireDrawer(true);
         map.stop();
         map.invalidateSize({ pan: false, animate: false });
 
@@ -3145,7 +3236,12 @@
             refreshWildfires({ force: true });
           }
         } else {
-          if (fireRefreshController) fireRefreshController.abort();
+          if (fireRefreshController) {
+            // Bump the generation first so the deliberate abort is not
+            // reported as a WFIGS refresh failure.
+            fireRefreshGeneration += 1;
+            fireRefreshController.abort();
+          }
           if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
           if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
           if (map._popup?._pmFirePopup) map.closePopup();
@@ -3215,6 +3311,10 @@
             "sr-only pm-cache-refresh-label",
             cacheRefreshButton
           );
+          // Live region so the refresh outcome is announced to screen
+          // readers; aria-label changes on an unfocused button are not.
+          cacheRefreshLabel.setAttribute("role", "status");
+          cacheRefreshLabel.setAttribute("aria-live", "polite");
           cacheRefreshLabel.textContent = "Update";
           L.DomEvent.disableClickPropagation(container);
           L.DomEvent.on(locateButton, "click", (event) => {
@@ -4169,8 +4269,14 @@
         const pairKey = `${datasetName}|${lowerHour}|${upperHour}`;
 
         try {
-          if (pairKey !== scrubPairKey) {
-            renderLayer.setFieldBlend(
+          let drewField = false;
+          if (pairKey === scrubPairKey) {
+            // The layer may have left field mode (or lost its context) since
+            // this pair was uploaded; fall back to a full re-upload then.
+            drewField = renderLayer.setBlendProgress(progress) === true;
+          }
+          if (!drewField) {
+            drewField = renderLayer.setFieldBlend(
               fromField.pack.weightedImage,
               fromField.pack.coverageImage,
               fromField.channel,
@@ -4180,11 +4286,10 @@
               progress,
               particle,
               dataset().scale
-            );
-            scrubPairKey = pairKey;
-          } else {
-            renderLayer.setBlendProgress(progress);
+            ) === true;
+            scrubPairKey = drewField ? pairKey : "";
           }
+          if (!drewField) return false;
         } catch {
           fieldRenderingFailed = true;
           scrubPairKey = "";
@@ -4268,9 +4373,11 @@
             this._abortTransition();
           });
           canvas.addEventListener("webglcontextrestored", () => {
-            this._contextLost = false;
             try {
               this._initializeRenderer();
+              // Only a successful re-initialization may clear the lost flag;
+              // otherwise a broken renderer would advertise field support.
+              this._contextLost = false;
               if (this._renderMode === "field" && this._fieldState) {
                 const field = this._fieldState;
                 this.setFieldBlend(
@@ -4790,6 +4897,7 @@
 
         setFrame(source) {
           this.finishTransition();
+          if (this._contextLost) return false;
           this._renderMode = "color";
           this._fieldState = null;
           this._currentSource = source;
@@ -4802,6 +4910,7 @@
 
         setBlend(fromSource, toSource, progress) {
           this.finishTransition();
+          if (this._contextLost) return false;
           this._renderMode = "color";
           this._fieldState = null;
           this._currentSource = fromSource;
@@ -4824,6 +4933,7 @@
           scale
         ) {
           this.finishTransition();
+          if (this._contextLost) return false;
           if (!this._gl && !this._fallbackContext) return false;
           this._renderMode = "field";
           this._currentTexture = 0;
@@ -4872,6 +4982,11 @@
 
         transitionTo(source, duration) {
           this.finishTransition();
+          if (this._contextLost) return Promise.resolve(false);
+          // After smooth field rendering the current texture still holds raw
+          // atlas data, so crossfading from it would flash an opaque channel
+          // mosaic; switch modes with an immediate cut instead.
+          if (this._renderMode === "field") duration = 0;
           this._renderMode = "color";
           this._fieldState = null;
           this._nextSource = source;
@@ -5063,8 +5178,15 @@
         const delayNote = cacheUpdateDelayHours > 1
           ? `; cached forecast last refreshed ${cacheUpdateDelayHours} hours ago`
           : "";
+        const text = `${message}${delayNote}`;
+        // Skip identical rewrites so playback does not flood screen readers
+        // with repeated live-region announcements of the same status.
+        if (
+          frameStatus.dataset.state === state &&
+          frameStatusText.textContent === text
+        ) return;
         frameStatus.dataset.state = state;
-        frameStatusText.textContent = `${message}${delayNote}`;
+        frameStatusText.textContent = text;
         frameStatus.title = delayNote ? delayNote.slice(2) : message;
       }
 
@@ -5083,13 +5205,15 @@
           "aria-busy",
           String(state === "loading")
         );
-        cacheRefreshLabel.textContent = label;
+        // The sr-only label doubles as a polite live region, so it carries
+        // the full outcome message rather than the short visual label.
+        cacheRefreshLabel.textContent = message;
         cacheRefreshButton.setAttribute("aria-label", message);
         cacheRefreshButton.title = message;
         if (resetDelay > 0) {
           cacheFeedbackTimer = window.setTimeout(() => {
             cacheRefreshButton.dataset.state = "idle";
-            cacheRefreshLabel.textContent = "Update";
+            cacheRefreshLabel.textContent = "Refresh smoke and wildfire data";
             cacheRefreshButton.setAttribute(
               "aria-label",
               "Refresh smoke and wildfire data"
@@ -5122,10 +5246,20 @@
           cacheRefreshActive ||
           combinedRefreshActive
         );
+        // The unified refresh resets and restores the dataset selection, so a
+        // concurrent user dataset change would race its restore path.
+        particleSelect.disabled = combinedRefreshActive;
+        extentSelect.disabled = combinedRefreshActive;
+        fireRetry.disabled = combinedRefreshActive;
       }
 
       function renderIcons() {
-        if (window.lucide) window.lucide.createIcons({ attrs: { width: 18, height: 18 } });
+        if (window.lucide) {
+          window.lucide.createIcons({ attrs: { width: 18, height: 18 } });
+        } else {
+          // The icon CDN failed; reveal text labels instead of blank buttons.
+          root.classList.add("pm-no-icons");
+        }
       }
 
       function stopPlayback() {
@@ -5291,7 +5425,10 @@
         const rendered = await renderPromise;
         if (!rendered) {
           pendingProcessed = null;
-          setFrameStatus("error", "Forecast frame unavailable");
+          // A stale invocation must not overwrite a newer selection's status.
+          if (transition === transitionGeneration) {
+            setFrameStatus("error", "Forecast frame unavailable");
+          }
           return false;
         }
 
@@ -5355,7 +5492,13 @@
       }
 
       async function refreshCache(options = {}) {
-        if (cacheRefreshActive || (timelineInteractionLocked && !options.combined)) return false;
+        // `recover` lets the automatic check rebuild a failed smooth timeline;
+        // the lock otherwise keeps automatic refreshes away from an in-flight
+        // dataset change, which also holds the lock while it loads.
+        if (
+          cacheRefreshActive ||
+          (timelineInteractionLocked && !options.combined && !options.recover)
+        ) return false;
         cacheRefreshActive = true;
         lastCacheCheckAt = Date.now();
         updateControlAvailability();
@@ -5402,7 +5545,12 @@
             nextWindow.maximumHour !== activeTimelineWindow.maximumHour ||
             nextWindow.hourOffset !== activeTimelineWindow.hourOffset
           );
-          if (!cacheChanged && !alignmentChanged && !options.forceReload) {
+          if (
+            !cacheChanged &&
+            !alignmentChanged &&
+            !options.forceReload &&
+            !timelineInteractionLocked
+          ) {
             cacheUpdateDelayHours = nextWindow.updateDelayHours;
             setFrameStatus("ready", "Forecast cache is current");
             if (!options.combined) {
@@ -5436,10 +5584,37 @@
               );
 
           if (
+            fieldRenderingFailed &&
+            (options.combined || options.recover) &&
+            renderLayer.supportsFieldRendering()
+          ) {
+            // A unified refresh or automatic recovery retries smooth rendering
+            // after a transient failure such as a lost WebGL context.
+            fieldRenderingFailed = false;
+          }
+          if (
             fieldRenderingFailed ||
             !renderLayer.supportsFieldRendering()
           ) {
-            throw new Error("Smooth forecast timeline unavailable");
+            if (!options.combined) {
+              throw new Error("Smooth forecast timeline unavailable");
+            }
+            // Degraded direct-GeoMet clients still get a refreshed current
+            // frame from the unified refresh instead of a guaranteed failure.
+            rawCache.clear();
+            processedCache.clear();
+            scrubPairKey = "";
+            const degradedReady = await showFrame(selectedHour, {
+              prime: true,
+              quiet: true
+            });
+            if (!degradedReady) {
+              throw new Error("Forecast frame unavailable");
+            }
+            updateLegend();
+            updateLabels(selectedHour, false);
+            setFrameStatus("ready", "Forecast frame refreshed");
+            return true;
           }
           stagedPreview = await buildPreviewDataset(
             nextManifest,
@@ -5482,6 +5657,7 @@
             cacheManifestPromise,
             previewEntry: previewCache.get(refreshDatasetName),
             fieldRenderingFailed,
+            timelineInteractionLocked,
             resumePlayback
           };
           if (!applyManifestTimeline(nextManifest, checkNow)) {
@@ -5510,6 +5686,7 @@
           }
           releasePreviewDataset(rollbackState.previewEntry?.value);
           timelineInteractionLocked = false;
+          updateLegend();
           updateLabels(selectedHour, false);
           setFrameStatus(
             "ready",
@@ -5571,7 +5748,7 @@
             } else {
               releasePreviewDataset(stagedPreview);
             }
-            timelineInteractionLocked = false;
+            timelineInteractionLocked = rollbackState.timelineInteractionLocked;
             updateLabels(selectedHour, false);
             if (rollbackState.resumePlayback && playing) {
               playbackGeneration += 1;
@@ -5668,10 +5845,11 @@
         wildfireOptions.hidden = false;
         renderFireLayers();
         setBasemap("day");
-        updateLegend();
+        // The legend and time labels intentionally keep describing the
+        // retained visible frame; the refresh updates them once the default
+        // dataset actually renders, so the old frame is never mislabeled.
         selectedHour = 0;
         slider.value = "0";
-        updateLabels(0, true);
 
         map.stop();
         map.invalidateSize({ pan: false, animate: false });
@@ -5704,6 +5882,7 @@
             refreshWildfires({ force: true, fullReload: true })
           ]);
           if (!smokeReady) {
+            datasetGeneration += 1;
             particle = previousSmokeState.particle;
             extent = previousSmokeState.extent;
             particleSelect.value = particle;
@@ -5722,7 +5901,9 @@
             loadFireDatabase(true);
           }
           const bothReady = smokeReady && wildfiresReady;
-          const eitherReady = smokeReady || wildfiresReady;
+          // A partially successful WFIGS refresh still replaced live Current
+          // data, so it must not be reported as a total failure.
+          const eitherReady = smokeReady || wildfiresReady || fireRefreshPartialResult;
           setCacheRefreshState(
             bothReady ? "success" : (eitherReady ? "partial" : "error"),
             bothReady ? "Updated" : (eitherReady ? "Partial" : "Retry"),
@@ -5749,6 +5930,17 @@
       }
 
       async function changeDataset() {
+        // Depth-tracked so automatic cache checks stay away from an in-flight
+        // dataset change, which holds the timeline lock while it loads.
+        datasetChangeDepth += 1;
+        try {
+          await changeDatasetInternal();
+        } finally {
+          datasetChangeDepth -= 1;
+        }
+      }
+
+      async function changeDatasetInternal() {
         const resumePlayback = playing;
         const change = ++datasetGeneration;
         playbackGeneration += 1;
@@ -5867,7 +6059,16 @@
       });
 
       document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && !fireDrawer.hidden) closeFireDrawer();
+        if (event.key !== "Escape") return;
+        if (!fireDrawer.hidden) {
+          closeFireDrawer();
+          return;
+        }
+        menus.forEach((menu) => {
+          if (!menu.open) return;
+          menu.open = false;
+          menu.querySelector("summary")?.focus({ preventScroll: true });
+        });
       });
 
       map.on("popupclose", (event) => {
@@ -5960,10 +6161,12 @@
           document.visibilityState !== "visible" ||
           cacheRefreshActive ||
           combinedRefreshActive ||
-          timelineInteractionLocked ||
+          datasetChangeDepth > 0 ||
           Date.now() - lastCacheCheckAt < CACHE_CHECK_INTERVAL
         ) return;
-        refreshCache({ automatic: true });
+        // A locked timeline means the smooth timeline failed earlier; the
+        // periodic check doubles as its automatic recovery path.
+        refreshCache({ automatic: true, recover: timelineInteractionLocked });
       }
 
       function checkWildfiresAfterResume() {
@@ -5984,6 +6187,9 @@
         checkWildfiresAfterResume();
       });
       fireRefreshTimer = window.setInterval(checkWildfiresAfterResume, FIRE_REFRESH_MS);
+      // A continuously visible tab (kiosk use) never fires visibility events,
+      // so the hourly cache check needs its own periodic tick as well.
+      window.setInterval(checkCacheAfterResume, FIRE_REFRESH_MS);
 
       const probeCanvas = document.createElement("canvas");
       probeCanvas.width = 1;
@@ -6126,14 +6332,22 @@
       const resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
       resizeObserver.observe(root);
 
+      // pagehide also fires when the page enters the back/forward cache, so the
+      // handler must stay registered, must not kill the periodic refresh
+      // timers, and must bump generations so its aborts stay silent.
       window.addEventListener("pagehide", () => {
         cancelScheduledProcessing();
-        if (fireRefreshController) fireRefreshController.abort();
-        if (fireDatabaseController) fireDatabaseController.abort();
-        if (fireRefreshTimer) window.clearInterval(fireRefreshTimer);
-        if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
+        if (fireRefreshController) {
+          fireRefreshGeneration += 1;
+          fireRefreshController.abort();
+        }
+        if (fireDatabaseController) {
+          fireDatabaseGeneration += 1;
+          fireDatabaseLoadGeneration += 1;
+          fireDatabaseController.abort();
+        }
         if (renderLayer) renderLayer.finishTransition();
-      }, { once: true });
+      });
 
       renderIcons();
 
