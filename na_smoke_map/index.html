@@ -1760,7 +1760,7 @@
           <button type="button" class="pm-fire-filter" data-fire-status="contained" aria-pressed="false">Contained</button>
           <button type="button" class="pm-fire-filter" data-fire-status="controlled" aria-pressed="false">Controlled</button>
           <button type="button" class="pm-fire-filter" data-fire-status="out" aria-pressed="false">Out</button>
-          <button type="button" class="pm-fire-filter" data-fire-status="notcurrent" aria-pressed="false" title="No longer actively reporting and without an official end date (final ICS-209, no containment/control/out date)">Not current</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="notcurrent" aria-pressed="false" title="No longer in the live/current WFIGS service and without a containment, control, or out date (includes fires still filing ICS-209 updates that have dropped out of the current feed)">Not current</button>
           <span class="pm-fire-filter-break" aria-hidden="true"></span>
           <button type="button" class="pm-fire-filter pm-fire-imsr-filter" id="pm-fire-imsr-filter" aria-pressed="true" title="Fires with ongoing ICS-209 incident reporting that are not fully contained; shows every match rather than the first 50">IMSR</button>
           <button type="button" class="pm-fire-filter pm-fire-large-filter" id="pm-fire-large-filter" aria-pressed="false">Large · 300+ acres</button>
@@ -2139,6 +2139,11 @@
       // Live CX complex parent points (WF-only rule aside): these render as a
       // distinct diamond marker, never as normal WF ignition circles.
       let currentComplexPoints = [];
+      // Normalized IRWIN ids of the complexes present in the Current service, so
+      // a CX record built from Year-to-Date data (never in fireEvents) is still
+      // recognized as current/active for status — otherwise an actively reporting
+      // complex would fall through to a misleading "Not current" badge.
+      let currentComplexIds = new Set();
       let complexMemberControllers = [];
       const firePerimeterCache = new Map();
       const fireDatabasePageCache = new Map();
@@ -3461,6 +3466,11 @@
 
           currentFirePoints = currentPoints;
           currentComplexPoints = complexPoints;
+          currentComplexIds = new Set(
+            complexPoints
+              .map((feature) => normalizeIrwinId(feature.properties?.IrwinID))
+              .filter(Boolean)
+          );
           firePerimeterCache.clear();
           currentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
           rebuildFireEvents();
@@ -3630,7 +3640,11 @@
         record.rawIrwinId = pointFeature.properties?.IrwinID || null;
         record.pointFeature = pointFeature;
         mergeFireAttributes(record, pointAttributes(pointFeature.properties));
-        record.active = currentMember || Boolean(liveRecord?.active);
+        // A CX parent is never in fireEvents (WF-only), so recognize it as active
+        // when it is present in the Current-service complex set; otherwise an
+        // actively reporting complex would badge a misleading "Not current".
+        const isCurrentComplex = record.category === "CX" && currentComplexIds.has(record.id);
+        record.active = currentMember || Boolean(liveRecord?.active) || isCurrentComplex;
         record.recent = Boolean(liveRecord?.recent);
         return record;
       }
@@ -3658,10 +3672,13 @@
         } else if (fireDatabaseFilter === "out") {
           clauses.push("FireOutDateTime IS NOT NULL");
         } else if (fireDatabaseFilter === "notcurrent") {
-          // Reporting has ended (final ICS-209) with no official end date — the
-          // primary `Not current` case in fireStatus(). Requiring 'F' keeps
-          // still-reporting (U/I) active fires out of this bucket.
-          clauses.push("ICS209ReportStatus = 'F' AND ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
+          // "Not current" means no closure dates AND not in the live/current
+          // service. Current membership is not a Year-to-Date field, so the SQL
+          // only narrows to no-closure records; loadFireDatabase() then keeps
+          // only rows whose fireStatus() is actually "Not current" (this
+          // deliberately includes still-reporting U/I fires that have dropped
+          // out of Current, e.g. Alaska monitor fires like Kilolitna).
+          clauses.push("ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
         }
         return clauses.join(" AND ");
       }
@@ -4080,6 +4097,15 @@
           }
           const visible = features.slice(0, pageSize);
           visible.forEach((feature) => {
+            // "Not current" is the one status the SQL cannot fully express — it
+            // means "no closure dates AND not in the live/current service", and
+            // current membership is not a Year-to-Date field. The query narrows
+            // to no-closure records; here we keep only the ones the app actually
+            // badges "Not current" (dropping any that are currently active).
+            if (fireDatabaseFilter === "notcurrent") {
+              const preview = fireRecordFromPointFeature(feature, currentMembersOnly);
+              if (fireStatus(preview) !== "Not current") return;
+            }
             const record = appendFireDatabaseRow(feature, currentMembersOnly);
             fireMirrorRecords.set(record.id, record);
           });
@@ -4092,9 +4118,16 @@
           renderFireListStatus();
           // Fetch the matching total only when the first page didn't already
           // capture everything (i.e. there is a Load more), never for a stale
-          // stored page. Not awaited: the list shows now and the "of N" clause
-          // fills in when the count returns.
-          if (requestOffset === 0 && !usedStoredPage && visible.length && fireDatabaseHasMore) {
+          // stored page. Skipped for "not current": its SQL count would include
+          // the currently-active records that the client-side pass removes, so
+          // an "of N" total would overstate. Not awaited otherwise.
+          if (
+            requestOffset === 0 &&
+            !usedStoredPage &&
+            visible.length &&
+            fireDatabaseHasMore &&
+            fireDatabaseFilter !== "notcurrent"
+          ) {
             loadFireDatabaseTotal(requestService, requestWhere, generation, controller.signal);
           }
           updateFireMirrorState();
