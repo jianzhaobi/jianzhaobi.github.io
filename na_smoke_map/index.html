@@ -2147,8 +2147,10 @@
       let complexMemberControllers = [];
       const firePerimeterCache = new Map();
       const fireDatabasePageCache = new Map();
-      // Mirror mode: when the drawer filter differs from the default, the map
-      // shows exactly the rows loaded in the list instead of the live actives.
+      // The map ALWAYS mirrors the loaded list (fireMirrorRecords is the single
+      // source of what is drawn). fireMirrorActive no longer gates rendering; it
+      // now only marks a non-default (filtered) view for the banner, the layer
+      // status line, and the map's accessible name.
       let fireMirrorActive = false;
       const fireMirrorRecords = new Map();
 
@@ -2690,18 +2692,16 @@
       }
 
       function updateFireReadyStatus() {
+        // The map mirrors the loaded list, so the layer count is the list size.
+        const n = fireMirrorRecords.size;
         if (fireMirrorActive) {
-          setFireLayerStatus(
-            "ready",
-            `Filtered · ${fireMirrorRecords.size.toLocaleString()} from the database list shown`
-          );
+          setFireLayerStatus("ready", `Filtered · ${n.toLocaleString()} from the database list shown`);
           return;
         }
-        // Default view: the live layer shows every IMSR-grade (significant) fire.
-        const imsrCount = [...fireEvents.values()].filter(isImsrGradeFire).length;
+        // Default view (All + IMSR): the significant-fire set.
         setFireLayerStatus(
           "ready",
-          `${imsrCount.toLocaleString()} significant (IMSR) ${imsrCount === 1 ? "wildfire" : "wildfires"} shown`
+          `${n.toLocaleString()} significant (IMSR) ${n === 1 ? "wildfire" : "wildfires"} shown`
         );
       }
 
@@ -3034,7 +3034,9 @@
       // drawn for a mirrored CX parent are only in fireEvents, so the
       // fallback also serves them.
       function fireRenderRecord(id) {
-        return (fireMirrorActive && fireMirrorRecords.get(id)) || fireEvents.get(id);
+        // The map mirrors the list, so a rendered feature's record is the list
+        // row when present, otherwise the live record (e.g. a complex member).
+        return fireMirrorRecords.get(id) || fireEvents.get(id);
       }
 
       // In-memory scan only — never a request. CpxID on a member equals the
@@ -3095,15 +3097,10 @@
       // normal ignition circles by renderFireLayers; this only adds the diamond.
       function renderComplexMarkers() {
         fireComplexGroup.clearLayers();
-        // Mirror mode already filtered its CX rows through the list SQL. The
-        // default (non-mirror) view is All + IMSR, so filter the live complexes
-        // with the same isImsrGradeFire predicate used for point fires — a
-        // complex that is not IMSR-grade must not appear in the default view.
-        const records = fireMirrorActive
-          ? [...fireMirrorRecords.values()].filter((record) => record.category === "CX")
-          : currentComplexPoints
-              .map((feature) => fireRecordFromPointFeature(feature, false))
-              .filter(isImsrGradeFire);
+        // The map always mirrors the loaded list, so the diamonds are exactly the
+        // CX rows the list returned for the current filter (the SQL already
+        // applied IMSR/status/size), positioned at their member fires' center.
+        const records = [...fireMirrorRecords.values()].filter((record) => record.category === "CX");
         records.forEach((record) => {
           const latlng = complexDisplayLatLng(record);
           if (!latlng) return;
@@ -3177,9 +3174,12 @@
         const pushRecord = (record) => {
           if (renderedIds.has(record.id)) return;
           renderedIds.add(record.id);
-          // Mirrored rows carry list attributes only; the live map record has
-          // the canonical geometry and keeps refreshing every five minutes.
-          const live = fireMirrorActive ? fireEvents.get(record.id) : null;
+          // The list row carries attributes only (no geometry); prefer the live
+          // in-memory record's point/perimeter geometry by id so the five-minute
+          // WFIGS refresh keeps it current, and fall back to the row's own
+          // point (built from reported coordinates) when it is not in the live
+          // Current layer — e.g. a fire that has dropped out of the current feed.
+          const live = fireEvents.get(record.id);
           const perimeters = (live?.perimeterFeatures?.length ? live.perimeterFeatures : record.perimeterFeatures) || [];
           const point = live?.pointFeature || record.pointFeature;
           perimeters.forEach((feature) => {
@@ -3195,34 +3195,12 @@
             });
           }
         };
-        // Parent ids of the IMSR-grade complexes shown as diamonds in the default
-        // view. Their member fires are drawn as full ignition/perimeter geometry
-        // even when an individual member is not itself IMSR-grade, so a complex
-        // shows its fires (not just the diamond) — matching how mirror mode
-        // expands a CX row to all its members. renderComplexMarkers() uses the
-        // same isImsrGradeFire() filter, so the two stay in sync.
-        const imsrComplexIds = fireMirrorActive
-          ? null
-          : new Set(
-              currentComplexPoints
-                .map((feature) => fireRecordFromPointFeature(feature, false))
-                .filter(isImsrGradeFire)
-                .map((record) => record.id)
-            );
-        const sourceRecords = fireMirrorActive ? fireMirrorRecords : fireEvents;
-        sourceRecords.forEach((record) => {
-          // Default (non-mirror) view is All + IMSR: draw every IMSR-grade fire
-          // from the live layer, plus the member fires of every IMSR-grade
-          // complex. Any other filter switches to mirror mode.
-          if (
-            !fireMirrorActive &&
-            !isImsrGradeFire(record) &&
-            !(record.cpxId && imsrComplexIds.has(normalizeIrwinId(record.cpxId)))
-          ) return;
-          if (fireMirrorActive && record.category === "CX") {
-            // The CX parent is represented by its diamond marker
-            // (renderComplexMarkers), never as a normal ignition circle at its
-            // dispatch-center placeholder point; only its member fires draw here.
+        // The map is always a mirror of the loaded list: the rows the list shows
+        // for the current filter are exactly the fires drawn. A CX parent is
+        // represented only by its diamond (renderComplexMarkers); its member
+        // fires are drawn here from live geometry when available.
+        fireMirrorRecords.forEach((record) => {
+          if (record.category === "CX") {
             complexMemberRecords(record.id).forEach(pushRecord);
             return;
           }
@@ -3484,6 +3462,12 @@
           fireRefreshPartialResult = false;
           lastFireRefreshAt = Date.now();
           updateFireReadyStatus();
+          // The map mirrors the list. Refresh the default list set on the same
+          // cycle so newly significant fires appear on their own. Non-default
+          // (user-filtered) states keep the user's snapshot and pagination — only
+          // their geometry refreshes via renderFireLayers above. Skipped while a
+          // list load is already in flight (e.g. the startup load).
+          if (fireFilterStateIsDefault() && !fireDatabaseController) loadFireDatabase(true);
           return true;
         } catch (error) {
           if (!controller.signal.aborted) controller.abort();
@@ -4088,7 +4072,9 @@
               });
             }
           }
-          if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
+          // Note: no longer bail when the drawer is hidden — the map mirrors this
+          // list, so it must load (and refresh) even with the drawer closed.
+          if (generation !== fireDatabaseGeneration) return;
           if (fireDatabaseNeedsReset && requestOffset === 0) {
             abortComplexMemberLoads();
             fireList.replaceChildren();
@@ -7602,6 +7588,9 @@
       async function initialize() {
         syncFireAttribution();
         refreshWildfires({ force: true });
+        // The map mirrors the list, so load the default list set on startup
+        // (in parallel with the live geometry) even though the drawer is closed.
+        loadFireDatabase(true);
         timelineInteractionLocked = true;
         updateControlAvailability(0);
         setFrameStatus("loading", "Loading available forecast frames");
