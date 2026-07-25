@@ -68,6 +68,7 @@
       --pm-fire-active: #d94b38;
       --pm-fire-active-dark: #8f241d;
       --pm-fire-closed: #77716b;
+      --pm-fire-complex: #5b57c9;
       --pm-safe-top: env(safe-area-inset-top, 0px);
       --pm-safe-right: env(safe-area-inset-right, 0px);
       --pm-safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -179,6 +180,7 @@
       --pm-line: rgb(255 255 255 / 12%);
       --pm-accent-soft: #4b2d25;
       --pm-shadow: 0 12px 34px rgb(0 0 0 / 36%), 0 2px 8px rgb(0 0 0 / 24%);
+      --pm-fire-complex: #8b86f0;
     }
 
     #north-america-pm25 .pm-map-wrap,
@@ -695,6 +697,13 @@
       padding: 0 13px 10px;
     }
 
+    #north-america-pm25 .pm-fire-filter-break {
+      flex-basis: 100%;
+      height: 0;
+      margin: 0;
+      padding: 0;
+    }
+
     #north-america-pm25 .pm-fire-filter {
       appearance: none;
       min-height: 38px;
@@ -789,9 +798,103 @@
     }
 
     #north-america-pm25 .pm-fire-badge[data-status="complex"] {
-      color: var(--pm-muted);
+      color: var(--pm-fire-complex);
       background: transparent;
-      box-shadow: inset 0 0 0 1px rgb(119 113 107 / 45%);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pm-fire-complex) 55%, transparent);
+    }
+
+    #north-america-pm25 .pm-fire-group {
+      border-bottom: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-fire-group-head {
+      display: flex;
+      align-items: stretch;
+    }
+
+    #north-america-pm25 .pm-fire-group-head .pm-fire-row {
+      flex: 1 1 auto;
+      min-width: 0;
+      border-bottom: 0;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle {
+      flex: 0 0 auto;
+      width: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-left: 1px solid var(--pm-line);
+      background: transparent;
+      color: var(--pm-muted);
+      cursor: pointer;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle:hover,
+    #north-america-pm25 .pm-fire-group-toggle:focus-visible {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fire-group-chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 1.6px solid currentColor;
+      border-bottom: 1.6px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle[aria-expanded="true"] .pm-fire-group-chevron {
+      transform: rotate(45deg);
+    }
+
+    #north-america-pm25 .pm-fire-group-children:not([hidden]) {
+      display: block;
+      border-top: 1px solid var(--pm-line);
+      background: color-mix(in srgb, var(--pm-fire-complex) 6%, transparent);
+    }
+
+    #north-america-pm25 .pm-fire-group-children .pm-fire-row {
+      padding-left: 30px;
+      min-height: 66px;
+    }
+
+    #north-america-pm25 .pm-fire-group-children .pm-fire-row:last-child {
+      border-bottom: 0;
+    }
+
+    #north-america-pm25 .pm-fire-group-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px 11px 30px;
+      color: var(--pm-muted);
+      font-size: 12px;
+    }
+
+    #north-america-pm25 .pm-fire-group-retry {
+      min-height: 28px;
+      padding: 4px 10px;
+      font-size: 12px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-complex-icon {
+      background: none;
+      border: 0;
+    }
+
+    #north-america-pm25 .pm-fire-complex-diamond {
+      display: block;
+      width: 16px;
+      height: 16px;
+      margin: 5px;
+      background: var(--pm-fire-complex);
+      border: 2px solid #fff;
+      border-radius: 2px;
+      transform: rotate(45deg);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 45%);
     }
 
     #north-america-pm25 .pm-fire-mirror-banner {
@@ -1579,10 +1682,6 @@
                   <input id="pm-show-perimeters" type="checkbox" checked>
                   <span>Perimeters</span>
                 </label>
-                <label class="pm-check is-wide" for="pm-show-recent-fires">
-                  <input id="pm-show-recent-fires" type="checkbox">
-                  <span>Recently closed · last 24 h</span>
-                </label>
               </div>
               <div class="pm-fire-layer-status" id="pm-fire-layer-status" data-state="loading" role="status" aria-live="polite">
                 <span id="pm-fire-layer-status-text">Loading WFIGS wildfires</span>
@@ -1637,7 +1736,7 @@
 
       <div class="pm-fire-mirror-banner pm-glass" id="pm-fire-mirror-banner" hidden>
         <span class="pm-fire-mirror-text" id="pm-fire-mirror-text" role="status" aria-live="polite"></span>
-        <button type="button" class="pm-button pm-icon-button pm-fire-mirror-clear" id="pm-fire-mirror-clear" aria-label="Clear wildfire filter and restore active fires">
+        <button type="button" class="pm-button pm-icon-button pm-fire-mirror-clear" id="pm-fire-mirror-clear" aria-label="Clear wildfire filter and restore the default IMSR view">
           <i data-lucide="x" aria-hidden="true"></i>
         </button>
       </div>
@@ -1657,13 +1756,14 @@
           </button>
         </div>
         <div class="pm-fire-filters" id="pm-fire-filters" role="group" aria-label="Filter wildfires by status and size">
-          <button type="button" class="pm-fire-filter" data-fire-status="all" aria-pressed="false">All</button>
-          <button type="button" class="pm-fire-filter" data-fire-status="active" aria-pressed="true">Active</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="active" aria-pressed="false">Active</button>
           <button type="button" class="pm-fire-filter" data-fire-status="contained" aria-pressed="false">Contained</button>
           <button type="button" class="pm-fire-filter" data-fire-status="controlled" aria-pressed="false">Controlled</button>
           <button type="button" class="pm-fire-filter" data-fire-status="out" aria-pressed="false">Out</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="notcurrent" aria-pressed="false" title="No longer actively reporting and without an official end date (final ICS-209, no containment/control/out date)">Not current</button>
+          <span class="pm-fire-filter-break" aria-hidden="true"></span>
+          <button type="button" class="pm-fire-filter pm-fire-imsr-filter" id="pm-fire-imsr-filter" aria-pressed="true" title="Fires with ongoing ICS-209 incident reporting that are not fully contained; shows every match rather than the first 50">IMSR</button>
           <button type="button" class="pm-fire-filter pm-fire-large-filter" id="pm-fire-large-filter" aria-pressed="false">Large · 300+ acres</button>
-          <button type="button" class="pm-fire-filter pm-fire-imsr-filter" id="pm-fire-imsr-filter" aria-pressed="false" title="Fires with ongoing ICS-209 incident reporting that are not fully contained">IMSR</button>
         </div>
         <div class="pm-fire-database-status" id="pm-fire-database-status" role="status" aria-live="polite">Open the database to load fires.</div>
         <div class="pm-fire-list" id="pm-fire-list" role="group" aria-label="Wildfire incidents"></div>
@@ -1737,7 +1837,6 @@
       const wildfireToggle = document.getElementById("pm-show-wildfires");
       const ignitionToggle = document.getElementById("pm-show-ignitions");
       const perimeterToggle = document.getElementById("pm-show-perimeters");
-      const recentFireToggle = document.getElementById("pm-show-recent-fires");
       const smokeOptions = document.getElementById("pm-smoke-options");
       const wildfireOptions = document.getElementById("pm-wildfire-options");
       const particleSelect = document.getElementById("pm-particle");
@@ -1793,8 +1892,10 @@
       };
       const FIRE_ATTRIBUTION = '<a href="https://www.arcgis.com/home/item.html?id=4181a117dc9e43db8598533e29972015">NIFC WFIGS</a>';
       const FIRE_REFRESH_MS = 5 * 60 * 1000;
-      const FIRE_RECENT_MS = 24 * HOUR;
       const FIRE_PAGE_SIZE = 50;
+      // IMSR is a bounded, curated set (tens to low hundreds nationwide), so it is
+      // safe to load and show every match in one request instead of paginating.
+      const FIRE_IMSR_PAGE_SIZE = 1000;
       const FIRE_LARGE_ACRES = 300;
       const FIRE_DATABASE_CACHE_MS = 5 * 60 * 1000;
       const FIRE_DATABASE_CACHE_LIMIT = 24;
@@ -1983,7 +2084,6 @@
       let wildfiresVisible = true;
       let ignitionsVisible = true;
       let perimetersVisible = true;
-      let recentClosedVisible = false;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -2019,17 +2119,27 @@
       let fireDatabaseLoadGeneration = 0;
       let fireDatabaseOffset = 0;
       let fireDatabaseHasMore = true;
-      let fireDatabaseFilter = "active";
+      // Default view is All + IMSR: the drawer opens on every IMSR-grade fire and
+      // the map shows the same set from the live layer. See fireFilterStateIsDefault().
+      let fireDatabaseFilter = "all";
       let fireDatabaseLargeOnly = false;
-      let fireDatabaseImsrOnly = false;
+      let fireDatabaseImsrOnly = true;
       let fireDatabaseSort = "date";
       let fireDatabaseNeedsReset = false;
+      // Total matching rows for the current filter (returnCountOnly), so the list
+      // status can read "50 of 214"; null until the count query resolves.
+      let fireDatabaseTotal = null;
+      let fireDatabaseLastUsedStored = false;
+      const fireDatabaseTotalCache = new Map();
       let fireSearchTimer = 0;
       let fireAttributionVisible = false;
       let selectedFireRecord = null;
       let fireEvents = new Map();
       let currentFirePoints = [];
-      let recentFirePoints = [];
+      // Live CX complex parent points (WF-only rule aside): these render as a
+      // distinct diamond marker, never as normal WF ignition circles.
+      let currentComplexPoints = [];
+      let complexMemberControllers = [];
       const firePerimeterCache = new Map();
       const fireDatabasePageCache = new Map();
       // Mirror mode: when the drawer filter differs from the default, the map
@@ -2540,9 +2650,12 @@
       map.createPane("themePane").style.zIndex = "250";
       map.createPane("themeLabelPane").style.zIndex = "260";
       map.createPane("firePane").style.zIndex = "450";
+      // Complex diamonds sit just above the ignition circles in their own pane.
+      map.createPane("fireComplexPane").style.zIndex = "460";
       const fireRenderer = L.canvas({ pane: "firePane", padding: 0.5, tolerance: 7 });
       const firePerimeterGroup = L.layerGroup();
       const fireIgnitionGroup = L.layerGroup();
+      const fireComplexGroup = L.layerGroup();
       const fireSelectionGroup = L.layerGroup();
 
       function updateMapAccessibleName() {
@@ -2579,13 +2692,11 @@
           );
           return;
         }
-        const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
-        const recentCount = [...fireEvents.values()].filter(
-          (record) => fireStatus(record) !== "Active" && record.recent
-        ).length;
+        // Default view: the live layer shows every IMSR-grade (significant) fire.
+        const imsrCount = [...fireEvents.values()].filter(isImsrGradeFire).length;
         setFireLayerStatus(
           "ready",
-          `${activeCount} active · ${recentCount} recent ${recentClosedVisible ? "shown" : "hidden"}`
+          `${imsrCount.toLocaleString()} significant (IMSR) ${imsrCount === 1 ? "wildfire" : "wildfires"} shown`
         );
       }
 
@@ -2683,18 +2794,6 @@
           offset += page.length;
         }
         return features;
-      }
-
-      function fireSqlTimestamp(date) {
-        return date.toISOString().slice(0, 19).replace("T", " ");
-      }
-
-      function recentFireWhere(prefix = "") {
-        const threshold = fireSqlTimestamp(new Date(Date.now() - FIRE_RECENT_MS));
-        return `${prefix}IncidentTypeCategory='WF' AND (` +
-          `${prefix}ContainmentDateTime >= TIMESTAMP '${threshold}' OR ` +
-          `${prefix}ControlDateTime >= TIMESTAMP '${threshold}' OR ` +
-          `${prefix}FireOutDateTime >= TIMESTAMP '${threshold}')`;
       }
 
       function normalizeIrwinId(value) {
@@ -2863,28 +2962,12 @@
           record.pointFeature = feature;
           mergeFireAttributes(record, pointAttributes(feature.properties));
         });
-        recentFirePoints.forEach((feature) => {
-          const id = featureId(feature, "recent-point");
-          const record = getRecord(id);
-          record.recent = true;
-          record.rawIrwinId = record.rawIrwinId || feature.properties?.IrwinID;
-          if (!record.pointFeature) record.pointFeature = feature;
-          mergeFireAttributes(record, pointAttributes(feature.properties));
-        });
-        // Current membership wins over a duplicate recently closed perimeter so
-        // one event is never drawn as two stacked polygons.
-        const currentPerimeterIds = new Set();
-        firePerimeterCache.forEach((entry) => {
-          if (entry.source === "current") {
-            currentPerimeterIds.add(featureId(entry.feature, entry.source));
-          }
-        });
+        // The live layer only carries Current WF perimeters now that the recently
+        // closed layer is gone, so every cached perimeter belongs to an active fire.
         firePerimeterCache.forEach((entry) => {
           const id = featureId(entry.feature, entry.source);
-          if (entry.source === "recent" && currentPerimeterIds.has(id)) return;
           const record = getRecord(id);
-          if (entry.source === "current") record.active = true;
-          else record.recent = true;
+          record.active = true;
           record.rawIrwinId = record.rawIrwinId || entry.feature.properties?.attr_IrwinID;
           record.perimeterFeatures.push(entry.feature);
           mergeFireAttributes(record, perimeterAttributes(entry.feature.properties));
@@ -2957,6 +3040,81 @@
           if (record.cpxId && normalizeIrwinId(record.cpxId) === parentId) members.push(record);
         });
         return members;
+      }
+
+      // In-memory member point + perimeter geometry for a complex, used both to
+      // place the complex diamond and to frame the zoom, so the two always agree.
+      function complexMemberGeoFeatures(record) {
+        const features = [];
+        complexMemberRecords(record.id).forEach((member) => {
+          if (member.pointFeature) features.push(member.pointFeature);
+          member.perimeterFeatures.forEach((perimeter) => features.push(perimeter));
+        });
+        return features;
+      }
+
+      // The CX parent's own reported point is a dispatch-center placeholder (often
+      // NIFC Boise for every complex at once), so anchor the diamond and its popup
+      // at the center of the member fires' real geometry when it is in memory,
+      // falling back to the raw CX point only when no member geometry resolves.
+      function complexDisplayLatLng(record) {
+        const features = complexMemberGeoFeatures(record);
+        if (features.length) {
+          const bounds = L.geoJSON(features).getBounds();
+          if (bounds.isValid()) return bounds.getCenter();
+        }
+        const point = ensurePointGeometry(record.pointFeature || {});
+        const coordinates = point?.geometry?.coordinates;
+        if (Array.isArray(coordinates) && coordinates.length >= 2) {
+          return L.latLng(coordinates[1], coordinates[0]);
+        }
+        return null;
+      }
+
+      function complexMarkerIcon(record) {
+        // Fill uses the same discovery-age palette as the ignition circles
+        // (activeFirePointColor returns a fixed hex, safe to inline); the diamond
+        // shape and white border still distinguish a complex from a point fire.
+        const color = activeFirePointColor(record?.discovery);
+        return L.divIcon({
+          className: "pm-fire-complex-icon",
+          html: `<span class="pm-fire-complex-diamond" style="background:${color}"></span>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+      }
+
+      // A complex is marked by a single diamond at its raw (often dispatch-
+      // center placeholder) CX point. Source is the mirrored CX list rows while
+      // mirroring, otherwise the live CX parents. Member WF fires are drawn as
+      // normal ignition circles by renderFireLayers; this only adds the diamond.
+      function renderComplexMarkers() {
+        fireComplexGroup.clearLayers();
+        // Mirror mode already filtered its CX rows through the list SQL. The
+        // default (non-mirror) view is All + IMSR, so filter the live complexes
+        // with the same isImsrGradeFire predicate used for point fires — a
+        // complex that is not IMSR-grade must not appear in the default view.
+        const records = fireMirrorActive
+          ? [...fireMirrorRecords.values()].filter((record) => record.category === "CX")
+          : currentComplexPoints
+              .map((feature) => fireRecordFromPointFeature(feature, false))
+              .filter(isImsrGradeFire);
+        records.forEach((record) => {
+          const latlng = complexDisplayLatLng(record);
+          if (!latlng) return;
+          const marker = L.marker(latlng, {
+            icon: complexMarkerIcon(record),
+            pane: "fireComplexPane",
+            keyboard: false,
+            title: record.name || "Complex"
+          });
+          marker.on("click", (event) => {
+            L.DomEvent.stop(event);
+            if (event.originalEvent) event.originalEvent._pmFireHandled = true;
+            zoomToComplex(record);
+          });
+          marker.addTo(fireComplexGroup);
+        });
       }
 
       function refreshFirePointZoomStyles() {
@@ -3032,21 +3190,36 @@
             });
           }
         };
+        // Parent ids of the IMSR-grade complexes shown as diamonds in the default
+        // view. Their member fires are drawn as full ignition/perimeter geometry
+        // even when an individual member is not itself IMSR-grade, so a complex
+        // shows its fires (not just the diamond) — matching how mirror mode
+        // expands a CX row to all its members. renderComplexMarkers() uses the
+        // same isImsrGradeFire() filter, so the two stay in sync.
+        const imsrComplexIds = fireMirrorActive
+          ? null
+          : new Set(
+              currentComplexPoints
+                .map((feature) => fireRecordFromPointFeature(feature, false))
+                .filter(isImsrGradeFire)
+                .map((record) => record.id)
+            );
         const sourceRecords = fireMirrorActive ? fireMirrorRecords : fireEvents;
         sourceRecords.forEach((record) => {
+          // Default (non-mirror) view is All + IMSR: draw every IMSR-grade fire
+          // from the live layer, plus the member fires of every IMSR-grade
+          // complex. Any other filter switches to mirror mode.
           if (
             !fireMirrorActive &&
-            fireStatus(record) !== "Active" && (!record.recent || !recentClosedVisible)
+            !isImsrGradeFire(record) &&
+            !(record.cpxId && imsrComplexIds.has(normalizeIrwinId(record.cpxId)))
           ) return;
           if (fireMirrorActive && record.category === "CX") {
-            // A CX parent's reported coordinates can be a dispatch-center
-            // placeholder, so prefer the member fires' real geometry and only
-            // fall back to the parent point when no member is in memory.
-            const members = complexMemberRecords(record.id);
-            if (members.length) {
-              members.forEach(pushRecord);
-              return;
-            }
+            // The CX parent is represented by its diamond marker
+            // (renderComplexMarkers), never as a normal ignition circle at its
+            // dispatch-center placeholder point; only its member fires draw here.
+            complexMemberRecords(record.id).forEach(pushRecord);
+            return;
           }
           pushRecord(record);
         });
@@ -3076,6 +3249,7 @@
           }).addTo(fireIgnitionGroup);
         }
 
+        renderComplexMarkers();
         syncLiveFireLayerOrder();
         if (selectedFireRecord) renderFireSelection(selectedFireRecord);
         syncFireAttribution();
@@ -3114,6 +3288,22 @@
         }, signal);
         return features
           .filter((feature) => feature.properties?.IncidentTypeCategory === "WF")
+          .map(ensurePointGeometry);
+      }
+
+      // Live CX parent points for the complex diamond markers. Kept separate
+      // from fetchPointFeatures (WF-only) and from fireEvents so the WF-only
+      // ignition/perimeter rendering is untouched.
+      async function fetchComplexPointFeatures(service, signal) {
+        const features = await fetchGeojsonFeaturePages(service, {
+          where: "IncidentTypeCategory='CX'",
+          outFields: FIRE_POINT_FIELDS,
+          returnGeometry: true,
+          outSR: 4326,
+          orderByFields: "OBJECTID ASC"
+        }, signal);
+        return features
+          .filter((feature) => feature.properties?.IncidentTypeCategory === "CX")
           .map(ensurePointGeometry);
       }
 
@@ -3220,8 +3410,6 @@
         setFireLayerStatus("loading", fireEvents.size ? "Refreshing WFIGS wildfires" : "Loading WFIGS wildfires");
 
         try {
-          const recentPointWhere = recentFireWhere();
-          const recentPerimeterWhere = recentFireWhere("attr_");
           const currentPoints = await fetchPointFeatures(
             FIRE_SERVICES.currentLocations,
             "IncidentTypeCategory='WF'",
@@ -3231,31 +3419,29 @@
 
           if (!fireEvents.size) {
             currentFirePoints = currentPoints;
-            recentFirePoints = [];
             rebuildFireEvents();
             renderFireLayers();
-            const activePointCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
-            setFireLayerStatus("loading", `${activePointCount} active points · loading perimeters`);
+            const imsrPointCount = [...fireEvents.values()].filter(isImsrGradeFire).length;
+            setFireLayerStatus("loading", `${imsrPointCount} significant points · loading perimeters`);
           }
 
           let refreshPartial = false;
-          let recentPoints;
+
+          // CX parent points for the complex diamonds. A failure keeps the prior
+          // diamonds rather than blanking them, matching the perimeter-data policy.
+          let complexPoints = currentComplexPoints;
           try {
-            recentPoints = await fetchPointFeatures(
-              FIRE_SERVICES.ytdLocations,
-              recentPointWhere,
+            complexPoints = await fetchComplexPointFeatures(
+              FIRE_SERVICES.currentLocations,
               controller.signal
             );
           } catch (error) {
             if (error.name === "AbortError") throw error;
             refreshPartial = true;
-            recentPoints = recentFirePoints;
+            complexPoints = currentComplexPoints;
           }
 
-          const activeIds = new Set(currentPoints.map((feature) => featureId(feature, "current-point")));
-          const filteredRecentPoints = recentPoints.filter((feature) => !activeIds.has(featureId(feature, "recent-point")));
           let currentPerimeters;
-          let recentPerimeters;
           const loadPerimeters = options.fullReload
             ? fetchFullPerimeterSource
             : loadPerimeterSource;
@@ -3271,30 +3457,17 @@
             refreshPartial = true;
             currentPerimeters = cachedPerimetersForSource("current");
           }
-          try {
-            recentPerimeters = await loadPerimeters(
-              "recent",
-              FIRE_SERVICES.ytdPerimeters,
-              recentPerimeterWhere,
-              controller.signal
-            );
-          } catch (error) {
-            if (error.name === "AbortError") throw error;
-            refreshPartial = true;
-            recentPerimeters = cachedPerimetersForSource("recent");
-          }
           if (generation !== fireRefreshGeneration) return false;
 
           currentFirePoints = currentPoints;
-          recentFirePoints = filteredRecentPoints;
+          currentComplexPoints = complexPoints;
           firePerimeterCache.clear();
           currentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
-          recentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
           rebuildFireEvents();
           renderFireLayers();
           if (refreshPartial) {
-            const activeCount = [...fireEvents.values()].filter((record) => fireStatus(record) === "Active").length;
-            setFireLayerStatus("error", `${activeCount} active · some recent data unavailable`);
+            const imsrCount = [...fireEvents.values()].filter(isImsrGradeFire).length;
+            setFireLayerStatus("error", `${imsrCount} significant · some perimeter data unavailable`);
             fireRefreshPartialResult = true;
             return false;
           }
@@ -3484,11 +3657,19 @@
           clauses.push("ControlDateTime IS NOT NULL AND FireOutDateTime IS NULL");
         } else if (fireDatabaseFilter === "out") {
           clauses.push("FireOutDateTime IS NOT NULL");
+        } else if (fireDatabaseFilter === "notcurrent") {
+          // Reporting has ended (final ICS-209) with no official end date — the
+          // primary `Not current` case in fireStatus(). Requiring 'F' keeps
+          // still-reporting (U/I) active fires out of this bucket.
+          clauses.push("ICS209ReportStatus = 'F' AND ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
         }
         return clauses.join(" AND ");
       }
 
-      function appendFireDatabaseRow(feature, currentMember = false) {
+      // Shared row markup for a standalone fire, a complex member, and the
+      // complex group header. options.onClick overrides the default selection
+      // click (the header zooms to the complex instead of selecting a point).
+      function buildFireRowButton(feature, currentMember, options = {}) {
         const record = fireRecordFromPointFeature(feature, currentMember);
         const status = fireStatus(record);
         const button = document.createElement("button");
@@ -3526,9 +3707,119 @@
         sizeContainment.className = "pm-fire-row-meta";
         sizeContainment.textContent = `${formatFireAcres(record.size)} · ${formatFirePercent(record.percentContained)} contained`;
         button.append(head, dateLocation, sizeContainment);
-        button.addEventListener("click", () => selectDatabaseFire(feature, currentMember));
+        button.addEventListener(
+          "click",
+          options.onClick || (() => selectDatabaseFire(feature, currentMember))
+        );
+        return { button, record };
+      }
+
+      function appendFireDatabaseRow(feature, currentMember = false) {
+        const preview = fireRecordFromPointFeature(feature, currentMember);
+        if (preview.category === "CX") {
+          appendComplexGroup(feature, preview, currentMember);
+          return preview;
+        }
+        const { button, record } = buildFireRowButton(feature, currentMember);
         fireList.append(button);
         return record;
+      }
+
+      // A complex renders as a collapsible group: the header zooms the map to
+      // all member fires; the chevron lazily fetches and nests the members.
+      function appendComplexGroup(feature, record, currentMember) {
+        const group = document.createElement("div");
+        group.className = "pm-fire-group";
+        const head = document.createElement("div");
+        head.className = "pm-fire-group-head";
+        const { button: nameButton } = buildFireRowButton(feature, currentMember, {
+          onClick: () => zoomToComplex(record)
+        });
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "pm-fire-group-toggle";
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-label", `Show fires in ${record.name || "complex"}`);
+        const chevron = document.createElement("span");
+        chevron.className = "pm-fire-group-chevron";
+        toggle.append(chevron);
+        const children = document.createElement("div");
+        children.className = "pm-fire-group-children";
+        children.hidden = true;
+        toggle.addEventListener("click", () => toggleComplexGroup(record, currentMember, toggle, children));
+        head.append(nameButton, toggle);
+        group.append(head, children);
+        fireList.append(group);
+      }
+
+      function toggleComplexGroup(record, currentMember, toggle, children) {
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        toggle.setAttribute("aria-expanded", String(!expanded));
+        children.hidden = expanded;
+        if (!expanded && children.dataset.loaded !== "true") {
+          loadComplexMembers(record, currentMember, toggle, children);
+        }
+      }
+
+      function abortComplexMemberLoads() {
+        complexMemberControllers.forEach((controller) => controller.abort());
+        complexMemberControllers = [];
+      }
+
+      async function loadComplexMembers(record, currentMember, toggle, children) {
+        if (children.dataset.loading === "true") return;
+        children.dataset.loading = "true";
+        const status = document.createElement("div");
+        status.className = "pm-fire-group-status";
+        status.textContent = "Loading member fires…";
+        children.replaceChildren(status);
+        const controller = new AbortController();
+        complexMemberControllers.push(controller);
+        try {
+          const service = currentMember
+            ? FIRE_SERVICES.currentLocations
+            : FIRE_SERVICES.ytdLocations;
+          const result = await fetchArcgis(service, {
+            f: "json",
+            where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID='${sqlString(record.rawIrwinId)}'`,
+            outFields: FIRE_POINT_FIELDS,
+            returnGeometry: false,
+            orderByFields: fireDatabaseSort === "size"
+              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+              : "FireDiscoveryDateTime DESC,OBJECTID DESC"
+          }, controller.signal);
+          const members = (result.features || [])
+            .map((item) => ({
+              type: "Feature",
+              id: item.attributes?.OBJECTID,
+              geometry: null,
+              properties: item.attributes || {}
+            }))
+            .filter((item) => item.properties.IncidentTypeCategory === "WF");
+          if (!members.length) {
+            status.textContent = "No member fires reported.";
+            children.dataset.loaded = "true";
+            return;
+          }
+          children.replaceChildren();
+          members.forEach((member) => {
+            const { button } = buildFireRowButton(member, currentMember);
+            children.append(button);
+          });
+          children.dataset.loaded = "true";
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "pm-button pm-fire-group-retry";
+          retry.textContent = "Retry";
+          retry.addEventListener("click", () => loadComplexMembers(record, currentMember, toggle, children));
+          status.textContent = "Couldn't load member fires. ";
+          status.append(retry);
+        } finally {
+          children.dataset.loading = "false";
+          complexMemberControllers = complexMemberControllers.filter((entry) => entry !== controller);
+        }
       }
 
       // List category rule (client-side twin of the fireDatabaseWhere base
@@ -3585,13 +3876,13 @@
         }
       }
 
-      // The default filter state matches the map's normal view (active fires),
-      // so mirror mode engages only when the user narrows or widens the list.
-      // Sort is excluded: it reorders rows without changing membership.
+      // The default filter state (All + IMSR) matches the map's normal view: the
+      // live layer shows every IMSR-grade fire. Any other filter engages mirror
+      // mode. Sort is excluded: it reorders rows without changing membership.
       function fireFilterStateIsDefault() {
-        return fireDatabaseFilter === "active" &&
+        return fireDatabaseFilter === "all" &&
+          fireDatabaseImsrOnly &&
           !fireDatabaseLargeOnly &&
-          !fireDatabaseImsrOnly &&
           !fireSearch.value.trim();
       }
 
@@ -3615,15 +3906,16 @@
       }
 
       function clearFireMirror(reload = true) {
-        fireDatabaseFilter = "active";
+        fireDatabaseFilter = "all";
         fireDatabaseLargeOnly = false;
-        fireDatabaseImsrOnly = false;
+        fireDatabaseImsrOnly = true;
         fireSearch.value = "";
+        // "all" is the none-selected state: no row-one status chip is pressed.
         fireFilters.forEach((button) => {
-          button.setAttribute("aria-pressed", String(button.dataset.fireStatus === "active"));
+          button.setAttribute("aria-pressed", String(button.dataset.fireStatus === fireDatabaseFilter));
         });
         fireLargeFilter.setAttribute("aria-pressed", "false");
-        fireImsrFilter.setAttribute("aria-pressed", "false");
+        fireImsrFilter.setAttribute("aria-pressed", "true");
         fireMirrorRecords.clear();
         fireMirrorActive = false;
         syncFireMirrorBanner();
@@ -3633,11 +3925,69 @@
         if (reload && !fireDrawer.hidden) loadFireDatabase(true);
       }
 
+      // Composes the drawer status line from current state, e.g.
+      // "50 of 214 IMSR wildfires shown · newest discoveries first". Reads
+      // fireDatabaseTotal so it can be re-run when the count query resolves.
+      function renderFireListStatus() {
+        const shown = fireList.childElementCount;
+        if (!shown) {
+          fireDatabaseStatus.textContent = fireDatabaseOffset ? "No more wildfires" : "No matching wildfires";
+          return;
+        }
+        if (fireDatabaseLastUsedStored) {
+          fireDatabaseStatus.textContent = `${shown.toLocaleString()} cached wildfires shown · live WFIGS busy`;
+          return;
+        }
+        const total = fireDatabaseTotal;
+        const countText = (total !== null && total > shown)
+          ? `${shown.toLocaleString()} of ${total.toLocaleString()}`
+          : shown.toLocaleString();
+        const tags = `${fireDatabaseLargeOnly ? " large" : ""}${fireDatabaseImsrOnly ? " IMSR" : ""}`;
+        const order = fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first";
+        fireDatabaseStatus.textContent = `${countText}${tags} wildfires shown · ${order}`;
+      }
+
+      // Count-only companion query for the current filter, so the status can read
+      // "50 of 214". Cached per service+where; failures leave the total null and
+      // the status simply omits the "of N" clause.
+      async function loadFireDatabaseTotal(service, where, generation, signal) {
+        const cacheKey = `${service}|${where}`;
+        const cached = fireDatabaseTotalCache.get(cacheKey);
+        if (cached !== undefined) {
+          if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+            fireDatabaseTotal = cached;
+            renderFireListStatus();
+          }
+          return;
+        }
+        try {
+          const result = await fetchArcgis(
+            service,
+            { f: "json", where, returnCountOnly: true },
+            signal,
+            { maxAttempts: 2, cacheMode: "default" }
+          );
+          const count = Number(result?.count);
+          if (!Number.isFinite(count)) return;
+          if (fireDatabaseTotalCache.size >= FIRE_DATABASE_CACHE_LIMIT) {
+            fireDatabaseTotalCache.delete(fireDatabaseTotalCache.keys().next().value);
+          }
+          fireDatabaseTotalCache.set(cacheKey, count);
+          if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+            fireDatabaseTotal = count;
+            renderFireListStatus();
+          }
+        } catch {
+          /* No total available; renderFireListStatus keeps the plain "N shown". */
+        }
+      }
+
       async function loadFireDatabase(reset = false) {
         if (reset) {
           fireDatabaseOffset = 0;
           fireDatabaseHasMore = true;
           fireDatabaseNeedsReset = true;
+          fireDatabaseTotal = null;
         }
         if (!fireDatabaseHasMore) return;
         if (fireDatabaseController) fireDatabaseController.abort();
@@ -3649,20 +3999,23 @@
         fireLoadMore.hidden = false;
         fireLoadMore.textContent = "Loading…";
         const currentMembersOnly = fireDatabaseFilter === "active";
+        // IMSR shows every match in one request; every other filter paginates 50.
+        const pageSize = fireDatabaseImsrOnly ? FIRE_IMSR_PAGE_SIZE : FIRE_PAGE_SIZE;
         const requestOffset = fireDatabaseOffset;
         const requestService = currentMembersOnly
           ? FIRE_SERVICES.currentLocations
           : FIRE_SERVICES.ytdLocations;
+        const requestWhere = fireDatabaseWhere(currentMembersOnly);
         const requestParameters = {
           f: "json",
-          where: fireDatabaseWhere(currentMembersOnly),
+          where: requestWhere,
           outFields: FIRE_POINT_FIELDS,
           returnGeometry: false,
           orderByFields: fireDatabaseSort === "size"
             ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
             : "FireDiscoveryDateTime DESC,OBJECTID DESC",
           resultOffset: requestOffset,
-          resultRecordCount: FIRE_PAGE_SIZE + 1
+          resultRecordCount: pageSize + 1
         };
         const cacheKey = `${requestService}|${JSON.stringify(requestParameters)}`;
         fireDatabaseStatus.textContent = fireDatabaseOffset
@@ -3720,25 +4073,30 @@
           }
           if (generation !== fireDatabaseGeneration || fireDrawer.hidden) return;
           if (fireDatabaseNeedsReset && requestOffset === 0) {
+            abortComplexMemberLoads();
             fireList.replaceChildren();
             fireMirrorRecords.clear();
             fireDatabaseNeedsReset = false;
           }
-          const visible = features.slice(0, FIRE_PAGE_SIZE);
+          const visible = features.slice(0, pageSize);
           visible.forEach((feature) => {
             const record = appendFireDatabaseRow(feature, currentMembersOnly);
             fireMirrorRecords.set(record.id, record);
           });
           fireDatabaseOffset = requestOffset + visible.length;
-          fireDatabaseHasMore = features.length > FIRE_PAGE_SIZE;
+          fireDatabaseHasMore = features.length > pageSize;
           fireLoadMore.hidden = !fireDatabaseHasMore;
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Load more";
-          fireDatabaseStatus.textContent = visible.length
-            ? (usedStoredPage
-                ? `${fireList.childElementCount.toLocaleString()} cached wildfires shown · live WFIGS busy`
-                : `${fireList.childElementCount.toLocaleString()}${fireDatabaseLargeOnly ? " large" : ""}${fireDatabaseImsrOnly ? " IMSR" : ""} wildfires shown · ${fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first"}`)
-            : (fireDatabaseOffset ? "No more wildfires" : "No matching wildfires");
+          fireDatabaseLastUsedStored = usedStoredPage;
+          renderFireListStatus();
+          // Fetch the matching total only when the first page didn't already
+          // capture everything (i.e. there is a Load more), never for a stale
+          // stored page. Not awaited: the list shows now and the "of N" clause
+          // fills in when the count returns.
+          if (requestOffset === 0 && !usedStoredPage && visible.length && fireDatabaseHasMore) {
+            loadFireDatabaseTotal(requestService, requestWhere, generation, controller.signal);
+          }
           updateFireMirrorState();
         } catch (error) {
           if (error.name === "AbortError") {
@@ -3781,6 +4139,7 @@
         }
         if (fireDatabaseController) fireDatabaseController.abort();
         fireDatabaseController = null;
+        abortComplexMemberLoads();
         if (restoreFocus) firesButton.focus({ preventScroll: true });
       }
 
@@ -3965,6 +4324,83 @@
         openFirePopup(record, popupLatLng, true);
       }
 
+      // Frame a complex by the combined extent of its member fires. Prefers the
+      // in-memory member geometry (member WF fires are normal live fires); only
+      // an unloaded (e.g. historical) complex needs one bounded member query.
+      // Falls back to the raw CX placeholder point if no member geometry exists.
+      async function zoomToComplex(record) {
+        if (!record) return;
+        const memberCurrent = !fireMirrorActive || fireDatabaseFilter === "active";
+        const generation = ++fireDatabaseGeneration;
+        if (fireDatabaseController) fireDatabaseController.abort();
+        const controller = new AbortController();
+        fireDatabaseController = controller;
+        fireDatabaseStatus.textContent = `Locating ${record.name || "complex"}`;
+
+        const geoFeatures = complexMemberGeoFeatures(record);
+
+        try {
+          if (!geoFeatures.length && record.rawIrwinId) {
+            const service = memberCurrent
+              ? FIRE_SERVICES.currentLocations
+              : FIRE_SERVICES.ytdLocations;
+            const result = await fetchArcgis(service, {
+              f: "geojson",
+              where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID='${sqlString(record.rawIrwinId)}'`,
+              outFields: FIRE_POINT_FIELDS,
+              returnGeometry: true,
+              outSR: 4326
+            }, controller.signal);
+            (result.features || []).forEach((item) => {
+              const point = ensurePointGeometry(item);
+              if (point?.geometry?.coordinates) geoFeatures.push(point);
+            });
+          }
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          // Fall through with whatever geometry we already have.
+        } finally {
+          if (fireDatabaseController === controller) fireDatabaseController = null;
+        }
+        if (generation !== fireDatabaseGeneration) return;
+
+        const mobile = window.matchMedia("(max-width: 560px)").matches;
+        if (mobile) closeFireDrawer(true);
+        map.stop();
+        map.invalidateSize({ pan: false, animate: false });
+
+        let bounds = null;
+        if (geoFeatures.length) {
+          const collected = L.geoJSON(geoFeatures).getBounds();
+          if (collected.isValid()) bounds = collected;
+        }
+
+        let popupLatLng = null;
+        if (bounds) {
+          map.fitBounds(bounds, {
+            paddingTopLeft: [28, 70],
+            paddingBottomRight: mobile ? [24, 120] : [400, 120],
+            maxZoom: 15,
+            animate: !reducedMotion
+          });
+          popupLatLng = bounds.getCenter();
+        } else {
+          const point = ensurePointGeometry(record.pointFeature || {});
+          const coordinates = point?.geometry?.coordinates;
+          if (Array.isArray(coordinates) && coordinates.length >= 2) {
+            popupLatLng = L.latLng(coordinates[1], coordinates[0]);
+            map.flyTo(popupLatLng, 9, { animate: !reducedMotion, duration: reducedMotion ? 0 : 0.75 });
+          }
+        }
+
+        if (!popupLatLng) {
+          fireDatabaseStatus.textContent = "Location unavailable";
+          return;
+        }
+        fireDatabaseStatus.textContent = `${record.name || "Complex"} selected`;
+        openFirePopup(record, popupLatLng, true);
+      }
+
       function setSmokeVisibility(visible) {
         smokeVisible = visible;
         smokeToggle.checked = visible;
@@ -3982,9 +4418,12 @@
       function syncLiveFireLayerOrder() {
         if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
         if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
+        if (map.hasLayer(fireComplexGroup)) map.removeLayer(fireComplexGroup);
         if (!wildfiresVisible) return;
         if (perimetersVisible) firePerimeterGroup.addTo(map);
         if (ignitionsVisible) fireIgnitionGroup.addTo(map);
+        // The complex diamond is a point anchor, so it follows the Ignitions toggle.
+        if (ignitionsVisible) fireComplexGroup.addTo(map);
       }
 
       function setWildfireVisibility(visible) {
@@ -4004,10 +4443,11 @@
             fireRefreshController.abort();
           }
           // Hiding wildfires also leaves mirror mode: restoring the layer
-          // later must show the default active view, not a stale filter.
+          // later must show the default IMSR view, not a stale filter.
           if (fireMirrorActive) clearFireMirror(false);
           if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
           if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
+          if (map.hasLayer(fireComplexGroup)) map.removeLayer(fireComplexGroup);
           if (map._popup?._pmFirePopup) map.closePopup();
           clearFireSelection();
         }
@@ -4033,13 +4473,6 @@
         if (selectedFireRecord) renderFireSelection(selectedFireRecord);
         syncFireAttribution();
         updateMapAccessibleName();
-      }
-
-      function setRecentClosedVisibility(visible) {
-        recentClosedVisible = visible;
-        recentFireToggle.checked = visible;
-        renderFireLayers();
-        if (!fireRefreshController && fireEvents.size) updateFireReadyStatus();
       }
 
       const MapUtilityControl = L.Control.extend({
@@ -6571,20 +7004,22 @@
         fireDatabaseGeneration += 1;
         fireDatabaseOffset = 0;
         fireDatabaseHasMore = true;
-        fireDatabaseFilter = "active";
+        fireDatabaseFilter = "all";
         fireDatabaseLargeOnly = false;
-        fireDatabaseImsrOnly = false;
+        fireDatabaseImsrOnly = true;
         fireDatabaseSort = "date";
         fireDatabaseNeedsReset = true;
+        fireDatabaseTotal = null;
         fireSearch.value = "";
+        // "all" is the none-selected state: no row-one status chip is pressed.
         fireFilters.forEach((button) => {
           button.setAttribute(
             "aria-pressed",
-            String(button.dataset.fireStatus === "active")
+            String(button.dataset.fireStatus === fireDatabaseFilter)
           );
         });
         fireLargeFilter.setAttribute("aria-pressed", "false");
-        fireImsrFilter.setAttribute("aria-pressed", "false");
+        fireImsrFilter.setAttribute("aria-pressed", "true");
         fireSort.dataset.sort = "date";
         fireSort.setAttribute(
           "aria-label",
@@ -6609,11 +7044,9 @@
         wildfiresVisible = true;
         ignitionsVisible = true;
         perimetersVisible = true;
-        recentClosedVisible = false;
         wildfireToggle.checked = true;
         ignitionToggle.checked = true;
         perimeterToggle.checked = true;
-        recentFireToggle.checked = false;
         wildfireOptions.hidden = false;
         renderFireLayers();
         setBasemap("day");
@@ -6770,7 +7203,6 @@
       wildfireToggle.addEventListener("change", () => setWildfireVisibility(wildfireToggle.checked));
       ignitionToggle.addEventListener("change", () => setIgnitionVisibility(ignitionToggle.checked));
       perimeterToggle.addEventListener("change", () => setPerimeterVisibility(perimeterToggle.checked));
-      recentFireToggle.addEventListener("change", () => setRecentClosedVisibility(recentFireToggle.checked));
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
@@ -6800,10 +7232,15 @@
       });
       fireFilters.forEach((button) => {
         button.addEventListener("click", () => {
-          fireDatabaseFilter = button.dataset.fireStatus;
+          // Row-one statuses are mutually exclusive; clicking the pressed chip
+          // clears it, and no chip pressed means "all" (every status).
+          const nextFilter = fireDatabaseFilter === button.dataset.fireStatus
+            ? "all"
+            : button.dataset.fireStatus;
+          fireDatabaseFilter = nextFilter;
           fireFilters.forEach((choice) => choice.setAttribute(
             "aria-pressed",
-            String(choice === button)
+            String(choice.dataset.fireStatus === nextFilter)
           ));
           loadFireDatabase(true);
         });
