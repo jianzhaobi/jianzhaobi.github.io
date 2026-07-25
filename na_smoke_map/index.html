@@ -3593,10 +3593,16 @@
 
       function openFirePopup(record, latlng, selected = false) {
         if (!record || !latlng) return;
+        // Update in place only when the matching selection popup is still open.
+        // After a popup is dismissed with its close button, Leaflet leaves
+        // `map._popup` pointing at the now-removed popup, so without the
+        // isOpen() guard a repeat selection (e.g. re-clicking a complex diamond)
+        // would setContent() on a dead popup and never reopen it.
         if (
           selected &&
           map._popup?._pmFireSelection &&
-          map._popup?._pmFireId === record.id
+          map._popup?._pmFireId === record.id &&
+          map._popup?.isOpen?.()
         ) {
           map._popup
             .setLatLng(latlng)

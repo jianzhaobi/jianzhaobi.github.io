@@ -353,6 +353,12 @@ A systematic bug review fixed the following. Each item below is now normative be
 - Verified: `node --check`; local server; default map and drawer both read **131** (was 112 vs 131), Alaska not-in-feed fires now plotted; `Out + IMSR` shows 2 on both map and list; manual refresh repopulates the map to the full default set (not blank); no console errors.
 - Issue 2 from the audit (5 IMSR fires — Sharpe, Spring Creek, River, MOON, LITTLE — carry closure dates and badge as Contained/Controlled/Out) was left as-is by request: the app should report WFIGS data honestly.
 
+### 2026-07-25 fix: complex popup could not reopen after being dismissed
+
+- Symptom: clicking a complex diamond opened its popup the first time, but after dismissing it with the close button, clicking the same diamond again did nothing — until a different fire was selected, which "reset" it.
+- Cause: `openFirePopup()` has an "update in place if the same selection popup is already open" shortcut keyed on `map._popup`. Leaflet leaves `map._popup` pointing at a popup dismissed via its close button (it is removed but the reference is not cleared), so the repeat click matched the shortcut and called `setContent()` on a dead popup instead of opening a new one. Selecting another fire replaced `map._popup`, which is why that worked around it.
+- Fix: the shortcut now also requires `map._popup?.isOpen?.()`, so a dismissed popup falls through to opening a fresh one. Verified live: close + re-click reopens the complex popup repeatedly; clicking while open still updates in place with no duplicate popups; no console errors.
+
 ## Rendering architecture
 
 Use Leaflet with five selectable basemaps:
