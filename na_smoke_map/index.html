@@ -1787,7 +1787,7 @@
 
       <aside class="pm-fire-drawer pm-glass" id="pm-fire-drawer" aria-labelledby="pm-fire-drawer-title" hidden>
         <div class="pm-fire-drawer-head">
-          <h2 class="pm-fire-drawer-title" id="pm-fire-drawer-title">Wildfires · Year to date</h2>
+          <h2 class="pm-fire-drawer-title" id="pm-fire-drawer-title">Wildfires · Current + year to date</h2>
           <button type="button" class="pm-button pm-icon-button pm-fire-drawer-close" id="pm-fire-drawer-close" aria-label="Close wildfire database">
             <i data-lucide="x" aria-hidden="true"></i>
           </button>
@@ -1969,7 +1969,7 @@
       const FIRE_DATABASE_CACHE_LIMIT = 24;
       const FIRE_DATABASE_STALE_MS = 24 * HOUR;
       const FIRE_DATABASE_STORAGE_LIMIT = 12;
-      const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v2";
+      const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v3";
       const FIRE_POINT_FIELDS = [
         "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
         "IncidentSize", "PercentContained", "ContainmentDateTime",
@@ -2192,9 +2192,11 @@
       let fireDatabaseGeneration = 0;
       let fireDatabaseLoadGeneration = 0;
       let fireDatabaseOffset = 0;
+      let fireDatabaseCurrentOnlyIndex = 0;
+      let fireDatabaseCurrentOnlyFeatures = [];
       let fireDatabaseHasMore = true;
       // Default view is All + IMSR: the drawer opens on every IMSR-grade fire and
-      // the map shows the same set from the live layer. See fireFilterStateIsDefault().
+      // the map shows the same canonical Current + YTD set.
       let fireDatabaseFilter = "all";
       let fireDatabaseLargeOnly = false;
       let fireDatabaseImsrOnly = true;
@@ -2216,12 +2218,8 @@
       // Live CX complex parent points (WF-only rule aside): these render as a
       // distinct diamond marker, never as normal WF ignition circles.
       let currentComplexPoints = [];
-      // Normalized IRWIN ids of the complexes present in the Current service, so
-      // a CX record built from Year-to-Date data (never in fireEvents) is still
-      // recognized as current/active for status — otherwise an actively reporting
-      // complex would fall through to a misleading "Not current" badge.
+      // Normalized IRWIN ids of the complexes present in the Current service.
       let currentComplexIds = new Set();
-      let complexMemberControllers = [];
       const firePerimeterCache = new Map();
       const fireDatabasePageCache = new Map();
       // The map ALWAYS mirrors the loaded list (fireMirrorRecords is the single
@@ -2230,6 +2228,10 @@
       // status line, and the map's accessible name.
       let fireMirrorActive = false;
       const fireMirrorRecords = new Map();
+      // Includes the top-level list records plus the member records hydrated for
+      // a complex row. Every rendered/selected fire resolves through this map;
+      // Current live geometry is never borrowed at render time.
+      const canonicalFireRecords = new Map();
 
       const rawCache = new Map();
       const processedCache = new Map();
@@ -3154,7 +3156,10 @@
           pointRadius: null,
           pointColor: null,
           pointFeature: null,
-          perimeterFeatures: []
+          perimeterFeatures: [],
+          memberRecords: [],
+          source: null,
+          geometryComplete: false
         };
       }
 
@@ -3298,20 +3303,14 @@
         };
       }
 
-      // Rendered features resolve their record through the active source:
-      // mirrored list rows first, then the live map events. Complex members
-      // drawn for a mirrored CX parent are only in fireEvents, so the
-      // fallback also serves them.
+      // The hydrated list snapshot is the sole source for persistent geometry,
+      // complex-member geometry, popups, and selection.
       function fireRenderRecord(id) {
-        // The map mirrors the list, so a rendered feature's record is the list
-        // row when present, otherwise the live record (e.g. a complex member).
-        return fireMirrorRecords.get(id) || fireEvents.get(id);
+        return canonicalFireRecords.get(id);
       }
 
-      // In-memory scan only — never a request. CpxID on a member equals the
-      // parent's IrwinID, which is also the parent record's normalized id.
       function complexMemberRecords(parentId) {
-        return fireComplexMembers.get(parentId) || [];
+        return fireMirrorRecords.get(parentId)?.memberRecords || [];
       }
 
       // In-memory member point + perimeter geometry for a complex, used both to
@@ -3454,31 +3453,23 @@
         const pushRecord = (record) => {
           if (renderedIds.has(record.id)) return;
           renderedIds.add(record.id);
-          // The list row carries attributes only (no geometry); prefer the live
-          // in-memory record's point/perimeter geometry by id so the five-minute
-          // WFIGS refresh keeps it current, and fall back to the row's own
-          // point (built from reported coordinates) when it is not in the live
-          // Current layer — e.g. a fire that has dropped out of the current feed.
-          const live = fireEvents.get(record.id);
-          const perimeters = (live?.perimeterFeatures?.length ? live.perimeterFeatures : record.perimeterFeatures) || [];
-          const point = live?.pointFeature || record.pointFeature;
-          perimeters.forEach((feature) => {
+          record.perimeterFeatures.forEach((feature) => {
             perimeterFeatures.push({
               ...feature,
               properties: { ...feature.properties, __pmFireId: record.id }
             });
           });
-          if (point) {
+          if (record.pointFeature) {
             pointFeatures.push({
-              ...point,
-              properties: { ...point.properties, __pmFireId: record.id }
+              ...record.pointFeature,
+              properties: { ...record.pointFeature.properties, __pmFireId: record.id }
             });
           }
         };
         // The map is always a mirror of the loaded list: the rows the list shows
         // for the current filter are exactly the fires drawn. A CX parent is
         // represented only by its diamond (renderComplexMarkers); its member
-        // fires are drawn here from live geometry when available.
+        // fires are drawn here from the same hydrated canonical snapshot.
         fireMirrorRecords.forEach((record) => {
           if (record.category === "CX") {
             complexMemberRecords(record.id).forEach(pushRecord);
@@ -3514,7 +3505,11 @@
 
         renderComplexMarkers();
         syncLiveFireLayerOrder();
-        if (selectedFireRecord) renderFireSelection(selectedFireRecord);
+        if (selectedFireRecord) {
+          selectedFireRecord = canonicalFireRecords.get(selectedFireRecord.id) || null;
+          if (selectedFireRecord) renderFireSelection(selectedFireRecord);
+          else clearFireSelection();
+        }
         syncFireAttribution();
         updateMapAccessibleName();
       }
@@ -3907,18 +3902,14 @@
         popup.openOn(map);
       }
 
-      function fireRecordFromPointFeature(feature, currentMember = false) {
+      function fireRecordFromPointFeature(feature, currentMember = false, source = null) {
         const pointFeature = ensurePointGeometry(feature);
         const record = blankFireRecord(featureId(pointFeature, "database"));
-        const liveRecord = fireEvents.get(record.id);
         record.rawIrwinId = pointFeature.properties?.IrwinID || null;
         record.pointFeature = pointFeature;
         mergeFireAttributes(record, pointAttributes(pointFeature.properties));
-        // A CX parent is never in fireEvents (WF-only), so recognize it as active
-        // when it is present in the Current-service complex set; otherwise an
-        // actively reporting complex would badge a misleading "Not current".
-        const isCurrentComplex = record.category === "CX" && currentComplexIds.has(record.id);
-        record.active = currentMember || Boolean(liveRecord?.active) || isCurrentComplex;
+        record.active = currentMember;
+        record.source = source || (currentMember ? "current" : "ytd");
         return record;
       }
 
@@ -3956,11 +3947,9 @@
         return clauses.join(" AND ");
       }
 
-      // Shared row markup for a standalone fire, a complex member, and the
-      // complex group header. options.onClick overrides the default selection
-      // click (the header zooms to the complex instead of selecting a point).
-      function buildFireRowButton(feature, currentMember, options = {}) {
-        const record = fireRecordFromPointFeature(feature, currentMember);
+      // Shared row markup for a standalone fire, a hydrated complex member, and
+      // the complex group header. Every click retains the canonical record.
+      function buildFireRowButton(record, options = {}) {
         const status = fireStatus(record);
         const button = document.createElement("button");
         button.type = "button";
@@ -3999,30 +3988,27 @@
         button.append(head, dateLocation, sizeContainment);
         button.addEventListener(
           "click",
-          options.onClick || (() => selectDatabaseFire(feature, currentMember))
+          options.onClick || (() => selectDatabaseFire(record))
         );
-        return { button, record };
+        return button;
       }
 
-      function appendFireDatabaseRow(feature, currentMember = false) {
-        const preview = fireRecordFromPointFeature(feature, currentMember);
-        if (preview.category === "CX") {
-          appendComplexGroup(feature, preview, currentMember);
-          return preview;
+      function appendFireDatabaseRow(record) {
+        if (record.category === "CX") {
+          appendComplexGroup(record);
+          return;
         }
-        const { button, record } = buildFireRowButton(feature, currentMember);
-        fireList.append(button);
-        return record;
+        fireList.append(buildFireRowButton(record));
       }
 
-      // A complex renders as a collapsible group: the header zooms the map to
-      // all member fires; the chevron lazily fetches and nests the members.
-      function appendComplexGroup(feature, record, currentMember) {
+      // A complex renders as a collapsible group: the header zooms to the
+      // pre-hydrated members and the chevron reveals those same canonical rows.
+      function appendComplexGroup(record) {
         const group = document.createElement("div");
         group.className = "pm-fire-group";
         const head = document.createElement("div");
         head.className = "pm-fire-group-head";
-        const { button: nameButton } = buildFireRowButton(feature, currentMember, {
+        const nameButton = buildFireRowButton(record, {
           onClick: () => zoomToComplex(record)
         });
         const toggle = document.createElement("button");
@@ -4036,80 +4022,34 @@
         const children = document.createElement("div");
         children.className = "pm-fire-group-children";
         children.hidden = true;
-        toggle.addEventListener("click", () => toggleComplexGroup(record, currentMember, toggle, children));
+        toggle.addEventListener("click", () => toggleComplexGroup(record, toggle, children));
         head.append(nameButton, toggle);
         group.append(head, children);
         fireList.append(group);
       }
 
-      function toggleComplexGroup(record, currentMember, toggle, children) {
+      function toggleComplexGroup(record, toggle, children) {
         const expanded = toggle.getAttribute("aria-expanded") === "true";
         toggle.setAttribute("aria-expanded", String(!expanded));
         children.hidden = expanded;
         if (!expanded && children.dataset.loaded !== "true") {
-          loadComplexMembers(record, currentMember, toggle, children);
+          loadComplexMembers(record, children);
         }
       }
 
-      function abortComplexMemberLoads() {
-        complexMemberControllers.forEach((controller) => controller.abort());
-        complexMemberControllers = [];
-      }
-
-      async function loadComplexMembers(record, currentMember, toggle, children) {
-        if (children.dataset.loading === "true") return;
-        children.dataset.loading = "true";
-        const status = document.createElement("div");
-        status.className = "pm-fire-group-status";
-        status.textContent = "Loading member fires…";
-        children.replaceChildren(status);
-        const controller = new AbortController();
-        complexMemberControllers.push(controller);
-        try {
-          const service = currentMember
-            ? FIRE_SERVICES.currentLocations
-            : FIRE_SERVICES.ytdLocations;
-          const result = await fetchArcgis(service, {
-            f: "json",
-            where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID='${sqlString(record.rawIrwinId)}'`,
-            outFields: FIRE_POINT_FIELDS,
-            returnGeometry: false,
-            orderByFields: fireDatabaseSort === "size"
-              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
-              : "FireDiscoveryDateTime DESC,OBJECTID DESC"
-          }, controller.signal);
-          const members = (result.features || [])
-            .map((item) => ({
-              type: "Feature",
-              id: item.attributes?.OBJECTID,
-              geometry: null,
-              properties: item.attributes || {}
-            }))
-            .filter((item) => item.properties.IncidentTypeCategory === "WF");
-          if (!members.length) {
-            status.textContent = "No member fires reported.";
-            children.dataset.loaded = "true";
-            return;
-          }
-          children.replaceChildren();
-          members.forEach((member) => {
-            const { button } = buildFireRowButton(member, currentMember);
-            children.append(button);
+      function loadComplexMembers(record, children) {
+        children.replaceChildren();
+        if (!record.memberRecords.length) {
+          const status = document.createElement("div");
+          status.className = "pm-fire-group-status";
+          status.textContent = "No member fires reported.";
+          children.append(status);
+        } else {
+          record.memberRecords.forEach((member) => {
+            children.append(buildFireRowButton(member));
           });
-          children.dataset.loaded = "true";
-        } catch (error) {
-          if (error.name === "AbortError") return;
-          const retry = document.createElement("button");
-          retry.type = "button";
-          retry.className = "pm-button pm-fire-group-retry";
-          retry.textContent = "Retry";
-          retry.addEventListener("click", () => loadComplexMembers(record, currentMember, toggle, children));
-          status.textContent = "Couldn't load member fires. ";
-          status.append(retry);
-        } finally {
-          children.dataset.loading = "false";
-          complexMemberControllers = complexMemberControllers.filter((entry) => entry !== controller);
         }
+        children.dataset.loaded = "true";
       }
 
       // List category rule (client-side twin of the fireDatabaseWhere base
@@ -4120,20 +4060,275 @@
         return properties.IncidentTypeCategory === "WF" && !Number(properties.IsCpxChild);
       }
 
-      function arcgisJsonPointFeatures(result) {
+      function arcgisPointFeatures(result) {
         return (result.features || [])
-          .map((feature) => ({
-            type: "Feature",
-            id: feature.attributes?.OBJECTID,
-            geometry: null,
-            properties: feature.attributes || {}
-          }))
+          .map((feature) => {
+            if (feature?.type === "Feature") return ensurePointGeometry(feature);
+            return ensurePointGeometry({
+              type: "Feature",
+              id: feature.attributes?.OBJECTID,
+              geometry: feature.geometry || null,
+              properties: feature.attributes || {}
+            });
+          })
           .filter((feature) => isFireListCategory(feature.properties));
       }
 
-      // One-time cleanup: the v1 cache stored pages fetched with the pre-complex
-      // field list and where clauses, so its entries can never be replayed.
+      function fireFeatureSortCompare(left, right) {
+        const leftProperties = left?.properties || {};
+        const rightProperties = right?.properties || {};
+        if (fireDatabaseSort === "size") {
+          const leftSize = reportedFireNumber(leftProperties.IncidentSize) ?? Number.NEGATIVE_INFINITY;
+          const rightSize = reportedFireNumber(rightProperties.IncidentSize) ?? Number.NEGATIVE_INFINITY;
+          if (leftSize !== rightSize) return rightSize - leftSize;
+        }
+        const leftTime = validFireTime(leftProperties.FireDiscoveryDateTime) ?? Number.NEGATIVE_INFINITY;
+        const rightTime = validFireTime(rightProperties.FireDiscoveryDateTime) ?? Number.NEGATIVE_INFINITY;
+        if (leftTime !== rightTime) return rightTime - leftTime;
+        return Number(rightProperties.OBJECTID || 0) - Number(leftProperties.OBJECTID || 0);
+      }
+
+      function fireRecordSortCompare(left, right) {
+        return fireFeatureSortCompare(left.pointFeature, right.pointFeature);
+      }
+
+      async function fetchIrwinMembership(service, records, signal) {
+        const ids = [...new Set(records
+          .map((record) => String(record.rawIrwinId || "").trim())
+          .filter(Boolean))];
+        const members = new Set();
+        for (let index = 0; index < ids.length; index += 20) {
+          const batch = ids.slice(index, index + 20);
+          const result = await fetchArcgis(service, {
+            f: "json",
+            where: `IrwinID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
+            outFields: "IrwinID",
+            returnGeometry: false,
+            resultRecordCount: batch.length
+          }, signal);
+          (result.features || []).forEach((feature) => {
+            const id = normalizeIrwinId(feature.attributes?.IrwinID);
+            if (id) members.add(id);
+          });
+        }
+        return members;
+      }
+
+      async function fetchRecordMembership(service, records, signal) {
+        // Current and YTD are hosted views over the same WFIGS source and retain
+        // the same OBJECTID for an overlapping record. Use compact object-id
+        // batches first; keep IRWIN as the identity and fallback for any record
+        // without a usable OBJECTID.
+        const objectIds = [...new Set(records
+          .map((record) => Number(record.pointFeature?.properties?.OBJECTID))
+          .filter((value) => Number.isInteger(value) && value >= 0))];
+        const matchedObjectIds = new Set();
+        for (let index = 0; index < objectIds.length; index += 200) {
+          const batch = objectIds.slice(index, index + 200);
+          const result = await fetchArcgis(service, {
+            f: "json",
+            objectIds: batch.join(","),
+            returnIdsOnly: true
+          }, signal);
+          (result.objectIds || []).forEach((value) => matchedObjectIds.add(Number(value)));
+        }
+        const members = new Set();
+        const unresolved = [];
+        records.forEach((record) => {
+          const objectId = Number(record.pointFeature?.properties?.OBJECTID);
+          if (Number.isInteger(objectId) && matchedObjectIds.has(objectId)) {
+            members.add(record.id);
+          } else if (!Number.isInteger(objectId)) {
+            unresolved.push(record);
+          }
+        });
+        const irwinMembers = await fetchIrwinMembership(service, unresolved, signal);
+        irwinMembers.forEach((id) => members.add(id));
+        return members;
+      }
+
+      async function resolveCurrentMembership(records, signal) {
+        const ytdRecords = records.filter((record) => record.source === "ytd");
+        if (!ytdRecords.length) return;
+        const currentIds = await fetchRecordMembership(
+          FIRE_SERVICES.currentLocations,
+          ytdRecords,
+          signal
+        );
+        ytdRecords.forEach((record) => {
+          record.active = currentIds.has(record.id);
+        });
+      }
+
+      async function hydratePerimeters(records, source, signal) {
+        const sourceRecords = records.filter((record) => (
+          record.source === source && record.rawIrwinId
+        ));
+        const recordById = new Map(sourceRecords.map((record) => [record.id, record]));
+        const rawIds = [...new Set(sourceRecords.map((record) => String(record.rawIrwinId).trim()))];
+        const service = source === "current"
+          ? FIRE_SERVICES.currentPerimeters
+          : FIRE_SERVICES.ytdPerimeters;
+        sourceRecords.forEach((record) => { record.perimeterFeatures = []; });
+        for (let index = 0; index < rawIds.length; index += 20) {
+          const batch = rawIds.slice(index, index + 20);
+          const features = await fetchGeojsonFeaturePages(service, {
+            where: `attr_IncidentTypeCategory IN ('WF','CX') AND attr_IrwinID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
+            outFields: FIRE_PERIMETER_FIELDS,
+            returnGeometry: true,
+            outSR: 4326,
+            geometryPrecision: 5,
+            maxAllowableOffset: 0.0001,
+            orderByFields: "OBJECTID ASC"
+          }, signal);
+          features.forEach((feature) => {
+            const id = normalizeIrwinId(feature.properties?.attr_IrwinID);
+            const record = recordById.get(id);
+            if (!record || !["WF", "CX"].includes(feature.properties?.attr_IncidentTypeCategory)) return;
+            record.perimeterFeatures.push(feature);
+            mergeFireAttributes(record, perimeterAttributes(feature.properties));
+          });
+        }
+      }
+
+      async function hydrateComplexMembers(records, signal) {
+        const parents = records.filter((record) => (
+          record.category === "CX" && record.rawIrwinId
+        ));
+        for (const source of ["ytd", "current"]) {
+          const sourceParents = parents.filter((record) => record.source === source);
+          if (!sourceParents.length) continue;
+          const parentById = new Map(sourceParents.map((record) => [record.id, record]));
+          const service = source === "current"
+            ? FIRE_SERVICES.currentLocations
+            : FIRE_SERVICES.ytdLocations;
+          const rawIds = sourceParents.map((record) => String(record.rawIrwinId).trim());
+          const memberFeatures = [];
+          for (let index = 0; index < rawIds.length; index += 20) {
+            const batch = rawIds.slice(index, index + 20);
+            memberFeatures.push(...await fetchGeojsonFeaturePages(service, {
+              where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
+              outFields: FIRE_POINT_FIELDS,
+              returnGeometry: true,
+              outSR: 4326,
+              orderByFields: "FireDiscoveryDateTime DESC,OBJECTID DESC"
+            }, signal));
+          }
+          const members = memberFeatures
+            .filter((feature) => feature.properties?.IncidentTypeCategory === "WF")
+            .map((feature) => fireRecordFromPointFeature(feature, source === "current", source));
+          await resolveCurrentMembership(members, signal);
+          await hydratePerimeters(members, source, signal);
+          members.forEach((member) => {
+            member.pointRadius = firePointRadius(member.size);
+            member.pointColor = activeFirePointColor(member.discovery);
+            member.geometryComplete = true;
+            const parent = parentById.get(normalizeIrwinId(member.cpxId));
+            if (parent) parent.memberRecords.push(member);
+          });
+          sourceParents.forEach((parent) => {
+            parent.memberRecords.sort(fireRecordSortCompare);
+          });
+        }
+      }
+
+      async function hydrateFireEntries(entries, signal) {
+        const records = entries.map(({ feature, source }) => (
+          fireRecordFromPointFeature(feature, source === "current", source)
+        ));
+        await resolveCurrentMembership(records, signal);
+        await hydratePerimeters(records, "ytd", signal);
+        await hydratePerimeters(records, "current", signal);
+        await hydrateComplexMembers(records, signal);
+        records.forEach((record) => {
+          record.pointRadius = firePointRadius(record.size);
+          record.pointColor = activeFirePointColor(record.discovery);
+          record.geometryComplete = true;
+        });
+        return records;
+      }
+
+      function registerCanonicalRecord(record) {
+        fireMirrorRecords.set(record.id, record);
+        canonicalFireRecords.set(record.id, record);
+        record.memberRecords.forEach((member) => {
+          canonicalFireRecords.set(member.id, member);
+        });
+      }
+
+      function mergeFireFeaturePage(ytdFeatures, pageSize, source) {
+        const entries = [];
+        let ytdIndex = 0;
+        let currentIndex = source === "ytd" ? fireDatabaseCurrentOnlyIndex : fireDatabaseCurrentOnlyFeatures.length;
+        while (entries.length < pageSize) {
+          const ytdFeature = ytdFeatures[ytdIndex] || null;
+          const currentFeature = source === "ytd"
+            ? (fireDatabaseCurrentOnlyFeatures[currentIndex] || null)
+            : null;
+          if (!ytdFeature && !currentFeature) break;
+          if (
+            currentFeature &&
+            (!ytdFeature || fireFeatureSortCompare(currentFeature, ytdFeature) < 0)
+          ) {
+            entries.push({ feature: currentFeature, source: "current" });
+            currentIndex += 1;
+          } else {
+            entries.push({ feature: ytdFeature, source });
+            ytdIndex += 1;
+          }
+        }
+        return { entries, ytdConsumed: ytdIndex, currentIndex };
+      }
+
+      async function loadCurrentOnlyFeatures(signal) {
+        if (fireDatabaseFilter !== "all") return [];
+        const cacheKey = `current-only|${fireDatabaseSort}|${fireDatabaseWhere(false)}`;
+        const cached = fireDatabasePageCache.get(cacheKey);
+        if (cached && Date.now() - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
+          return cached.features;
+        }
+        const currentFeatures = (await fetchGeojsonFeaturePages(
+          FIRE_SERVICES.currentLocations,
+          {
+            where: fireDatabaseWhere(false),
+            outFields: FIRE_POINT_FIELDS,
+            returnGeometry: true,
+            outSR: 4326,
+            orderByFields: fireDatabaseSort === "size"
+              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+              : "FireDiscoveryDateTime DESC,OBJECTID DESC"
+          },
+          signal
+        )).filter((feature) => isFireListCategory(feature.properties));
+        const currentRecords = currentFeatures.map((feature) => (
+          fireRecordFromPointFeature(feature, true, "current")
+        ));
+        const ytdIds = await fetchRecordMembership(
+          FIRE_SERVICES.ytdLocations,
+          currentRecords,
+          signal
+        );
+        const features = currentFeatures
+          .filter((feature) => !ytdIds.has(featureId(feature, "current-only")))
+          .sort(fireFeatureSortCompare);
+        if (
+          !fireDatabasePageCache.has(cacheKey) &&
+          fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
+        ) {
+          fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+        }
+        fireDatabasePageCache.set(cacheKey, {
+          loadedAt: Date.now(),
+          stale: false,
+          features
+        });
+        return features;
+      }
+
+      // Older caches contain attribute-only rows and cannot satisfy the canonical
+      // point/perimeter geometry contract.
       try { window.localStorage.removeItem("na-smoke-map:wfigs-database:v1"); } catch { /* storage unavailable */ }
+      try { window.localStorage.removeItem("na-smoke-map:wfigs-database:v2"); } catch { /* storage unavailable */ }
 
       function readStoredFireDatabasePages() {
         try {
@@ -4166,9 +4361,9 @@
         }
       }
 
-      // The default filter state (All + IMSR) matches the map's normal view: the
-      // live layer shows every IMSR-grade fire. Any other filter engages mirror
-      // mode. Sort is excluded: it reorders rows without changing membership.
+      // The default filter state (All + IMSR) matches the map's normal canonical
+      // snapshot. Any other filter engages the visible filtered state. Sort is
+      // excluded: it reorders rows without changing membership.
       function fireFilterStateIsDefault() {
         return fireDatabaseFilter === "all" &&
           fireDatabaseImsrOnly &&
@@ -4207,6 +4402,9 @@
         fireLargeFilter.setAttribute("aria-pressed", "false");
         fireImsrFilter.setAttribute("aria-pressed", "true");
         fireMirrorRecords.clear();
+        canonicalFireRecords.clear();
+        fireDatabaseCurrentOnlyFeatures = [];
+        fireDatabaseCurrentOnlyIndex = 0;
         fireMirrorActive = false;
         syncFireMirrorBanner();
         renderFireLayers();
@@ -4240,12 +4438,12 @@
       // Count-only companion query for the current filter, so the status can read
       // "50 of 214". Cached per service+where; failures leave the total null and
       // the status simply omits the "of N" clause.
-      async function loadFireDatabaseTotal(service, where, generation) {
+      async function loadFireDatabaseTotal(service, where, generation, extraCount = 0) {
         const cacheKey = `${service}|${where}`;
         const cached = fireDatabaseTotalCache.get(cacheKey);
         if (cached !== undefined) {
           if (generation === fireDatabaseGeneration) {
-            fireDatabaseTotal = cached;
+            fireDatabaseTotal = cached + extraCount;
             renderFireListStatus();
           }
           return;
@@ -4267,7 +4465,7 @@
           }
           fireDatabaseTotalCache.set(cacheKey, count);
           if (generation === fireDatabaseGeneration) {
-            fireDatabaseTotal = count;
+            fireDatabaseTotal = count + extraCount;
             renderFireListStatus();
           }
         } catch {
@@ -4295,7 +4493,8 @@
             ? FIRE_SERVICES.currentLocations
             : FIRE_SERVICES.ytdLocations,
           fireDatabaseWhere(currentMembersOnly),
-          fireDatabaseGeneration
+          fireDatabaseGeneration,
+          currentMembersOnly ? 0 : fireDatabaseCurrentOnlyFeatures.length
         );
       }
 
@@ -4304,6 +4503,8 @@
           if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
           fireDatabaseTotalController = null;
           fireDatabaseOffset = 0;
+          fireDatabaseCurrentOnlyIndex = 0;
+          fireDatabaseCurrentOnlyFeatures = [];
           fireDatabaseHasMore = true;
           fireDatabaseNeedsReset = true;
           fireDatabaseTotal = null;
@@ -4326,10 +4527,11 @@
           : FIRE_SERVICES.ytdLocations;
         const requestWhere = fireDatabaseWhere(currentMembersOnly);
         const requestParameters = {
-          f: "json",
+          f: "geojson",
           where: requestWhere,
           outFields: FIRE_POINT_FIELDS,
-          returnGeometry: false,
+          returnGeometry: true,
+          outSR: 4326,
           orderByFields: fireDatabaseSort === "size"
             ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
             : "FireDiscoveryDateTime DESC,OBJECTID DESC",
@@ -4337,11 +4539,18 @@
           resultRecordCount: pageSize + 1
         };
         const cacheKey = `${requestService}|${JSON.stringify(requestParameters)}`;
-        fireDatabaseStatus.textContent = fireDatabaseOffset
+        fireDatabaseStatus.textContent = fireDatabaseOffset || fireDatabaseCurrentOnlyIndex
           ? "Loading more wildfires"
-          : (currentMembersOnly ? "Loading active wildfires" : "Loading year-to-date wildfires");
+          : (currentMembersOnly ? "Loading active wildfires" : "Loading unified wildfires");
 
         try {
+          if (
+            requestOffset === 0 &&
+            fireDatabaseCurrentOnlyIndex === 0 &&
+            fireDatabaseFilter === "all"
+          ) {
+            fireDatabaseCurrentOnlyFeatures = await loadCurrentOnlyFeatures(controller.signal);
+          }
           const cachedPage = fireDatabasePageCache.get(cacheKey);
           const storedPage = storedFireDatabasePage(cacheKey);
           let features;
@@ -4366,7 +4575,7 @@
                   }
                 }
               );
-              features = arcgisJsonPointFeatures(result);
+              features = arcgisPointFeatures(result);
               storeFireDatabasePage(cacheKey, features);
             } catch (error) {
               if (error.name === "AbortError") throw error;
@@ -4393,32 +4602,35 @@
           // Note: no longer bail when the drawer is hidden — the map mirrors this
           // list, so it must load (and refresh) even with the drawer closed.
           if (generation !== fireDatabaseGeneration) return;
+          const source = currentMembersOnly ? "current" : "ytd";
+          const merged = mergeFireFeaturePage(features, pageSize, source);
+          let records = await hydrateFireEntries(merged.entries, controller.signal);
+          if (generation !== fireDatabaseGeneration) return;
+          // "Not current" cannot be expressed purely in YTD SQL because current
+          // membership belongs to the Current view. Membership was resolved
+          // before this pass, so the badge and filter use the same canonical row.
+          if (fireDatabaseFilter === "notcurrent") {
+            records = records.filter((record) => fireStatus(record) === "Not current");
+          }
           if (fireDatabaseNeedsReset && requestOffset === 0) {
-            abortComplexMemberLoads();
             fireList.replaceChildren();
             fireMirrorRecords.clear();
+            canonicalFireRecords.clear();
             fireDatabaseNeedsReset = false;
           }
-          const visible = features.slice(0, pageSize);
-          visible.forEach((feature) => {
-            const preview = fireRecordFromPointFeature(feature, currentMembersOnly);
-            // "Not current" is the one status the SQL cannot fully express — it
-            // means "no closure dates AND not in the live/current service", and
-            // current membership is not a Year-to-Date field. The query narrows
-            // to no-closure records; here we keep only the ones the app actually
-            // badges "Not current" (dropping any that are currently active).
-            if (
-              fireDatabaseFilter === "notcurrent" &&
-              fireStatus(preview) !== "Not current"
-            ) return;
+          records.forEach((record) => {
             // ArcGIS paging can repeat a boundary record while the live service
             // is changing. Keep the drawer and fireMirrorRecords one-to-one.
-            if (fireMirrorRecords.has(preview.id)) return;
-            const record = appendFireDatabaseRow(feature, currentMembersOnly);
-            fireMirrorRecords.set(record.id, record);
+            if (fireMirrorRecords.has(record.id)) return;
+            registerCanonicalRecord(record);
+            appendFireDatabaseRow(record);
           });
-          fireDatabaseOffset = requestOffset + visible.length;
-          fireDatabaseHasMore = features.length > pageSize;
+          fireDatabaseOffset = requestOffset + merged.ytdConsumed;
+          fireDatabaseCurrentOnlyIndex = merged.currentIndex;
+          fireDatabaseHasMore = (
+            merged.ytdConsumed < features.length ||
+            fireDatabaseCurrentOnlyIndex < fireDatabaseCurrentOnlyFeatures.length
+          );
           fireLoadMore.hidden = !fireDatabaseHasMore;
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Load more";
@@ -4432,11 +4644,16 @@
           if (
             requestOffset === 0 &&
             !usedStoredPage &&
-            visible.length &&
+            records.length &&
             fireDatabaseHasMore &&
             fireDatabaseFilter !== "notcurrent"
           ) {
-            loadFireDatabaseTotal(requestService, requestWhere, generation);
+            loadFireDatabaseTotal(
+              requestService,
+              requestWhere,
+              generation,
+              currentMembersOnly ? 0 : fireDatabaseCurrentOnlyFeatures.length
+            );
           }
           updateFireMirrorState();
         } catch (error) {
@@ -4484,50 +4701,7 @@
         fireDatabaseController = null;
         if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
         fireDatabaseTotalController = null;
-        abortComplexMemberLoads();
         if (restoreFocus) firesButton.focus({ preventScroll: true });
-      }
-
-      function selectedRecordWithPerimeters(pointRecord, perimeterFeatures) {
-        const liveRecord = fireEvents.get(pointRecord.id);
-        const record = blankFireRecord(pointRecord.id);
-        record.rawIrwinId = pointRecord.rawIrwinId;
-        record.pointFeature = pointRecord.pointFeature || liveRecord?.pointFeature || null;
-        record.active = pointRecord.active || liveRecord?.active || false;
-        mergeFireAttributes(record, pointRecord);
-        if (liveRecord) mergeFireAttributes(record, liveRecord);
-        record.perimeterFeatures = perimeterFeatures.length
-          ? perimeterFeatures
-          : (liveRecord?.perimeterFeatures || []);
-        record.perimeterFeatures.forEach((feature) => {
-          mergeFireAttributes(record, perimeterAttributes(feature.properties));
-        });
-        return record;
-      }
-
-      async function resolveDatabasePointFeature(feature, currentMember, signal) {
-        const listedRecord = fireRecordFromPointFeature(feature, currentMember);
-        const livePoint = fireEvents.get(listedRecord.id)?.pointFeature;
-        if (livePoint?.geometry?.type === "Point") return livePoint;
-
-        const objectId = Number(feature?.properties?.OBJECTID);
-        if (!Number.isInteger(objectId) || objectId < 0) return listedRecord.pointFeature;
-        const service = currentMember
-          ? FIRE_SERVICES.currentLocations
-          : FIRE_SERVICES.ytdLocations;
-        const result = await fetchArcgis(service, {
-          f: "geojson",
-          where: `IncidentTypeCategory IN ('WF','CX') AND OBJECTID=${objectId}`,
-          outFields: FIRE_POINT_FIELDS,
-          returnGeometry: true,
-          outSR: 4326,
-          resultRecordCount: 1
-        }, signal);
-        const exactFeature = (result.features || []).find((item) => (
-          ["WF", "CX"].includes(item.properties?.IncidentTypeCategory) &&
-          Number(item.properties?.OBJECTID) === objectId
-        ));
-        return exactFeature ? ensurePointGeometry(exactFeature) : listedRecord.pointFeature;
       }
 
       function clearFireSelection(closePopup = false) {
@@ -4544,7 +4718,7 @@
       function renderFireSelection(record) {
         fireSelectionGroup.clearLayers();
         let perimeterLayer = null;
-        if (record.perimeterFeatures.length) {
+        if (wildfiresVisible && perimetersVisible && record.perimeterFeatures.length) {
           perimeterLayer = L.geoJSON(record.perimeterFeatures, {
             pane: "firePane",
             renderer: fireRenderer,
@@ -4555,7 +4729,7 @@
           }).addTo(fireSelectionGroup);
         }
         let pointLayer = null;
-        if (record.pointFeature) {
+        if (wildfiresVisible && ignitionsVisible && record.pointFeature) {
           pointLayer = L.geoJSON(record.pointFeature, {
             pane: "firePane",
             renderer: fireRenderer,
@@ -4588,51 +4762,10 @@
         );
       }
 
-      async function selectDatabaseFire(feature, currentMember = false) {
-        let pointRecord = fireRecordFromPointFeature(feature, currentMember);
-        fireDatabaseStatus.textContent = `Locating ${pointRecord.name || "wildfire"}`;
-        const generation = ++fireDatabaseGeneration;
-        if (fireDatabaseController) fireDatabaseController.abort();
-        const controller = new AbortController();
-        fireDatabaseController = controller;
-        let perimeterFeatures = [];
-
-        try {
-          try {
-            const exactPointFeature = await resolveDatabasePointFeature(
-              feature,
-              currentMember,
-              controller.signal
-            );
-            pointRecord = fireRecordFromPointFeature(exactPointFeature, currentMember);
-          } catch (error) {
-            if (error.name === "AbortError") throw error;
-            // The list's reported initial coordinates remain a last-resort fallback.
-          }
-          if (pointRecord.rawIrwinId) {
-            const result = await fetchArcgis(FIRE_SERVICES.ytdPerimeters, {
-              f: "geojson",
-              where: `attr_IncidentTypeCategory IN ('WF','CX') AND attr_IrwinID='${sqlString(pointRecord.rawIrwinId)}'`,
-              outFields: FIRE_PERIMETER_FIELDS,
-              returnGeometry: true,
-              outSR: 4326,
-              geometryPrecision: 5,
-              maxAllowableOffset: 0.0001
-            }, controller.signal);
-            perimeterFeatures = (result.features || []).filter((item) => (
-              ["WF", "CX"].includes(item.properties?.attr_IncidentTypeCategory)
-            ));
-          }
-        } catch (error) {
-          if (error.name === "AbortError") return;
-          perimeterFeatures = [];
-        } finally {
-          if (fireDatabaseController === controller) fireDatabaseController = null;
-        }
-        if (generation !== fireDatabaseGeneration) return;
-
+      function selectDatabaseFire(record) {
+        if (!record || canonicalFireRecords.get(record.id) !== record) return;
+        fireDatabaseStatus.textContent = `Locating ${record.name || "wildfire"}`;
         clearFireSelection(true);
-        const record = selectedRecordWithPerimeters(pointRecord, perimeterFeatures);
         const { perimeterLayer, pointLayer } = renderFireSelection(record);
         let popupLatLng = null;
         const mobile = window.matchMedia("(max-width: 560px)").matches;
@@ -4668,45 +4801,13 @@
         openFirePopup(record, popupLatLng, true);
       }
 
-      // Frame a complex by the combined extent of its member fires. Prefers the
-      // in-memory member geometry (member WF fires are normal live fires); only
-      // an unloaded (e.g. historical) complex needs one bounded member query.
-      // Falls back to the raw CX placeholder point if no member geometry exists.
-      async function zoomToComplex(record) {
+      // Frame a complex by the canonical member geometry hydrated before its row
+      // was committed. Selection never starts a second geometry data path.
+      function zoomToComplex(record) {
         if (!record) return;
-        const memberCurrent = !fireMirrorActive || fireDatabaseFilter === "active";
-        const generation = ++fireDatabaseGeneration;
-        if (fireDatabaseController) fireDatabaseController.abort();
-        const controller = new AbortController();
-        fireDatabaseController = controller;
         fireDatabaseStatus.textContent = `Locating ${record.name || "complex"}`;
 
         const geoFeatures = complexMemberGeoFeatures(record);
-
-        try {
-          if (!geoFeatures.length && record.rawIrwinId) {
-            const service = memberCurrent
-              ? FIRE_SERVICES.currentLocations
-              : FIRE_SERVICES.ytdLocations;
-            const result = await fetchArcgis(service, {
-              f: "geojson",
-              where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID='${sqlString(record.rawIrwinId)}'`,
-              outFields: FIRE_POINT_FIELDS,
-              returnGeometry: true,
-              outSR: 4326
-            }, controller.signal);
-            (result.features || []).forEach((item) => {
-              const point = ensurePointGeometry(item);
-              if (point?.geometry?.coordinates) geoFeatures.push(point);
-            });
-          }
-        } catch (error) {
-          if (error.name === "AbortError") return;
-          // Fall through with whatever geometry we already have.
-        } finally {
-          if (fireDatabaseController === controller) fireDatabaseController = null;
-        }
-        if (generation !== fireDatabaseGeneration) return;
 
         const mobile = window.matchMedia("(max-width: 560px)").matches;
         if (mobile) closeFireDrawer(true);
@@ -4777,9 +4878,8 @@
         if (visible) {
           syncLiveFireLayerOrder();
           // Turning the layer off from a filtered view deliberately restores
-          // the default All + IMSR state. Rebuild that list-backed map set even
-          // when the live geometry is still inside its five-minute freshness
-          // window; otherwise the layer can return empty until the next refresh.
+          // the default All + IMSR state. Rebuild the canonical snapshot even
+          // when the background Current cache is still fresh.
           if (fireDatabaseNeedsReset && !fireDatabaseController) {
             loadFireDatabase(true);
           }
@@ -7380,6 +7480,8 @@
         fireDatabaseTotalController = null;
         fireDatabaseGeneration += 1;
         fireDatabaseOffset = 0;
+        fireDatabaseCurrentOnlyIndex = 0;
+        fireDatabaseCurrentOnlyFeatures = [];
         fireDatabaseHasMore = true;
         fireDatabaseFilter = "all";
         fireDatabaseLargeOnly = false;
@@ -7408,6 +7510,7 @@
         fireLoadMore.textContent = "Load more";
         fireDatabaseStatus.textContent = "Open the database to load fires.";
         fireMirrorRecords.clear();
+        canonicalFireRecords.clear();
         fireMirrorActive = false;
         syncFireMirrorBanner();
 
@@ -7955,8 +8058,8 @@
       async function initialize() {
         syncFireAttribution();
         refreshWildfires({ force: true });
-        // The map mirrors the list, so load the default list set on startup
-        // (in parallel with the live geometry) even though the drawer is closed.
+        // The map mirrors the list, so build the default canonical snapshot on
+        // startup (in parallel with the background refresh) while the drawer is closed.
         loadFireDatabase(true);
         timelineInteractionLocked = true;
         updateControlAvailability(0);

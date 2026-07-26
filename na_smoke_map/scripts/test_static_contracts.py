@@ -96,6 +96,47 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
 
+    def test_wfigs_uses_one_canonical_snapshot(self) -> None:
+        self.assertIn(
+            'const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v3"',
+            self.index,
+        )
+        self.assertIn("const canonicalFireRecords = new Map();", self.index)
+        self.assertIn("return canonicalFireRecords.get(id);", self.index)
+        self.assertIn("async function hydrateFireEntries(entries, signal)", self.index)
+        self.assertIn("async function loadCurrentOnlyFeatures(signal)", self.index)
+        self.assertIn("function mergeFireFeaturePage(ytdFeatures, pageSize, source)", self.index)
+        self.assertIn('f: "geojson",', self.index)
+        self.assertIn("returnGeometry: true,", self.index)
+        self.assertNotIn("const live = fireEvents.get(record.id);", self.index)
+
+    def test_wfigs_selection_reuses_canonical_geometry(self) -> None:
+        selection = self.index.split(
+            "function selectDatabaseFire(record)",
+            1,
+        )[1].split("function zoomToComplex(record)", 1)[0]
+        complex_zoom = self.index.split(
+            "function zoomToComplex(record)",
+            1,
+        )[1].split("function setSmokeVisibility", 1)[0]
+        self.assertIn(
+            "canonicalFireRecords.get(record.id) !== record",
+            selection,
+        )
+        self.assertIn("renderFireSelection(record)", selection)
+        self.assertNotIn("fetchArcgis", selection)
+        self.assertNotIn("fetchGeojsonFeaturePages", selection)
+        self.assertNotIn("fetchArcgis", complex_zoom)
+        self.assertNotIn("fetchGeojsonFeaturePages", complex_zoom)
+        self.assertIn(
+            "wildfiresVisible && perimetersVisible && record.perimeterFeatures.length",
+            self.index,
+        )
+        self.assertIn(
+            "wildfiresVisible && ignitionsVisible && record.pointFeature",
+            self.index,
+        )
+
     def test_rolling_cache_uses_a_unique_save_key(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         unique_key = (
