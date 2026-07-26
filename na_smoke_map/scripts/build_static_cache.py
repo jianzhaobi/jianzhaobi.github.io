@@ -17,6 +17,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from cache_timeline import timeline_hours
+
 try:
     import numpy as np
     from PIL import Image, ImageFilter
@@ -337,18 +339,6 @@ def prune_stale_frames(root: Path, retained: set[Path]) -> None:
                 directory.rmdir()
             except OSError:
                 pass
-
-
-def timeline_hours(frames: list[Frame], successful_keys: set[str], datasets: list[str]) -> list[int]:
-    available = {dataset: set() for dataset in datasets}
-    for frame in frames:
-        if frame.key in successful_keys:
-            available[frame.dataset].add(frame.hour)
-    common = set.intersection(*(available[dataset] for dataset in datasets)) if datasets else set()
-    radius = 0
-    while -(radius + 1) in common and radius + 1 in common:
-        radius += 1
-    return list(range(-radius, radius + 1)) if 0 in common else []
 
 
 def build_field_packs(

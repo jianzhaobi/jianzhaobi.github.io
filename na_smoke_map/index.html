@@ -65,9 +65,7 @@
       --pm-line: rgb(30 33 36 / 11%);
       --pm-shadow: 0 10px 30px rgb(31 35 39 / 14%), 0 2px 7px rgb(31 35 39 / 8%);
       --pm-radius: 14px;
-      --pm-fire-active: #d94b38;
       --pm-fire-active-dark: #8f241d;
-      --pm-fire-closed: #77716b;
       --pm-fire-complex: #5b57c9;
       --pm-safe-top: env(safe-area-inset-top, 0px);
       --pm-safe-right: env(safe-area-inset-right, 0px);
@@ -558,7 +556,7 @@
       align-items: center;
       gap: 8px;
       font-size: 11px;
-      color: var(--pm-fg);
+      color: var(--pm-text);
     }
 
     #north-america-pm25 .pm-hms-legend .pm-hms-swatch {
@@ -595,10 +593,6 @@
     #north-america-pm25 .pm-fire-layer-toggles .pm-check input {
       width: 16px;
       height: 16px;
-    }
-
-    #north-america-pm25 .pm-fire-layer-toggles .pm-check.is-wide {
-      grid-column: 1 / -1;
     }
 
     #north-america-pm25 .pm-fire-layer-status {
@@ -2143,7 +2137,7 @@
       let referenceTime = latestLikelyRun(now);
       let currentIndex = Math.max(
         0,
-        Math.min(72, Math.round((now.getTime() - referenceTime.getTime()) / HOUR))
+        Math.min(72, Math.floor((now.getTime() - referenceTime.getTime()) / HOUR))
       );
       let currentValidTime = new Date(referenceTime.getTime() + currentIndex * HOUR);
       const timelineRadius = Math.max(0, 72 - currentIndex);
@@ -2161,6 +2155,8 @@
       let hmsVisible = false;
       let hmsFeatures = null;
       let hmsLoadPromise = null;
+      let hmsLoadController = null;
+      let hmsLoadGeneration = 0;
       let hmsAttributionVisible = false;
       let selectedHour = 0;
       let activeKey = "";
@@ -2180,7 +2176,6 @@
       let accuracyCircle;
       let activeTimelineManifest = null;
       let activeTimelineWindow = null;
-      let manifestHourOffset = 0;
       let cacheUpdateDelayHours = 0;
       let timelineInteractionLocked = true;
       let cacheRefreshActive = false;
@@ -2193,6 +2188,7 @@
       let fireRefreshTimer = 0;
       let lastFireRefreshAt = 0;
       let fireDatabaseController = null;
+      let fireDatabaseTotalController = null;
       let fireDatabaseGeneration = 0;
       let fireDatabaseLoadGeneration = 0;
       let fireDatabaseOffset = 0;
@@ -2212,7 +2208,10 @@
       let fireSearchTimer = 0;
       let fireAttributionVisible = false;
       let selectedFireRecord = null;
+      let activePopup = null;
+      const popupMetadata = new WeakMap();
       let fireEvents = new Map();
+      let fireComplexMembers = new Map();
       let currentFirePoints = [];
       // Live CX complex parent points (WF-only rule aside): these render as a
       // distinct diamond marker, never as normal WF ignition circles.
@@ -2236,6 +2235,7 @@
       const processedCache = new Map();
       const scheduledProcessing = new Map();
       const previewCache = new Map();
+      let previewGeneration = 0;
       let scrubGeneration = 0;
       let scrubRenderFrame = 0;
       let scrubTargetHour = null;
@@ -2260,14 +2260,20 @@
         const requestUrl = new URL(cacheManifestUrl);
         if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
         // A stalled manifest response must not leave the refresh state stuck.
-        const response = await fetch(requestUrl, {
-          cache: "no-store",
-          signal: AbortSignal.timeout(45000)
-        });
-        if (!response.ok) throw new Error("Static cache manifest unavailable");
-        const manifest = validCacheManifest(await response.json());
-        if (!manifest) throw new Error("Static cache manifest invalid");
-        return manifest;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 45000);
+        try {
+          const response = await fetch(requestUrl, {
+            cache: "no-store",
+            signal: controller.signal
+          });
+          if (!response.ok) throw new Error("Static cache manifest unavailable");
+          const manifest = validCacheManifest(await response.json());
+          if (!manifest) throw new Error("Static cache manifest invalid");
+          return manifest;
+        } finally {
+          window.clearTimeout(timeout);
+        }
       }
 
       let cacheManifestPromise = fetchCacheManifest().catch(() => null);
@@ -2805,8 +2811,14 @@
       // service currently publishes (all of today's satellite time steps). It is
       // deliberately NOT tied to the timeline and does no past/forecast filtering,
       // because HMS is a daily analyst product with no hourly cadence or forecast.
+      function hmsDensity(feature) {
+        const value = String(feature?.properties?.Density || "").trim().toLowerCase();
+        return HMS_DENSITY_ORDER.find((density) => density.toLowerCase() === value) || "Unknown";
+      }
+
       function hmsDensityRank(feature) {
-        return HMS_DENSITY_ORDER.indexOf(feature?.properties?.Density);
+        const rank = HMS_DENSITY_ORDER.indexOf(hmsDensity(feature));
+        return rank < 0 ? -1 : rank;
       }
 
       function hmsStyleFor(density) {
@@ -2860,10 +2872,11 @@
         );
         L.geoJSON(ordered, {
           pane: "hmsPane",
-          style: (feature) => hmsStyleFor(feature?.properties?.Density),
+          style: (feature) => hmsStyleFor(hmsDensity(feature)),
           onEachFeature: (feature, layer) => {
-            const density = feature?.properties?.Density || "Unknown";
-            layer.bindTooltip(`HMS observed smoke · ${density} density`, {
+            const tooltip = document.createElement("span");
+            tooltip.textContent = `HMS observed smoke · ${hmsDensity(feature)} density`;
+            layer.bindTooltip(tooltip, {
               sticky: true,
               direction: "top",
               opacity: 0.9
@@ -2876,18 +2889,28 @@
         if (Array.isArray(hmsFeatures)) return hmsFeatures;
         if (hmsLoadPromise) return hmsLoadPromise;
         setHmsStatus("loading", "Loading NOAA HMS smoke");
-        hmsLoadPromise = (async () => {
+        const controller = new AbortController();
+        const generation = ++hmsLoadGeneration;
+        hmsLoadController = controller;
+        const promise = (async () => {
           const features = await fetchGeojsonFeaturePages(HMS_SERVICE, {
             where: "1=1",
             outFields: "Density,Satellite,Start,End_",
             returnGeometry: true,
             outSR: 4326,
             geometryPrecision: 5
-          });
+          }, controller.signal);
           return features.filter((feature) => feature?.geometry);
         })();
+        hmsLoadPromise = promise;
         try {
-          hmsFeatures = await hmsLoadPromise;
+          const features = await promise;
+          if (generation !== hmsLoadGeneration) {
+            const stale = new Error("HMS smoke request superseded");
+            stale.name = "AbortError";
+            throw stale;
+          }
+          hmsFeatures = features;
           setHmsStatus(
             "ready",
             hmsFeatures.length
@@ -2895,11 +2918,16 @@
               : "No HMS smoke polygons in the latest analysis"
           );
         } catch (error) {
-          hmsFeatures = null;
-          setHmsStatus("error", "Could not load NOAA HMS smoke", true);
+          if (generation === hmsLoadGeneration) {
+            hmsFeatures = null;
+            if (error?.name !== "AbortError") {
+              setHmsStatus("error", "Could not load NOAA HMS smoke", true);
+            }
+          }
           throw error;
         } finally {
-          hmsLoadPromise = null;
+          if (hmsLoadController === controller) hmsLoadController = null;
+          if (hmsLoadPromise === promise) hmsLoadPromise = null;
         }
         return hmsFeatures;
       }
@@ -2917,6 +2945,10 @@
         hmsToggle.checked = visible;
         hmsOptions.hidden = !visible;
         if (!visible) {
+          hmsLoadGeneration += 1;
+          if (hmsLoadController) hmsLoadController.abort();
+          hmsLoadController = null;
+          hmsLoadPromise = null;
           hmsGroup.clearLayers();
           if (map.hasLayer(hmsGroup)) map.removeLayer(hmsGroup);
           syncHmsAttribution();
@@ -3008,9 +3040,10 @@
       }
 
       async function fetchArcgisFeaturePages(service, parameters, signal) {
+        const maximumPages = 100;
         const features = [];
         let offset = 0;
-        for (;;) {
+        for (let pageIndex = 0; pageIndex < maximumPages; pageIndex += 1) {
           const result = await fetchArcgis(service, {
             ...parameters,
             f: "json",
@@ -3019,8 +3052,14 @@
           }, signal);
           const page = Array.isArray(result.features) ? result.features : [];
           features.push(...page);
-          if (!result.exceededTransferLimit || page.length === 0) break;
+          if (!result.exceededTransferLimit) break;
+          if (page.length === 0) {
+            throw new Error("ArcGIS pagination stopped before all features were returned");
+          }
           offset += page.length;
+          if (pageIndex === maximumPages - 1) {
+            throw new Error("ArcGIS response exceeds the supported pagination limit");
+          }
         }
         return features;
       }
@@ -3112,7 +3151,6 @@
           category: null,
           polygonTime: null,
           active: false,
-          recent: false,
           pointRadius: null,
           pointColor: null,
           pointFeature: null,
@@ -3178,6 +3216,7 @@
 
       function rebuildFireEvents() {
         const events = new Map();
+        const complexMembers = new Map();
         const getRecord = (id) => {
           if (!events.has(id)) events.set(id, blankFireRecord(id));
           return events.get(id);
@@ -3205,8 +3244,14 @@
         events.forEach((record) => {
           record.pointRadius = firePointRadius(record.size);
           record.pointColor = activeFirePointColor(record.discovery, pointStyleTime);
+          const parentId = normalizeIrwinId(record.cpxId);
+          if (parentId) {
+            if (!complexMembers.has(parentId)) complexMembers.set(parentId, []);
+            complexMembers.get(parentId).push(record);
+          }
         });
         fireEvents = events;
+        fireComplexMembers = complexMembers;
       }
 
       function firePerimeterStyle(record, selected = false, hovered = false) {
@@ -3266,11 +3311,7 @@
       // In-memory scan only — never a request. CpxID on a member equals the
       // parent's IrwinID, which is also the parent record's normalized id.
       function complexMemberRecords(parentId) {
-        const members = [];
-        fireEvents.forEach((record) => {
-          if (record.cpxId && normalizeIrwinId(record.cpxId) === parentId) members.push(record);
-        });
-        return members;
+        return fireComplexMembers.get(parentId) || [];
       }
 
       // In-memory member point + perimeter geometry for a complex, used both to
@@ -3315,10 +3356,9 @@
         });
       }
 
-      // A complex is marked by a single diamond at its raw (often dispatch-
-      // center placeholder) CX point. Source is the mirrored CX list rows while
-      // mirroring, otherwise the live CX parents. Member WF fires are drawn as
-      // normal ignition circles by renderFireLayers; this only adds the diamond.
+      // A complex is marked by one diamond at its member-geometry center (with
+      // the raw CX point only as a last-resort fallback). Member WF fires remain
+      // normal ignition circles; this function only adds the parent diamond.
       function renderComplexMarkers() {
         fireComplexGroup.clearLayers();
         // The map always mirrors the loaded list, so the diamonds are exactly the
@@ -3483,9 +3523,10 @@
       // large seasons cannot be silently truncated at the transfer limit.
       async function fetchGeojsonFeaturePages(service, parameters, signal) {
         const pageSize = 2000;
+        const maximumPages = 100;
         const features = [];
         let offset = 0;
-        for (let page = 0; page < 20; page += 1) {
+        for (let page = 0; page < maximumPages; page += 1) {
           const result = await fetchArcgis(service, {
             ...parameters,
             f: "geojson",
@@ -3495,8 +3536,13 @@
           const batch = Array.isArray(result.features) ? result.features : [];
           features.push(...batch);
           if (batch.length < pageSize && !result.exceededTransferLimit) break;
-          if (batch.length === 0) break;
+          if (batch.length === 0) {
+            throw new Error("ArcGIS pagination stopped before all features were returned");
+          }
           offset += batch.length;
+          if (page === maximumPages - 1) {
+            throw new Error("ArcGIS response exceeds the supported pagination limit");
+          }
         }
         return features;
       }
@@ -3693,6 +3739,13 @@
           currentPerimeters.forEach((value, key) => firePerimeterCache.set(key, value));
           rebuildFireEvents();
           renderFireLayers();
+          // The map mirrors the list. Refresh the default list set on the same
+          // cycle so newly significant fires appear on their own. This applies
+          // after a partial geometry refresh too; otherwise a unified refresh
+          // that reset the list could leave the wildfire map empty.
+          if (fireFilterStateIsDefault() && !fireDatabaseController) {
+            loadFireDatabase(true);
+          }
           if (refreshPartial) {
             const imsrCount = [...fireEvents.values()].filter(isImsrGradeFire).length;
             setFireLayerStatus("error", `${imsrCount} significant · some perimeter data unavailable`);
@@ -3702,12 +3755,6 @@
           fireRefreshPartialResult = false;
           lastFireRefreshAt = Date.now();
           updateFireReadyStatus();
-          // The map mirrors the list. Refresh the default list set on the same
-          // cycle so newly significant fires appear on their own. Non-default
-          // (user-filtered) states keep the user's snapshot and pagination — only
-          // their geometry refreshes via renderFireLayers above. Skipped while a
-          // list load is already in flight (e.g. the startup load).
-          if (fireFilterStateIsDefault() && !fireDatabaseController) loadFireDatabase(true);
           return true;
         } catch (error) {
           if (!controller.signal.aborted) controller.abort();
@@ -3834,17 +3881,16 @@
       function openFirePopup(record, latlng, selected = false) {
         if (!record || !latlng) return;
         // Update in place only when the matching selection popup is still open.
-        // After a popup is dismissed with its close button, Leaflet leaves
-        // `map._popup` pointing at the now-removed popup, so without the
-        // isOpen() guard a repeat selection (e.g. re-clicking a complex diamond)
-        // would setContent() on a dead popup and never reopen it.
+        // Track the active popup through public popupopen/popupclose events
+        // because an internal reference may retain a dismissed popup.
+        const metadata = popupMetadata.get(activePopup);
         if (
           selected &&
-          map._popup?._pmFireSelection &&
-          map._popup?._pmFireId === record.id &&
-          map._popup?.isOpen?.()
+          metadata?.selection &&
+          metadata.id === record.id &&
+          activePopup?.isOpen?.()
         ) {
-          map._popup
+          activePopup
             .setLatLng(latlng)
             .setContent(buildFirePopup(record));
           return;
@@ -3857,9 +3903,7 @@
         })
           .setLatLng(latlng)
           .setContent(buildFirePopup(record));
-        popup._pmFirePopup = true;
-        popup._pmFireSelection = selected;
-        popup._pmFireId = record.id;
+        popupMetadata.set(popup, { fire: true, selection: selected, id: record.id });
         popup.openOn(map);
       }
 
@@ -3875,7 +3919,6 @@
         // actively reporting complex would badge a misleading "Not current".
         const isCurrentComplex = record.category === "CX" && currentComplexIds.has(record.id);
         record.active = currentMember || Boolean(liveRecord?.active) || isCurrentComplex;
-        record.recent = Boolean(liveRecord?.recent);
         return record;
       }
 
@@ -4197,21 +4240,24 @@
       // Count-only companion query for the current filter, so the status can read
       // "50 of 214". Cached per service+where; failures leave the total null and
       // the status simply omits the "of N" clause.
-      async function loadFireDatabaseTotal(service, where, generation, signal) {
+      async function loadFireDatabaseTotal(service, where, generation) {
         const cacheKey = `${service}|${where}`;
         const cached = fireDatabaseTotalCache.get(cacheKey);
         if (cached !== undefined) {
-          if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+          if (generation === fireDatabaseGeneration) {
             fireDatabaseTotal = cached;
             renderFireListStatus();
           }
           return;
         }
+        if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
+        const controller = new AbortController();
+        fireDatabaseTotalController = controller;
         try {
           const result = await fetchArcgis(
             service,
             { f: "json", where, returnCountOnly: true },
-            signal,
+            controller.signal,
             { maxAttempts: 2, cacheMode: "default" }
           );
           const count = Number(result?.count);
@@ -4220,17 +4266,43 @@
             fireDatabaseTotalCache.delete(fireDatabaseTotalCache.keys().next().value);
           }
           fireDatabaseTotalCache.set(cacheKey, count);
-          if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+          if (generation === fireDatabaseGeneration) {
             fireDatabaseTotal = count;
             renderFireListStatus();
           }
         } catch {
           /* No total available; renderFireListStatus keeps the plain "N shown". */
+        } finally {
+          if (fireDatabaseTotalController === controller) {
+            fireDatabaseTotalController = null;
+          }
         }
+      }
+
+      function resumeFireDatabaseTotalIfNeeded() {
+        if (
+          fireDrawer.hidden ||
+          fireDatabaseTotalController ||
+          fireDatabaseTotal !== null ||
+          !fireDatabaseHasMore ||
+          !fireList.childElementCount ||
+          fireDatabaseLastUsedStored ||
+          fireDatabaseFilter === "notcurrent"
+        ) return;
+        const currentMembersOnly = fireDatabaseFilter === "active";
+        loadFireDatabaseTotal(
+          currentMembersOnly
+            ? FIRE_SERVICES.currentLocations
+            : FIRE_SERVICES.ytdLocations,
+          fireDatabaseWhere(currentMembersOnly),
+          fireDatabaseGeneration
+        );
       }
 
       async function loadFireDatabase(reset = false) {
         if (reset) {
+          if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
+          fireDatabaseTotalController = null;
           fireDatabaseOffset = 0;
           fireDatabaseHasMore = true;
           fireDatabaseNeedsReset = true;
@@ -4329,15 +4401,19 @@
           }
           const visible = features.slice(0, pageSize);
           visible.forEach((feature) => {
+            const preview = fireRecordFromPointFeature(feature, currentMembersOnly);
             // "Not current" is the one status the SQL cannot fully express — it
             // means "no closure dates AND not in the live/current service", and
             // current membership is not a Year-to-Date field. The query narrows
             // to no-closure records; here we keep only the ones the app actually
             // badges "Not current" (dropping any that are currently active).
-            if (fireDatabaseFilter === "notcurrent") {
-              const preview = fireRecordFromPointFeature(feature, currentMembersOnly);
-              if (fireStatus(preview) !== "Not current") return;
-            }
+            if (
+              fireDatabaseFilter === "notcurrent" &&
+              fireStatus(preview) !== "Not current"
+            ) return;
+            // ArcGIS paging can repeat a boundary record while the live service
+            // is changing. Keep the drawer and fireMirrorRecords one-to-one.
+            if (fireMirrorRecords.has(preview.id)) return;
             const record = appendFireDatabaseRow(feature, currentMembersOnly);
             fireMirrorRecords.set(record.id, record);
           });
@@ -4360,7 +4436,7 @@
             fireDatabaseHasMore &&
             fireDatabaseFilter !== "notcurrent"
           ) {
-            loadFireDatabaseTotal(requestService, requestWhere, generation, controller.signal);
+            loadFireDatabaseTotal(requestService, requestWhere, generation);
           }
           updateFireMirrorState();
         } catch (error) {
@@ -4390,6 +4466,8 @@
         firesButton.setAttribute("aria-expanded", "true");
         if (!fireList.childElementCount || fireDatabaseNeedsReset) {
           loadFireDatabase(fireDatabaseNeedsReset || !fireList.childElementCount);
+        } else {
+          resumeFireDatabaseTotalIfNeeded();
         }
         window.requestAnimationFrame(() => fireSearch.focus({ preventScroll: true }));
       }
@@ -4404,6 +4482,8 @@
         }
         if (fireDatabaseController) fireDatabaseController.abort();
         fireDatabaseController = null;
+        if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
+        fireDatabaseTotalController = null;
         abortComplexMemberLoads();
         if (restoreFocus) firesButton.focus({ preventScroll: true });
       }
@@ -4414,7 +4494,6 @@
         record.rawIrwinId = pointRecord.rawIrwinId;
         record.pointFeature = pointRecord.pointFeature || liveRecord?.pointFeature || null;
         record.active = pointRecord.active || liveRecord?.active || false;
-        record.recent = pointRecord.recent || liveRecord?.recent || false;
         mergeFireAttributes(record, pointRecord);
         if (liveRecord) mergeFireAttributes(record, liveRecord);
         record.perimeterFeatures = perimeterFeatures.length
@@ -4452,14 +4531,14 @@
       }
 
       function clearFireSelection(closePopup = false) {
-        const popup = map._popup;
+        const popup = activePopup;
         selectedFireRecord = null;
         mapElement.classList.remove("pm-fire-hover");
         fireSelectionGroup.clearLayers();
         if (map.hasLayer(fireSelectionGroup)) map.removeLayer(fireSelectionGroup);
         syncFireAttribution();
         updateMapAccessibleName();
-        if (closePopup && popup?._pmFireSelection) map.closePopup(popup);
+        if (closePopup && popupMetadata.get(popup)?.selection) map.closePopup(popup);
       }
 
       function renderFireSelection(record) {
@@ -4675,7 +4754,7 @@
         if (canvas) canvas.style.display = visible ? "" : "none";
         if (!visible) {
           stopPlayback();
-          if (!map._popup?._pmFirePopup) map.closePopup();
+          if (!popupMetadata.get(activePopup)?.fire) map.closePopup();
         }
         updateMapAccessibleName();
       }
@@ -4697,6 +4776,13 @@
         wildfireOptions.hidden = !visible;
         if (visible) {
           syncLiveFireLayerOrder();
+          // Turning the layer off from a filtered view deliberately restores
+          // the default All + IMSR state. Rebuild that list-backed map set even
+          // when the live geometry is still inside its five-minute freshness
+          // window; otherwise the layer can return empty until the next refresh.
+          if (fireDatabaseNeedsReset && !fireDatabaseController) {
+            loadFireDatabase(true);
+          }
           if (!lastFireRefreshAt || Date.now() - lastFireRefreshAt >= FIRE_REFRESH_MS) {
             refreshWildfires({ force: true });
           }
@@ -4713,7 +4799,7 @@
           if (map.hasLayer(firePerimeterGroup)) map.removeLayer(firePerimeterGroup);
           if (map.hasLayer(fireIgnitionGroup)) map.removeLayer(fireIgnitionGroup);
           if (map.hasLayer(fireComplexGroup)) map.removeLayer(fireComplexGroup);
-          if (map._popup?._pmFirePopup) map.closePopup();
+          if (popupMetadata.get(activePopup)?.fire) map.closePopup();
           clearFireSelection();
         }
         syncFireAttribution();
@@ -4886,7 +4972,7 @@
             .filter((hour) => Number.isInteger(hour))
         );
         const alignedNow = new Date(
-          Math.round(clientNow.getTime() / HOUR) * HOUR
+          Math.floor(clientNow.getTime() / HOUR) * HOUR
         );
         const hourOffset = Math.round(
           (alignedNow.getTime() - manifestNow.getTime()) / HOUR
@@ -4918,7 +5004,6 @@
       function applyManifestTimeline(manifest, clientNow = new Date()) {
         activeTimelineManifest = null;
         activeTimelineWindow = null;
-        manifestHourOffset = 0;
         cacheUpdateDelayHours = 0;
         const window = manifestTimelineWindow(manifest, clientNow);
         if (!window) return false;
@@ -4928,7 +5013,6 @@
         currentIndex = window.currentIndex;
         minimumHour = window.minimumHour;
         maximumHour = window.maximumHour;
-        manifestHourOffset = window.hourOffset;
         cacheUpdateDelayHours = window.updateDelayHours;
         activeTimelineManifest = manifest;
         activeTimelineWindow = window;
@@ -4998,53 +5082,7 @@
         return `${WMS}?${params.toString()}`;
       }
 
-      function sourcePosition(red, green, blue) {
-        let bestDistance = Infinity;
-        let bestPosition = 0;
-        for (let index = 0; index < SOURCE_COLORS.length - 1; index += 1) {
-          const start = SOURCE_COLORS[index];
-          const end = SOURCE_COLORS[index + 1];
-          const dr = end[1] - start[1];
-          const dg = end[2] - start[2];
-          const db = end[3] - start[3];
-          const lengthSquared = dr * dr + dg * dg + db * db;
-          const projection = (
-            (red - start[1]) * dr +
-            (green - start[2]) * dg +
-            (blue - start[3]) * db
-          ) / lengthSquared;
-          const amount = Math.max(0, Math.min(1, projection));
-          const rr = start[1] + dr * amount;
-          const gg = start[2] + dg * amount;
-          const bb = start[3] + db * amount;
-          const distance = (red - rr) ** 2 + (green - gg) ** 2 + (blue - bb) ** 2;
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            bestPosition = start[0] + (end[0] - start[0]) * amount;
-          }
-        }
-        return bestPosition;
-      }
-
-      function paletteColor(position, particleType) {
-        const colors = COLOR_RAMPS[particleType];
-        for (let index = 0; index < colors.length - 1; index += 1) {
-          const start = colors[index];
-          const end = colors[index + 1];
-          if (position > end[0]) continue;
-          const amount = Math.max(0, Math.min(1, (position - start[0]) / (end[0] - start[0])));
-          return [
-            Math.round(start[1] + (end[1] - start[1]) * amount),
-            Math.round(start[2] + (end[2] - start[2]) * amount),
-            Math.round(start[3] + (end[3] - start[3]) * amount),
-            start[4] + (end[4] - start[4]) * amount
-          ];
-        }
-        return colors[colors.length - 1].slice(1);
-      }
-
-      function palettePosition(red, green, blue, particleType) {
-        const colors = COLOR_RAMPS[particleType];
+      function nearestRampPosition(colors, red, green, blue) {
         let bestDistance = Infinity;
         let bestPosition = 0;
         for (let index = 0; index < colors.length - 1; index += 1) {
@@ -5070,6 +5108,31 @@
           }
         }
         return bestPosition;
+      }
+
+      function sourcePosition(red, green, blue) {
+        return nearestRampPosition(SOURCE_COLORS, red, green, blue);
+      }
+
+      function paletteColor(position, particleType) {
+        const colors = COLOR_RAMPS[particleType];
+        for (let index = 0; index < colors.length - 1; index += 1) {
+          const start = colors[index];
+          const end = colors[index + 1];
+          if (position > end[0]) continue;
+          const amount = Math.max(0, Math.min(1, (position - start[0]) / (end[0] - start[0])));
+          return [
+            Math.round(start[1] + (end[1] - start[1]) * amount),
+            Math.round(start[2] + (end[2] - start[2]) * amount),
+            Math.round(start[3] + (end[3] - start[3]) * amount),
+            start[4] + (end[4] - start[4]) * amount
+          ];
+        }
+        return colors[colors.length - 1].slice(1);
+      }
+
+      function palettePosition(red, green, blue, particleType) {
+        return nearestRampPosition(COLOR_RAMPS[particleType], red, green, blue);
       }
 
       function concentrationAtPosition(position, scale) {
@@ -5142,6 +5205,9 @@
             if (settled) return;
             settled = true;
             window.clearTimeout(timeout);
+            image.onload = null;
+            image.onerror = null;
+            if (!ok) image.removeAttribute("src");
             if (ok) resolve(image);
             else reject(new Error("Unable to load map image"));
           }
@@ -5554,6 +5620,7 @@
           return existing.promise;
         }
 
+        const generation = previewGeneration;
         const entry = { value: null, promise: null };
         entry.promise = cacheManifestPromise.then((manifest) => {
           if (
@@ -5567,16 +5634,26 @@
             { priorityHour: selectedHour, showFirstPack: true }
           );
         }).then((value) => {
+          if (
+            generation !== previewGeneration ||
+            previewCache.get(datasetName) !== entry
+          ) {
+            releasePreviewDataset(value);
+            return null;
+          }
           entry.value = value;
           while (previewCache.size > 1) {
             const oldestKey = previewCache.keys().next().value;
-            releasePreviewDataset(previewCache.get(oldestKey)?.value);
+            const oldestEntry = previewCache.get(oldestKey);
             previewCache.delete(oldestKey);
+            releasePreviewDataset(oldestEntry?.value);
           }
           return value;
         }).catch(() => {
           releasePreviewDataset(entry.value);
-          previewCache.delete(datasetName);
+          if (previewCache.get(datasetName) === entry) {
+            previewCache.delete(datasetName);
+          }
           return null;
         });
         touchCache(previewCache, datasetName, entry);
@@ -5706,6 +5783,7 @@
       }
 
       function clearSmoothTimelineCache() {
+        previewGeneration += 1;
         previewCache.forEach((entry) => {
           releasePreviewDataset(entry.value);
         });
@@ -6654,7 +6732,6 @@
 
       function setCacheRefreshState(
         state = "idle",
-        label = "Update",
         message = "Refresh smoke and wildfire data",
         resetDelay = 0
       ) {
@@ -6914,7 +6991,7 @@
       async function playbackLoop(generation) {
         while (playing && generation === playbackGeneration) {
           const nextHour = selectedHour >= maximumHour ? 0 : Math.floor(selectedHour) + 1;
-          const ok = await showFrame(nextHour, { prime: true, quiet: true });
+          const ok = await showFrame(nextHour, { prime: true });
           if (!ok || !playing || generation !== playbackGeneration) break;
           if (reducedMotion) await delay(1400);
           else await nextAnimationFrame();
@@ -6967,7 +7044,6 @@
         if (!options.combined) {
           setCacheRefreshState(
             "loading",
-            "Checking",
             "Checking for a newer forecast cache"
           );
         }
@@ -7018,7 +7094,6 @@
             if (!options.combined) {
               setCacheRefreshState(
                 "success",
-                "Current",
                 "Already using the latest forecast cache",
                 2600
               );
@@ -7062,16 +7137,55 @@
               throw new Error("Smooth forecast timeline unavailable");
             }
             // Degraded direct-GeoMet clients still get a refreshed current
-            // frame from the unified refresh instead of a guaranteed failure.
-            rawCache.clear();
-            processedCache.clear();
-            scrubPairKey = "";
-            const degradedReady = await showFrame(selectedHour, {
-              prime: true,
-              quiet: true
-            });
-            if (!degradedReady) {
-              throw new Error("Forecast frame unavailable");
+            // frame from the unified refresh. Install the newly fetched manifest
+            // and timeline first so this path cannot report success while still
+            // using stale descriptor times.
+            const degradedRollback = {
+              activeTimelineManifest,
+              activeTimelineWindow,
+              cacheUpdateDelayHours,
+              referenceTime,
+              currentValidTime,
+              currentIndex,
+              minimumHour,
+              maximumHour,
+              selectedHour,
+              cacheManifestPromise
+            };
+            try {
+              if (!applyManifestTimeline(nextManifest, checkNow)) {
+                throw new Error("Updated forecast timeline unavailable");
+              }
+              cacheManifestPromise = Promise.resolve(nextManifest);
+              selectedHour = Math.max(
+                minimumHour,
+                Math.min(maximumHour, nextSelectedHour)
+              );
+              slider.min = String(minimumHour);
+              slider.max = String(maximumHour);
+              slider.value = String(selectedHour);
+              updateRangeLabels();
+              rawCache.clear();
+              processedCache.clear();
+              scrubPairKey = "";
+              const degradedReady = await showFrame(selectedHour, { prime: true });
+              if (!degradedReady) throw new Error("Forecast frame unavailable");
+            } catch (error) {
+              activeTimelineManifest = degradedRollback.activeTimelineManifest;
+              activeTimelineWindow = degradedRollback.activeTimelineWindow;
+              cacheUpdateDelayHours = degradedRollback.cacheUpdateDelayHours;
+              referenceTime = degradedRollback.referenceTime;
+              currentValidTime = degradedRollback.currentValidTime;
+              currentIndex = degradedRollback.currentIndex;
+              minimumHour = degradedRollback.minimumHour;
+              maximumHour = degradedRollback.maximumHour;
+              selectedHour = degradedRollback.selectedHour;
+              cacheManifestPromise = degradedRollback.cacheManifestPromise;
+              slider.min = String(minimumHour);
+              slider.max = String(maximumHour);
+              slider.value = String(selectedHour);
+              updateRangeLabels();
+              throw error;
             }
             updateLegend();
             updateLabels(selectedHour, false);
@@ -7108,7 +7222,6 @@
           rollbackState = {
             activeTimelineManifest,
             activeTimelineWindow,
-            manifestHourOffset,
             cacheUpdateDelayHours,
             referenceTime,
             currentValidTime,
@@ -7159,7 +7272,6 @@
           if (!options.combined) {
             setCacheRefreshState(
               "success",
-              cacheChanged ? "Updated" : "Current",
               cacheChanged
                 ? "Forecast cache updated"
                 : "Forecast cache is current and Now was realigned",
@@ -7181,7 +7293,6 @@
             const failedEntry = previewCache.get(refreshDatasetName);
             activeTimelineManifest = rollbackState.activeTimelineManifest;
             activeTimelineWindow = rollbackState.activeTimelineWindow;
-            manifestHourOffset = rollbackState.manifestHourOffset;
             cacheUpdateDelayHours = rollbackState.cacheUpdateDelayHours;
             referenceTime = rollbackState.referenceTime;
             currentValidTime = rollbackState.currentValidTime;
@@ -7223,7 +7334,6 @@
           if (!options.combined) {
             setCacheRefreshState(
               "error",
-              "Retry",
               "Cache update unavailable; current map retained",
               options.automatic === true ? 2600 : 3600
             );
@@ -7266,6 +7376,8 @@
         fireSearchTimer = 0;
         if (fireDatabaseController) fireDatabaseController.abort();
         fireDatabaseController = null;
+        if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
+        fireDatabaseTotalController = null;
         fireDatabaseGeneration += 1;
         fireDatabaseOffset = 0;
         fireDatabaseHasMore = true;
@@ -7342,7 +7454,6 @@
         updateControlAvailability();
         setCacheRefreshState(
           "loading",
-          "Refreshing",
           "Refreshing smoke and wildfire data"
         );
 
@@ -7376,7 +7487,6 @@
           const eitherReady = smokeReady || wildfiresReady || fireRefreshPartialResult;
           setCacheRefreshState(
             bothReady ? "success" : (eitherReady ? "partial" : "error"),
-            bothReady ? "Updated" : (eitherReady ? "Partial" : "Retry"),
             bothReady
               ? "Smoke and wildfire data refreshed"
               : (eitherReady
@@ -7388,7 +7498,6 @@
         } catch {
           setCacheRefreshState(
             "error",
-            "Retry",
             "Refresh unavailable; current map retained",
             3600
           );
@@ -7428,7 +7537,7 @@
           : null;
         if (change !== datasetGeneration) return;
         scrubPairKey = "";
-        const ok = await showFrame(selectedHour, { prime: true, quiet: true });
+        const ok = await showFrame(selectedHour, { prime: true });
         timelineInteractionLocked = !(
           ok &&
           smoothTimeline &&
@@ -7553,8 +7662,12 @@
         });
       });
 
+      map.on("popupopen", (event) => {
+        activePopup = event.popup || null;
+      });
       map.on("popupclose", (event) => {
-        if (event.popup?._pmFireSelection && selectedFireRecord) clearFireSelection();
+        if (activePopup === event.popup) activePopup = null;
+        if (popupMetadata.get(event.popup)?.selection && selectedFireRecord) clearFireSelection();
       });
       map.on("zoomend", refreshFirePointZoomStyles);
 
@@ -7615,22 +7728,22 @@
         slider.value = String(target);
         selectedHour = target;
         stopPlayback();
-        showFrame(target, { prime: true, quiet: true });
+        showFrame(target, { prime: true });
       });
 
       prevButton.addEventListener("click", () => {
         stopPlayback();
-        showFrame(selectedHour - 1, { prime: true, quiet: true });
+        showFrame(selectedHour - 1, { prime: true });
       });
 
       nextButton.addEventListener("click", () => {
         stopPlayback();
-        showFrame(selectedHour + 1, { prime: true, quiet: true });
+        showFrame(selectedHour + 1, { prime: true });
       });
 
       resetButton.addEventListener("click", () => {
         stopPlayback();
-        showFrame(0, { prime: true, quiet: true });
+        showFrame(0, { prime: true });
       });
 
       playButton.addEventListener("click", () => {
@@ -7667,6 +7780,7 @@
       window.addEventListener("pageshow", () => {
         checkCacheAfterResume();
         checkWildfiresAfterResume();
+        resumeFireDatabaseTotalIfNeeded();
       });
       fireRefreshTimer = window.setInterval(checkWildfiresAfterResume, FIRE_REFRESH_MS);
       // A continuously visible tab (kiosk use) never fires visibility events,
@@ -7828,6 +7942,11 @@
           fireDatabaseLoadGeneration += 1;
           fireDatabaseController.abort();
         }
+        if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
+        if (hmsLoadController) {
+          hmsLoadGeneration += 1;
+          hmsLoadController.abort();
+        }
         if (renderLayer) renderLayer.finishTransition();
       });
 
@@ -7857,7 +7976,7 @@
         if (!fieldRenderingFailed && renderLayer.supportsFieldRendering()) {
           smoothTimeline = await loadPreviewDataset();
         }
-        const ready = await showFrame(0, { prime: true, quiet: true });
+        const ready = await showFrame(0, { prime: true });
         timelineInteractionLocked = !(
           ready &&
           smoothTimeline &&

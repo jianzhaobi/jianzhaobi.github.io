@@ -35,6 +35,9 @@ jobs:
       - name: Install cache build dependencies
         run: python -m pip install --disable-pip-version-check boto3 numpy pillow
 
+      - name: Run smoke-map regression checks
+        run: python na_smoke_map/scripts/test_static_contracts.py
+
       - name: Select model-cycle cache key
         id: model-cycle
         run: |
@@ -53,12 +56,15 @@ jobs:
             ./ _site/
 
       - name: Restore rolling frame cache
-        id: restore-cache
         uses: actions/cache/restore@v4
         with:
           path: _frame-cache
-          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}
+          # A per-run key keeps the rolling source cache appendable. The exact
+          # model-cycle key was immutable after its first save, so later hourly
+          # runs restored it but could never persist newly downloaded history.
+          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-${{ github.run_id }}
           restore-keys: |
+            raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-
             raqdps-v5-
 
       - name: Build same-origin PM2.5 frame cache
@@ -122,11 +128,10 @@ jobs:
           fi
 
       - name: Save rolling frame cache
-        if: ${{ steps.restore-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: _frame-cache
-          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}
+          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-${{ github.run_id }}
 
       - name: Remove superseded rolling caches
         env:
