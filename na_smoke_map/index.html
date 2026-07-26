@@ -3113,7 +3113,10 @@
           marker.on("click", (event) => {
             L.DomEvent.stop(event);
             if (event.originalEvent) event.originalEvent._pmFireHandled = true;
-            zoomToComplex(record);
+            // Map clicks inspect in place (like ignition dots and perimeters):
+            // open a popup without reframing. Rescaling to a complex is reserved
+            // for the list-row header (zoomToComplex).
+            openFirePopup(record, latlng);
           });
           marker.addTo(fireComplexGroup);
         });
