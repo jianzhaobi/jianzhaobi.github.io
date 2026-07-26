@@ -1804,9 +1804,9 @@
           <button type="button" class="pm-fire-filter" data-fire-status="contained" aria-pressed="false">Contained</button>
           <button type="button" class="pm-fire-filter" data-fire-status="controlled" aria-pressed="false">Controlled</button>
           <button type="button" class="pm-fire-filter" data-fire-status="out" aria-pressed="false">Out</button>
-          <button type="button" class="pm-fire-filter" data-fire-status="notcurrent" aria-pressed="false" title="No longer in the live/current WFIGS service and without a containment, control, or out date (includes fires still filing ICS-209 updates that have dropped out of the current feed)">Not current</button>
+          <button type="button" class="pm-fire-filter" data-fire-status="notcurrent" aria-pressed="false" title="No official end date, but either absent from the live/current WFIGS service or carrying a final ICS-209 report">Not current</button>
           <span class="pm-fire-filter-break" aria-hidden="true"></span>
-          <button type="button" class="pm-fire-filter pm-fire-imsr-filter" id="pm-fire-imsr-filter" aria-pressed="true" title="Fires with ongoing ICS-209 incident reporting that are not fully contained; shows every match rather than the first 50">IMSR</button>
+          <button type="button" class="pm-fire-filter pm-fire-imsr-filter" id="pm-fire-imsr-filter" aria-pressed="true" title="Fires with ongoing ICS-209 incident reporting, below 100% containment, and no official containment, control, or out date; shows every match">IMSR</button>
           <button type="button" class="pm-fire-filter pm-fire-large-filter" id="pm-fire-large-filter" aria-pressed="false">Large · 300+ acres</button>
         </div>
         <div class="pm-fire-database-status" id="pm-fire-database-status" role="status" aria-live="polite">Open the database to load fires.</div>
@@ -1964,12 +1964,21 @@
       // IMSR is a bounded, curated set (tens to low hundreds nationwide), so it is
       // safe to load and show every match in one request instead of paginating.
       const FIRE_IMSR_PAGE_SIZE = 1000;
+      // Not-current membership is resolved client-side against the Current view.
+      // Scan a larger point-only candidate window so one visible page does not
+      // require several serial 50-row requests before any result can be shown.
+      const FIRE_NOT_CURRENT_SCAN_SIZE = 500;
+      const FIRE_ARCGIS_BATCH_CONCURRENCY = 2;
+      const FIRE_PERIMETER_BATCH_SIZE = 500;
       const FIRE_LARGE_ACRES = 300;
       const FIRE_DATABASE_CACHE_MS = 5 * 60 * 1000;
       const FIRE_DATABASE_CACHE_LIMIT = 24;
+      const FIRE_DATABASE_GEOMETRY_CACHE_LIMIT = 1500;
+      const FIRE_DATABASE_COMPLEX_CACHE_LIMIT = 100;
       const FIRE_DATABASE_STALE_MS = 24 * HOUR;
       const FIRE_DATABASE_STORAGE_LIMIT = 12;
       const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v3";
+      const FIRE_LIST_BASE_WHERE = "((IncidentTypeCategory='WF' AND (IsCpxChild = 0 OR IsCpxChild IS NULL)) OR IncidentTypeCategory='CX')";
       const FIRE_POINT_FIELDS = [
         "OBJECTID", "IrwinID", "IncidentName", "FireDiscoveryDateTime",
         "IncidentSize", "PercentContained", "ContainmentDateTime",
@@ -1985,6 +1994,11 @@
         "attr_ControlDateTime", "attr_FireOutDateTime",
         "attr_ModifiedOnDateTime_dt", "attr_IncidentTypeCategory",
         "poly_GISAcres", "poly_PolygonDateTime"
+      ].join(",");
+      const FIRE_PERIMETER_FILTER_FIELDS = [
+        "OBJECTID", "attr_IrwinID", "attr_IncidentSize", "attr_PercentContained",
+        "attr_ContainmentDateTime", "attr_ControlDateTime",
+        "attr_FireOutDateTime"
       ].join(",");
       const DATA_OPACITY = 0.9;
       const PLAYBACK_FADE_MS = 900;
@@ -2194,6 +2208,8 @@
       let fireDatabaseOffset = 0;
       let fireDatabaseCurrentOnlyIndex = 0;
       let fireDatabaseCurrentOnlyFeatures = [];
+      let fireDatabaseBufferedRecords = [];
+      let fireDatabaseSourceExhausted = false;
       let fireDatabaseHasMore = true;
       // Default view is All + IMSR: the drawer opens on every IMSR-grade fire and
       // the map shows the same canonical Current + YTD set.
@@ -2222,6 +2238,13 @@
       let currentComplexIds = new Set();
       const firePerimeterCache = new Map();
       const fireDatabasePageCache = new Map();
+      // Per-record canonical perimeter results, including known-empty results.
+      // Reusing them within the same five-minute freshness window avoids
+      // downloading identical polygons on every filter/sort change.
+      const fireDatabasePerimeterCache = new Map();
+      const fireDatabasePerimeterAttributeCache = new Map();
+      const fireDatabaseComplexMemberCache = new Map();
+      const fireDatabaseMembershipCache = new Map();
       // The map ALWAYS mirrors the loaded list (fireMirrorRecords is the single
       // source of what is drawn). fireMirrorActive no longer gates rendering; it
       // now only marks a non-default (filtered) view for the banner, the layer
@@ -2990,8 +3013,17 @@
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           try {
             const requestUrl = arcgisQueryUrl(service, parameters);
-            const response = await fetch(requestUrl, {
+            // ArcGIS accepts form-encoded POST queries. Switch before a GET URL
+            // grows large enough for the services3 front end to return an HTML
+            // 404, allowing larger IrwinID batches with fewer round trips.
+            const usePost = requestUrl.href.length > 1800;
+            const response = await fetch(usePost ? `${service}/query` : requestUrl, {
               cache: options.cacheMode || "no-store",
+              method: usePost ? "POST" : "GET",
+              headers: usePost
+                ? { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }
+                : undefined,
+              body: usePost ? requestUrl.searchParams.toString() : undefined,
               signal
             });
             if (!response.ok) {
@@ -3039,6 +3071,24 @@
           }
         }
         throw lastError || new Error("WFIGS request failed");
+      }
+
+      async function mapWithConcurrency(items, limit, callback) {
+        if (!items.length) return [];
+        const results = new Array(items.length);
+        let nextIndex = 0;
+        const workers = Array.from(
+          { length: Math.min(Math.max(1, limit), items.length) },
+          async () => {
+            while (nextIndex < items.length) {
+              const index = nextIndex;
+              nextIndex += 1;
+              results[index] = await callback(items[index], index);
+            }
+          }
+        );
+        await Promise.all(workers);
+        return results;
       }
 
       async function fetchArcgisFeaturePages(service, parameters, signal) {
@@ -3210,13 +3260,32 @@
       }
 
       // Client-side twin of the IMSR SQL clause in fireDatabaseWhere():
-      // an ongoing ICS-209 filing (Update/Initial) that is not fully contained.
+      // an ongoing ICS-209 filing (Update/Initial) that is not fully contained
+      // and has no authoritative containment/control/out date.
       // reportedFireNumber() returns null for missing containment, which counts
       // as "not fully contained" — never coerce null to 0.
       function isImsrGradeFire(record) {
         const contained = reportedFireNumber(record.percentContained);
         return (record.reportStatus === "U" || record.reportStatus === "I") &&
-          (contained === null || contained < 100);
+          (contained === null || contained < 100) &&
+          !(record.containment || record.control || record.out);
+      }
+
+      function fireMatchesDatabaseStatus(record, filter = fireDatabaseFilter) {
+        if (filter === "all") return true;
+        const expected = {
+          active: "Active",
+          contained: "Contained",
+          controlled: "Controlled",
+          out: "Out",
+          notcurrent: "Not current"
+        }[filter];
+        return expected ? fireStatus(record) === expected : true;
+      }
+
+      function fireMatchesDatabaseFilters(record) {
+        return fireMatchesDatabaseStatus(record) &&
+          (!fireDatabaseImsrOnly || isImsrGradeFire(record));
       }
 
       function rebuildFireEvents() {
@@ -3920,13 +3989,19 @@
       function fireDatabaseWhere(currentMembersOnly = false) {
         // Complex roll-up: one list row per complex — CX parents in, WF
         // children (IsCpxChild=1) out. The live map layers stay WF-only.
-        const clauses = ["((IncidentTypeCategory='WF' AND (IsCpxChild = 0 OR IsCpxChild IS NULL)) OR IncidentTypeCategory='CX')"];
+        const clauses = [FIRE_LIST_BASE_WHERE];
         const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
         if (search) clauses.push(`IncidentName LIKE '%${sqlString(search)}%'`);
         if (fireDatabaseLargeOnly) clauses.push(`IncidentSize >= ${FIRE_LARGE_ACRES}`);
         if (fireDatabaseImsrOnly) {
           // Client-side twin: isImsrGradeFire(). Keep the two in sync.
-          clauses.push("ICS209ReportStatus IN ('U','I') AND (PercentContained < 100 OR PercentContained IS NULL)");
+          clauses.push(
+            "ICS209ReportStatus IN ('U','I')" +
+            " AND (PercentContained < 100 OR PercentContained IS NULL)" +
+            " AND ContainmentDateTime IS NULL" +
+            " AND ControlDateTime IS NULL" +
+            " AND FireOutDateTime IS NULL"
+          );
         }
         if (currentMembersOnly) clauses.push("(ICS209ReportStatus IS NULL OR ICS209ReportStatus <> 'F')");
         if (fireDatabaseFilter === "contained") {
@@ -3945,6 +4020,31 @@
           clauses.push("ContainmentDateTime IS NULL AND ControlDateTime IS NULL AND FireOutDateTime IS NULL");
         }
         return clauses.join(" AND ");
+      }
+
+      function fireFeatureMatchesDatabaseModifiers(feature) {
+        const properties = feature.properties || {};
+        const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
+        if (
+          search &&
+          !String(properties.IncidentName || "")
+            .toLowerCase()
+            .includes(search.toLowerCase())
+        ) {
+          return false;
+        }
+        if (
+          fireDatabaseLargeOnly &&
+          (reportedFireNumber(properties.IncidentSize) ?? Number.NEGATIVE_INFINITY) <
+            FIRE_LARGE_ACRES
+        ) {
+          return false;
+        }
+        if (fireDatabaseImsrOnly) {
+          const record = fireRecordFromPointFeature(feature, true, "current");
+          if (!isImsrGradeFire(record)) return false;
+        }
+        return true;
       }
 
       // Shared row markup for a standalone fire, a hydrated complex member, and
@@ -4097,41 +4197,58 @@
           .map((record) => String(record.rawIrwinId || "").trim())
           .filter(Boolean))];
         const members = new Set();
-        for (let index = 0; index < ids.length; index += 20) {
-          const batch = ids.slice(index, index + 20);
-          const result = await fetchArcgis(service, {
+        const batches = [];
+        for (let index = 0; index < ids.length; index += FIRE_PERIMETER_BATCH_SIZE) {
+          batches.push(ids.slice(index, index + FIRE_PERIMETER_BATCH_SIZE));
+        }
+        const results = await mapWithConcurrency(
+          batches,
+          FIRE_ARCGIS_BATCH_CONCURRENCY,
+          (batch) => fetchArcgis(service, {
             f: "json",
             where: `IrwinID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
             outFields: "IrwinID",
             returnGeometry: false,
             resultRecordCount: batch.length
-          }, signal);
+          }, signal)
+        );
+        results.forEach((result) => {
           (result.features || []).forEach((feature) => {
             const id = normalizeIrwinId(feature.attributes?.IrwinID);
             if (id) members.add(id);
           });
-        }
+        });
         return members;
+      }
+
+      async function fetchServiceObjectIds(service, signal) {
+        const cached = fireDatabaseMembershipCache.get(service);
+        if (cached && Date.now() - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
+          return cached.objectIds;
+        }
+        const result = await fetchArcgis(service, {
+          f: "json",
+          where: "1=1",
+          returnIdsOnly: true
+        }, signal);
+        const objectIds = new Set(
+          (result.objectIds || [])
+            .map(Number)
+            .filter((value) => Number.isInteger(value) && value >= 0)
+        );
+        fireDatabaseMembershipCache.set(service, {
+          loadedAt: Date.now(),
+          objectIds
+        });
+        return objectIds;
       }
 
       async function fetchRecordMembership(service, records, signal) {
         // Current and YTD are hosted views over the same WFIGS source and retain
-        // the same OBJECTID for an overlapping record. Use compact object-id
-        // batches first; keep IRWIN as the identity and fallback for any record
-        // without a usable OBJECTID.
-        const objectIds = [...new Set(records
-          .map((record) => Number(record.pointFeature?.properties?.OBJECTID))
-          .filter((value) => Number.isInteger(value) && value >= 0))];
-        const matchedObjectIds = new Set();
-        for (let index = 0; index < objectIds.length; index += 200) {
-          const batch = objectIds.slice(index, index + 200);
-          const result = await fetchArcgis(service, {
-            f: "json",
-            objectIds: batch.join(","),
-            returnIdsOnly: true
-          }, signal);
-          (result.objectIds || []).forEach((value) => matchedObjectIds.add(Number(value)));
-        }
+        // the same OBJECTID for an overlapping record. One lightweight,
+        // five-minute returnIdsOnly snapshot replaces many per-page objectIds
+        // query URLs; IRWIN remains the fallback for records without an OBJECTID.
+        const matchedObjectIds = await fetchServiceObjectIds(service, signal);
         const members = new Set();
         const unresolved = [];
         records.forEach((record) => {
@@ -4160,19 +4277,118 @@
         });
       }
 
+      async function hydratePerimeterFilterAttributes(records, source, signal) {
+        const sourceRecords = records.filter((record) => (
+          record.source === source && record.rawIrwinId
+        ));
+        if (!sourceRecords.length) return;
+        const now = Date.now();
+        const misses = [];
+        sourceRecords.forEach((record) => {
+          const cacheKey = `${source}:${record.id}`;
+          const geometry = fireDatabasePerimeterCache.get(cacheKey);
+          if (geometry && now - geometry.loadedAt < FIRE_DATABASE_CACHE_MS) {
+            geometry.features.forEach((feature) => {
+              mergeFireAttributes(record, perimeterAttributes(feature.properties));
+            });
+            return;
+          }
+          const cached = fireDatabasePerimeterAttributeCache.get(cacheKey);
+          if (cached && now - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
+            cached.attributes.forEach((attributes) => {
+              mergeFireAttributes(record, perimeterAttributes(attributes));
+            });
+            return;
+          }
+          if (cached) fireDatabasePerimeterAttributeCache.delete(cacheKey);
+          misses.push(record);
+        });
+        if (!misses.length) return;
+
+        const recordById = new Map(misses.map((record) => [record.id, record]));
+        const attributesById = new Map(misses.map((record) => [record.id, []]));
+        const rawIds = [...new Set(misses.map((record) => String(record.rawIrwinId).trim()))];
+        const service = source === "current"
+          ? FIRE_SERVICES.currentPerimeters
+          : FIRE_SERVICES.ytdPerimeters;
+        const batches = [];
+        for (let index = 0; index < rawIds.length; index += FIRE_PERIMETER_BATCH_SIZE) {
+          batches.push(rawIds.slice(index, index + FIRE_PERIMETER_BATCH_SIZE));
+        }
+        const pages = await mapWithConcurrency(
+          batches,
+          FIRE_ARCGIS_BATCH_CONCURRENCY,
+          (batch) => fetchArcgisFeaturePages(service, {
+            where: `attr_IncidentTypeCategory IN ('WF','CX') AND attr_IrwinID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
+            outFields: FIRE_PERIMETER_FILTER_FIELDS,
+            returnGeometry: false,
+            orderByFields: "OBJECTID ASC"
+          }, signal)
+        );
+        pages.flat().forEach((feature) => {
+          const attributes = feature.attributes || {};
+          const id = normalizeIrwinId(attributes.attr_IrwinID);
+          const record = recordById.get(id);
+          if (!record) return;
+          attributesById.get(id).push(attributes);
+          mergeFireAttributes(record, perimeterAttributes(attributes));
+        });
+
+        misses.forEach((record) => {
+          const cacheKey = `${source}:${record.id}`;
+          if (fireDatabasePerimeterAttributeCache.has(cacheKey)) {
+            fireDatabasePerimeterAttributeCache.delete(cacheKey);
+          } else if (
+            fireDatabasePerimeterAttributeCache.size >= FIRE_DATABASE_GEOMETRY_CACHE_LIMIT
+          ) {
+            fireDatabasePerimeterAttributeCache.delete(
+              fireDatabasePerimeterAttributeCache.keys().next().value
+            );
+          }
+          fireDatabasePerimeterAttributeCache.set(cacheKey, {
+            loadedAt: now,
+            attributes: attributesById.get(record.id) || []
+          });
+        });
+      }
+
       async function hydratePerimeters(records, source, signal) {
         const sourceRecords = records.filter((record) => (
           record.source === source && record.rawIrwinId
         ));
-        const recordById = new Map(sourceRecords.map((record) => [record.id, record]));
-        const rawIds = [...new Set(sourceRecords.map((record) => String(record.rawIrwinId).trim()))];
+        if (!sourceRecords.length) return;
+        const now = Date.now();
+        const misses = [];
+        sourceRecords.forEach((record) => {
+          record.perimeterFeatures = [];
+          const cacheKey = `${source}:${record.id}`;
+          const cached = fireDatabasePerimeterCache.get(cacheKey);
+          if (cached && now - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
+            record.perimeterFeatures = cached.features;
+            cached.features.forEach((feature) => {
+              mergeFireAttributes(record, perimeterAttributes(feature.properties));
+            });
+          } else {
+            if (cached) fireDatabasePerimeterCache.delete(cacheKey);
+            misses.push(record);
+          }
+        });
+        if (!misses.length) return;
+
+        const recordById = new Map(misses.map((record) => [record.id, record]));
+        const rawIds = [...new Set(misses.map((record) => String(record.rawIrwinId).trim()))];
         const service = source === "current"
           ? FIRE_SERVICES.currentPerimeters
           : FIRE_SERVICES.ytdPerimeters;
-        sourceRecords.forEach((record) => { record.perimeterFeatures = []; });
-        for (let index = 0; index < rawIds.length; index += 20) {
-          const batch = rawIds.slice(index, index + 20);
-          const features = await fetchGeojsonFeaturePages(service, {
+
+        const batches = [];
+        for (let index = 0; index < rawIds.length; index += FIRE_PERIMETER_BATCH_SIZE) {
+          batches.push(rawIds.slice(index, index + FIRE_PERIMETER_BATCH_SIZE));
+        }
+        const featurePages = await mapWithConcurrency(
+          batches,
+          FIRE_ARCGIS_BATCH_CONCURRENCY,
+          (batch) => fetchGeojsonFeaturePages(service, {
             where: `attr_IncidentTypeCategory IN ('WF','CX') AND attr_IrwinID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
             outFields: FIRE_PERIMETER_FIELDS,
             returnGeometry: true,
@@ -4180,41 +4396,96 @@
             geometryPrecision: 5,
             maxAllowableOffset: 0.0001,
             orderByFields: "OBJECTID ASC"
-          }, signal);
-          features.forEach((feature) => {
-            const id = normalizeIrwinId(feature.properties?.attr_IrwinID);
-            const record = recordById.get(id);
-            if (!record || !["WF", "CX"].includes(feature.properties?.attr_IncidentTypeCategory)) return;
-            record.perimeterFeatures.push(feature);
-            mergeFireAttributes(record, perimeterAttributes(feature.properties));
+          }, signal)
+        );
+        featurePages.flat().forEach((feature) => {
+          const id = normalizeIrwinId(feature.properties?.attr_IrwinID);
+          const record = recordById.get(id);
+          if (!record || !["WF", "CX"].includes(feature.properties?.attr_IncidentTypeCategory)) return;
+          record.perimeterFeatures.push(feature);
+          mergeFireAttributes(record, perimeterAttributes(feature.properties));
+        });
+
+        misses.forEach((record) => {
+          const cacheKey = `${source}:${record.id}`;
+          if (fireDatabasePerimeterCache.has(cacheKey)) {
+            fireDatabasePerimeterCache.delete(cacheKey);
+          } else if (fireDatabasePerimeterCache.size >= FIRE_DATABASE_GEOMETRY_CACHE_LIMIT) {
+            fireDatabasePerimeterCache.delete(fireDatabasePerimeterCache.keys().next().value);
+          }
+          fireDatabasePerimeterCache.set(cacheKey, {
+            loadedAt: now,
+            features: record.perimeterFeatures
           });
-        }
+        });
       }
 
       async function hydrateComplexMembers(records, signal) {
         const parents = records.filter((record) => (
           record.category === "CX" && record.rawIrwinId
         ));
-        for (const source of ["ytd", "current"]) {
+        await Promise.all(["ytd", "current"].map(async (source) => {
           const sourceParents = parents.filter((record) => record.source === source);
-          if (!sourceParents.length) continue;
+          if (!sourceParents.length) return;
           const parentById = new Map(sourceParents.map((record) => [record.id, record]));
+          const featuresByParent = new Map(
+            sourceParents.map((record) => [record.id, []])
+          );
+          const missingParents = [];
+          const now = Date.now();
+          sourceParents.forEach((parent) => {
+            const cacheKey = `${source}:${parent.id}`;
+            const cached = fireDatabaseComplexMemberCache.get(cacheKey);
+            if (cached && now - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
+              featuresByParent.set(parent.id, cached.features);
+            } else {
+              if (cached) fireDatabaseComplexMemberCache.delete(cacheKey);
+              missingParents.push(parent);
+            }
+          });
           const service = source === "current"
             ? FIRE_SERVICES.currentLocations
             : FIRE_SERVICES.ytdLocations;
-          const rawIds = sourceParents.map((record) => String(record.rawIrwinId).trim());
-          const memberFeatures = [];
-          for (let index = 0; index < rawIds.length; index += 20) {
-            const batch = rawIds.slice(index, index + 20);
-            memberFeatures.push(...await fetchGeojsonFeaturePages(service, {
+          const rawIds = missingParents.map((record) => String(record.rawIrwinId).trim());
+          const batches = [];
+          for (let index = 0; index < rawIds.length; index += FIRE_PERIMETER_BATCH_SIZE) {
+            batches.push(rawIds.slice(index, index + FIRE_PERIMETER_BATCH_SIZE));
+          }
+          const memberPages = await mapWithConcurrency(
+            batches,
+            FIRE_ARCGIS_BATCH_CONCURRENCY,
+            (batch) => fetchGeojsonFeaturePages(service, {
               where: `IncidentTypeCategory='WF' AND IsCpxChild=1 AND CpxID IN (${batch.map((id) => `'${sqlString(id)}'`).join(",")})`,
               outFields: FIRE_POINT_FIELDS,
               returnGeometry: true,
               outSR: 4326,
               orderByFields: "FireDiscoveryDateTime DESC,OBJECTID DESC"
-            }, signal));
-          }
-          const members = memberFeatures
+            }, signal)
+          );
+          memberPages.flat().forEach((feature) => {
+            if (feature.properties?.IncidentTypeCategory !== "WF") return;
+            const parentId = normalizeIrwinId(feature.properties?.CpxID);
+            if (featuresByParent.has(parentId)) {
+              featuresByParent.get(parentId).push(feature);
+            }
+          });
+          missingParents.forEach((parent) => {
+            const cacheKey = `${source}:${parent.id}`;
+            if (fireDatabaseComplexMemberCache.has(cacheKey)) {
+              fireDatabaseComplexMemberCache.delete(cacheKey);
+            } else if (
+              fireDatabaseComplexMemberCache.size >= FIRE_DATABASE_COMPLEX_CACHE_LIMIT
+            ) {
+              fireDatabaseComplexMemberCache.delete(
+                fireDatabaseComplexMemberCache.keys().next().value
+              );
+            }
+            fireDatabaseComplexMemberCache.set(cacheKey, {
+              loadedAt: now,
+              features: featuresByParent.get(parent.id) || []
+            });
+          });
+          const members = [...featuresByParent.values()].flat()
             .filter((feature) => feature.properties?.IncidentTypeCategory === "WF")
             .map((feature) => fireRecordFromPointFeature(feature, source === "current", source));
           await resolveCurrentMembership(members, signal);
@@ -4229,16 +4500,15 @@
           sourceParents.forEach((parent) => {
             parent.memberRecords.sort(fireRecordSortCompare);
           });
-        }
+        }));
       }
 
-      async function hydrateFireEntries(entries, signal) {
-        const records = entries.map(({ feature, source }) => (
-          fireRecordFromPointFeature(feature, source === "current", source)
-        ));
-        await resolveCurrentMembership(records, signal);
-        await hydratePerimeters(records, "ytd", signal);
-        await hydratePerimeters(records, "current", signal);
+      async function hydrateFireRecords(records, signal, resolveMembership = true) {
+        if (resolveMembership) await resolveCurrentMembership(records, signal);
+        await Promise.all([
+          hydratePerimeters(records, "ytd", signal),
+          hydratePerimeters(records, "current", signal)
+        ]);
         await hydrateComplexMembers(records, signal);
         records.forEach((record) => {
           record.pointRadius = firePointRadius(record.size);
@@ -4282,47 +4552,49 @@
 
       async function loadCurrentOnlyFeatures(signal) {
         if (fireDatabaseFilter !== "all") return [];
-        const cacheKey = `current-only|${fireDatabaseSort}|${fireDatabaseWhere(false)}`;
+        const cacheKey = "current-only-base";
         const cached = fireDatabasePageCache.get(cacheKey);
+        let baseFeatures;
         if (cached && Date.now() - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
-          return cached.features;
+          baseFeatures = cached.features;
+        } else {
+          const currentFeatures = (await fetchGeojsonFeaturePages(
+            FIRE_SERVICES.currentLocations,
+            {
+              where: FIRE_LIST_BASE_WHERE,
+              outFields: FIRE_POINT_FIELDS,
+              returnGeometry: true,
+              outSR: 4326,
+              orderByFields: "OBJECTID ASC"
+            },
+            signal
+          )).filter((feature) => isFireListCategory(feature.properties));
+          const currentRecords = currentFeatures.map((feature) => (
+            fireRecordFromPointFeature(feature, true, "current")
+          ));
+          const ytdIds = await fetchRecordMembership(
+            FIRE_SERVICES.ytdLocations,
+            currentRecords,
+            signal
+          );
+          baseFeatures = currentFeatures.filter((feature) => (
+            !ytdIds.has(featureId(feature, "current-only"))
+          ));
+          if (
+            !fireDatabasePageCache.has(cacheKey) &&
+            fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
+          ) {
+            fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+          }
+          fireDatabasePageCache.set(cacheKey, {
+            loadedAt: Date.now(),
+            stale: false,
+            features: baseFeatures
+          });
         }
-        const currentFeatures = (await fetchGeojsonFeaturePages(
-          FIRE_SERVICES.currentLocations,
-          {
-            where: fireDatabaseWhere(false),
-            outFields: FIRE_POINT_FIELDS,
-            returnGeometry: true,
-            outSR: 4326,
-            orderByFields: fireDatabaseSort === "size"
-              ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
-              : "FireDiscoveryDateTime DESC,OBJECTID DESC"
-          },
-          signal
-        )).filter((feature) => isFireListCategory(feature.properties));
-        const currentRecords = currentFeatures.map((feature) => (
-          fireRecordFromPointFeature(feature, true, "current")
-        ));
-        const ytdIds = await fetchRecordMembership(
-          FIRE_SERVICES.ytdLocations,
-          currentRecords,
-          signal
-        );
-        const features = currentFeatures
-          .filter((feature) => !ytdIds.has(featureId(feature, "current-only")))
+        return baseFeatures
+          .filter(fireFeatureMatchesDatabaseModifiers)
           .sort(fireFeatureSortCompare);
-        if (
-          !fireDatabasePageCache.has(cacheKey) &&
-          fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
-        ) {
-          fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
-        }
-        fireDatabasePageCache.set(cacheKey, {
-          loadedAt: Date.now(),
-          stale: false,
-          features
-        });
-        return features;
       }
 
       // Older caches contain attribute-only rows and cannot satisfy the canonical
@@ -4359,6 +4631,148 @@
         } catch {
           // Private browsing or storage limits must not block the live database.
         }
+      }
+
+      async function fetchFireDatabasePointPage(
+        service,
+        parameters,
+        signal,
+        generation
+      ) {
+        const cacheKey = `${service}|${JSON.stringify(parameters)}`;
+        const cachedPage = fireDatabasePageCache.get(cacheKey);
+        const storedPage = storedFireDatabasePage(cacheKey);
+        if (cachedPage && Date.now() - cachedPage.loadedAt < FIRE_DATABASE_CACHE_MS) {
+          return {
+            features: cachedPage.features,
+            usedStoredPage: Boolean(cachedPage.stale)
+          };
+        }
+
+        let features;
+        let usedStoredPage = false;
+        try {
+          const result = await fetchArcgis(
+            service,
+            parameters,
+            signal,
+            {
+              maxAttempts: 3,
+              cacheMode: "default",
+              waitForRateLimit: !storedPage,
+              onRateLimit: (waitMs) => {
+                if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
+                  fireDatabaseStatus.textContent = `WFIGS busy · retrying in ${Math.ceil(waitMs / 1000)} seconds`;
+                }
+              }
+            }
+          );
+          features = arcgisPointFeatures(result);
+          storeFireDatabasePage(cacheKey, features);
+        } catch (error) {
+          if (error.name === "AbortError") throw error;
+          if (!storedPage) throw error;
+          features = storedPage.features;
+          usedStoredPage = true;
+        }
+
+        // Only live responses earn the five-minute memory cache; a stale
+        // stored fallback must not suppress live retries after recovery.
+        if (!usedStoredPage) {
+          if (
+            !fireDatabasePageCache.has(cacheKey) &&
+            fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
+          ) {
+            fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
+          }
+          fireDatabasePageCache.set(cacheKey, {
+            loadedAt: Date.now(),
+            stale: false,
+            features
+          });
+        }
+        return { features, usedStoredPage };
+      }
+
+      async function collectFilteredStatusPage(
+        service,
+        where,
+        orderByFields,
+        pageSize,
+        signal,
+        generation,
+        reset
+      ) {
+        let scanOffset = fireDatabaseOffset;
+        let sourceExhausted = fireDatabaseSourceExhausted;
+        const bufferedRecords = fireDatabaseBufferedRecords.slice();
+        const selectedRecords = [];
+        const selectedIds = new Set(reset ? [] : fireMirrorRecords.keys());
+        bufferedRecords.forEach((record) => selectedIds.add(record.id));
+        let usedStoredPage = false;
+        const targetCount = fireDatabaseImsrOnly ? Number.POSITIVE_INFINITY : pageSize;
+        const scanSize = fireDatabaseImsrOnly
+          ? FIRE_IMSR_PAGE_SIZE
+          : (fireDatabaseFilter === "notcurrent"
+            ? FIRE_NOT_CURRENT_SCAN_SIZE
+            : FIRE_PAGE_SIZE);
+
+        const takeBuffered = () => {
+          while (bufferedRecords.length && selectedRecords.length < targetCount) {
+            const record = bufferedRecords.shift();
+            selectedRecords.push(record);
+          }
+        };
+        takeBuffered();
+
+        while (selectedRecords.length < targetCount && !sourceExhausted) {
+          const parameters = {
+            f: "geojson",
+            where,
+            outFields: FIRE_POINT_FIELDS,
+            returnGeometry: true,
+            outSR: 4326,
+            orderByFields,
+            resultOffset: scanOffset,
+            resultRecordCount: scanSize + 1
+          };
+          const page = await fetchFireDatabasePointPage(
+            service,
+            parameters,
+            signal,
+            generation
+          );
+          usedStoredPage = usedStoredPage || page.usedStoredPage;
+          if (generation !== fireDatabaseGeneration) {
+            return null;
+          }
+          const records = page.features.map((feature) => (
+            fireRecordFromPointFeature(feature, false, "ytd")
+          ));
+          await resolveCurrentMembership(records, signal);
+          await hydratePerimeterFilterAttributes(records, "ytd", signal);
+          records.forEach((record) => {
+            if (
+              fireMatchesDatabaseFilters(record) &&
+              !selectedIds.has(record.id)
+            ) {
+              selectedIds.add(record.id);
+              bufferedRecords.push(record);
+            }
+          });
+          scanOffset += page.features.length;
+          sourceExhausted = page.features.length <= scanSize;
+          if (!page.features.length) sourceExhausted = true;
+          takeBuffered();
+        }
+
+        return {
+          records: selectedRecords,
+          bufferedRecords,
+          scanOffset,
+          sourceExhausted,
+          usedStoredPage
+        };
       }
 
       // The default filter state (All + IMSR) matches the map's normal canonical
@@ -4405,6 +4819,8 @@
         canonicalFireRecords.clear();
         fireDatabaseCurrentOnlyFeatures = [];
         fireDatabaseCurrentOnlyIndex = 0;
+        fireDatabaseBufferedRecords = [];
+        fireDatabaseSourceExhausted = false;
         fireMirrorActive = false;
         syncFireMirrorBanner();
         renderFireLayers();
@@ -4419,7 +4835,7 @@
       function renderFireListStatus() {
         const shown = fireList.childElementCount;
         if (!shown) {
-          fireDatabaseStatus.textContent = fireDatabaseOffset ? "No more wildfires" : "No matching wildfires";
+          fireDatabaseStatus.textContent = "No matching wildfires";
           return;
         }
         if (fireDatabaseLastUsedStored) {
@@ -4485,7 +4901,7 @@
           !fireDatabaseHasMore ||
           !fireList.childElementCount ||
           fireDatabaseLastUsedStored ||
-          fireDatabaseFilter === "notcurrent"
+          (!["all", "active"].includes(fireDatabaseFilter))
         ) return;
         const currentMembersOnly = fireDatabaseFilter === "active";
         loadFireDatabaseTotal(
@@ -4505,6 +4921,8 @@
           fireDatabaseOffset = 0;
           fireDatabaseCurrentOnlyIndex = 0;
           fireDatabaseCurrentOnlyFeatures = [];
+          fireDatabaseBufferedRecords = [];
+          fireDatabaseSourceExhausted = false;
           fireDatabaseHasMore = true;
           fireDatabaseNeedsReset = true;
           fireDatabaseTotal = null;
@@ -4526,22 +4944,26 @@
           ? FIRE_SERVICES.currentLocations
           : FIRE_SERVICES.ytdLocations;
         const requestWhere = fireDatabaseWhere(currentMembersOnly);
+        const orderByFields = fireDatabaseSort === "size"
+          ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
+          : "FireDiscoveryDateTime DESC,OBJECTID DESC";
         const requestParameters = {
           f: "geojson",
           where: requestWhere,
           outFields: FIRE_POINT_FIELDS,
           returnGeometry: true,
           outSR: 4326,
-          orderByFields: fireDatabaseSort === "size"
-            ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
-            : "FireDiscoveryDateTime DESC,OBJECTID DESC",
+          orderByFields,
           resultOffset: requestOffset,
           resultRecordCount: pageSize + 1
         };
-        const cacheKey = `${requestService}|${JSON.stringify(requestParameters)}`;
         fireDatabaseStatus.textContent = fireDatabaseOffset || fireDatabaseCurrentOnlyIndex
           ? "Loading more wildfires"
-          : (currentMembersOnly ? "Loading active wildfires" : "Loading unified wildfires");
+          : (currentMembersOnly
+            ? "Loading active wildfires"
+            : (fireDatabaseFilter === "all"
+              ? "Loading unified wildfires"
+              : "Loading filtered wildfires"));
 
         try {
           if (
@@ -4551,67 +4973,88 @@
           ) {
             fireDatabaseCurrentOnlyFeatures = await loadCurrentOnlyFeatures(controller.signal);
           }
-          const cachedPage = fireDatabasePageCache.get(cacheKey);
-          const storedPage = storedFireDatabasePage(cacheKey);
-          let features;
+          const filteredStatusScan = !currentMembersOnly && fireDatabaseFilter !== "all";
+          let records;
           let usedStoredPage = false;
-          if (cachedPage && Date.now() - cachedPage.loadedAt < FIRE_DATABASE_CACHE_MS) {
-            features = cachedPage.features;
-            usedStoredPage = Boolean(cachedPage.stale);
+          let nextOffset = requestOffset;
+          let nextCurrentOnlyIndex = fireDatabaseCurrentOnlyIndex;
+          let nextBufferedRecords = fireDatabaseBufferedRecords;
+          let nextSourceExhausted = fireDatabaseSourceExhausted;
+          let nextHasMore = false;
+
+          if (filteredStatusScan) {
+            const collected = await collectFilteredStatusPage(
+              requestService,
+              requestWhere,
+              orderByFields,
+              pageSize,
+              controller.signal,
+              generation,
+              fireDatabaseNeedsReset && requestOffset === 0
+            );
+            if (!collected || generation !== fireDatabaseGeneration) return;
+            records = await hydrateFireRecords(
+              collected.records,
+              controller.signal,
+              false
+            );
+            nextOffset = collected.scanOffset;
+            nextBufferedRecords = collected.bufferedRecords;
+            nextSourceExhausted = collected.sourceExhausted;
+            nextHasMore = nextBufferedRecords.length > 0 || !nextSourceExhausted;
+            usedStoredPage = collected.usedStoredPage;
           } else {
-            try {
-              const result = await fetchArcgis(
-                requestService,
-                requestParameters,
-                controller.signal,
-                {
-                  maxAttempts: 3,
-                  cacheMode: "default",
-                  waitForRateLimit: !storedPage,
-                  onRateLimit: (waitMs) => {
-                    if (generation === fireDatabaseGeneration && !fireDrawer.hidden) {
-                      fireDatabaseStatus.textContent = `WFIGS busy · retrying in ${Math.ceil(waitMs / 1000)} seconds`;
-                    }
-                  }
-                }
-              );
-              features = arcgisPointFeatures(result);
-              storeFireDatabasePage(cacheKey, features);
-            } catch (error) {
-              if (error.name === "AbortError") throw error;
-              if (!storedPage) throw error;
-              features = storedPage.features;
-              usedStoredPage = true;
+            const page = await fetchFireDatabasePointPage(
+              requestService,
+              requestParameters,
+              controller.signal,
+              generation
+            );
+            usedStoredPage = page.usedStoredPage;
+            if (generation !== fireDatabaseGeneration) return;
+            const source = currentMembersOnly ? "current" : "ytd";
+            const merged = mergeFireFeaturePage(page.features, pageSize, source);
+            const candidateRecords = merged.entries.map(({ feature, source: entrySource }) => (
+              fireRecordFromPointFeature(
+                feature,
+                entrySource === "current",
+                entrySource
+              )
+            ));
+            await resolveCurrentMembership(candidateRecords, controller.signal);
+            if (fireDatabaseImsrOnly) {
+              await Promise.all([
+                hydratePerimeterFilterAttributes(
+                  candidateRecords,
+                  "ytd",
+                  controller.signal
+                ),
+                hydratePerimeterFilterAttributes(
+                  candidateRecords,
+                  "current",
+                  controller.signal
+                )
+              ]);
             }
-            // Only live responses earn the five-minute memory cache; a stale
-            // stored fallback must not suppress live retries after recovery.
-            if (!usedStoredPage) {
-              if (
-                !fireDatabasePageCache.has(cacheKey) &&
-                fireDatabasePageCache.size >= FIRE_DATABASE_CACHE_LIMIT
-              ) {
-                fireDatabasePageCache.delete(fireDatabasePageCache.keys().next().value);
-              }
-              fireDatabasePageCache.set(cacheKey, {
-                loadedAt: Date.now(),
-                stale: false,
-                features
-              });
-            }
+            const matchingRecords = candidateRecords.filter((record) => (
+              fireMatchesDatabaseFilters(record)
+            ));
+            records = await hydrateFireRecords(
+              matchingRecords,
+              controller.signal,
+              false
+            );
+            nextOffset = requestOffset + merged.ytdConsumed;
+            nextCurrentOnlyIndex = merged.currentIndex;
+            nextHasMore = (
+              merged.ytdConsumed < page.features.length ||
+              nextCurrentOnlyIndex < fireDatabaseCurrentOnlyFeatures.length
+            );
           }
+          records = records.filter((record) => fireMatchesDatabaseFilters(record));
           // Note: no longer bail when the drawer is hidden — the map mirrors this
           // list, so it must load (and refresh) even with the drawer closed.
           if (generation !== fireDatabaseGeneration) return;
-          const source = currentMembersOnly ? "current" : "ytd";
-          const merged = mergeFireFeaturePage(features, pageSize, source);
-          let records = await hydrateFireEntries(merged.entries, controller.signal);
-          if (generation !== fireDatabaseGeneration) return;
-          // "Not current" cannot be expressed purely in YTD SQL because current
-          // membership belongs to the Current view. Membership was resolved
-          // before this pass, so the badge and filter use the same canonical row.
-          if (fireDatabaseFilter === "notcurrent") {
-            records = records.filter((record) => fireStatus(record) === "Not current");
-          }
           if (fireDatabaseNeedsReset && requestOffset === 0) {
             fireList.replaceChildren();
             fireMirrorRecords.clear();
@@ -4625,12 +5068,11 @@
             registerCanonicalRecord(record);
             appendFireDatabaseRow(record);
           });
-          fireDatabaseOffset = requestOffset + merged.ytdConsumed;
-          fireDatabaseCurrentOnlyIndex = merged.currentIndex;
-          fireDatabaseHasMore = (
-            merged.ytdConsumed < features.length ||
-            fireDatabaseCurrentOnlyIndex < fireDatabaseCurrentOnlyFeatures.length
-          );
+          fireDatabaseOffset = nextOffset;
+          fireDatabaseCurrentOnlyIndex = nextCurrentOnlyIndex;
+          fireDatabaseBufferedRecords = nextBufferedRecords;
+          fireDatabaseSourceExhausted = nextSourceExhausted;
+          fireDatabaseHasMore = nextHasMore;
           fireLoadMore.hidden = !fireDatabaseHasMore;
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Load more";
@@ -4638,15 +5080,15 @@
           renderFireListStatus();
           // Fetch the matching total only when the first page didn't already
           // capture everything (i.e. there is a Load more), never for a stale
-          // stored page. Skipped for "not current": its SQL count would include
-          // the currently-active records that the client-side pass removes, so
-          // an "of N" total would overstate. Not awaited otherwise.
+          // stored page. Status filters are finalized against fireStatus() after
+          // Current membership is resolved, so their SQL candidate count is not
+          // exact and is deliberately not presented as a total.
           if (
             requestOffset === 0 &&
             !usedStoredPage &&
             records.length &&
             fireDatabaseHasMore &&
-            fireDatabaseFilter !== "notcurrent"
+            !filteredStatusScan
           ) {
             loadFireDatabaseTotal(
               requestService,
@@ -4666,6 +5108,7 @@
             }
             return;
           }
+          console.warn("WFIGS database load failed", error);
           fireDatabaseStatus.textContent = fireList.childElementCount
             ? "Wildfire database temporarily unavailable · keeping current list"
             : "Wildfire database temporarily unavailable";
@@ -7482,6 +7925,8 @@
         fireDatabaseOffset = 0;
         fireDatabaseCurrentOnlyIndex = 0;
         fireDatabaseCurrentOnlyFeatures = [];
+        fireDatabaseBufferedRecords = [];
+        fireDatabaseSourceExhausted = false;
         fireDatabaseHasMore = true;
         fireDatabaseFilter = "all";
         fireDatabaseLargeOnly = false;
@@ -7552,6 +7997,10 @@
         };
         combinedRefreshActive = true;
         fireDatabasePageCache.clear();
+        fireDatabasePerimeterCache.clear();
+        fireDatabasePerimeterAttributeCache.clear();
+        fireDatabaseComplexMemberCache.clear();
+        fireDatabaseMembershipCache.clear();
         fireDatabaseNeedsReset = true;
         resetMapToInitialState();
         updateControlAvailability();

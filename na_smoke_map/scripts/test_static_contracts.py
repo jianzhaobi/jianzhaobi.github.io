@@ -103,7 +103,7 @@ class StaticAppContractTests(unittest.TestCase):
         )
         self.assertIn("const canonicalFireRecords = new Map();", self.index)
         self.assertIn("return canonicalFireRecords.get(id);", self.index)
-        self.assertIn("async function hydrateFireEntries(entries, signal)", self.index)
+        self.assertIn("async function hydrateFireRecords(records, signal", self.index)
         self.assertIn("async function loadCurrentOnlyFeatures(signal)", self.index)
         self.assertIn("function mergeFireFeaturePage(ytdFeatures, pageSize, source)", self.index)
         self.assertIn('f: "geojson",', self.index)
@@ -134,6 +134,76 @@ class StaticAppContractTests(unittest.TestCase):
         )
         self.assertIn(
             "wildfiresVisible && ignitionsVisible && record.pointFeature",
+            self.index,
+        )
+
+    def test_wfigs_status_filter_fills_pages_after_final_membership(self) -> None:
+        collector = self.index.split(
+            "async function collectFilteredStatusPage(",
+            1,
+        )[1].split(
+            "// The default filter state",
+            1,
+        )[0]
+        self.assertIn("resultRecordCount: scanSize + 1", collector)
+        self.assertLess(
+            collector.index("await resolveCurrentMembership(records, signal)"),
+            collector.index("fireMatchesDatabaseFilters(record)"),
+        )
+        self.assertLess(
+            collector.index("hydratePerimeterFilterAttributes(records, \"ytd\", signal)"),
+            collector.index("fireMatchesDatabaseFilters(record)"),
+        )
+        self.assertIn("FIRE_NOT_CURRENT_SCAN_SIZE", collector)
+        self.assertIn(
+            "nextHasMore = nextBufferedRecords.length > 0 || !nextSourceExhausted",
+            self.index,
+        )
+        self.assertNotIn(
+            'fireDatabaseStatus.textContent = fireDatabaseOffset ? "No more wildfires"',
+            self.index,
+        )
+
+    def test_wfigs_imsr_excludes_official_end_dates(self) -> None:
+        imsr_function = self.index.split(
+            "function isImsrGradeFire(record)",
+            1,
+        )[1].split(
+            "function fireMatchesDatabaseStatus",
+            1,
+        )[0]
+        self.assertIn(
+            "!(record.containment || record.control || record.out)",
+            imsr_function,
+        )
+        self.assertIn(
+            '" AND ContainmentDateTime IS NULL"',
+            self.index,
+        )
+        self.assertIn(
+            '" AND ControlDateTime IS NULL"',
+            self.index,
+        )
+        self.assertIn(
+            '" AND FireOutDateTime IS NULL"',
+            self.index,
+        )
+
+    def test_wfigs_hydration_uses_bounded_parallel_cached_batches(self) -> None:
+        self.assertIn("async function mapWithConcurrency(items, limit, callback)", self.index)
+        self.assertIn("const FIRE_ARCGIS_BATCH_CONCURRENCY = 2;", self.index)
+        self.assertIn("const FIRE_PERIMETER_BATCH_SIZE = 500;", self.index)
+        self.assertIn("const usePost = requestUrl.href.length > 1800;", self.index)
+        self.assertIn('"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"', self.index)
+        self.assertIn("async function fetchServiceObjectIds(service, signal)", self.index)
+        self.assertIn("const fireDatabaseMembershipCache = new Map();", self.index)
+        self.assertIn('const cacheKey = "current-only-base";', self.index)
+        self.assertIn(".filter(fireFeatureMatchesDatabaseModifiers)", self.index)
+        self.assertIn("const fireDatabasePerimeterCache = new Map();", self.index)
+        self.assertIn("const fireDatabasePerimeterAttributeCache = new Map();", self.index)
+        self.assertIn("const fireDatabaseComplexMemberCache = new Map();", self.index)
+        self.assertIn(
+            'const cacheKey = `${source}:${record.id}`;',
             self.index,
         )
 
