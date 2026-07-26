@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services3.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services3.arcgis.com https://services2.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <meta
@@ -538,6 +538,34 @@
 
     #north-america-pm25 .pm-layer-section {
       margin-top: 12px;
+    }
+
+    #north-america-pm25 .pm-hms-note {
+      margin: 0 0 8px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    #north-america-pm25 .pm-hms-legend {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 4px;
+    }
+
+    #north-america-pm25 .pm-hms-legend .pm-hms-legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--pm-fg);
+    }
+
+    #north-america-pm25 .pm-hms-legend .pm-hms-swatch {
+      width: 22px;
+      height: 12px;
+      border-radius: 2px;
+      flex: 0 0 auto;
     }
 
     #north-america-pm25 .pm-layer-section-title {
@@ -1647,15 +1675,19 @@
             <div class="pm-layer-toggles" role="group" aria-label="Visible layers">
               <label class="pm-check" for="pm-show-smoke">
                 <input id="pm-show-smoke" type="checkbox" checked>
-                <span>Smoke &amp; PM2.5</span>
+                <span>Smoke &amp; PM2.5 (RAQDPS)</span>
               </label>
               <label class="pm-check" for="pm-show-wildfires">
                 <input id="pm-show-wildfires" type="checkbox" checked>
-                <span>Wildfires</span>
+                <span>Wildfires (WFIGS)</span>
+              </label>
+              <label class="pm-check" for="pm-show-hms">
+                <input id="pm-show-hms" type="checkbox">
+                <span>Observed smoke (HMS)</span>
               </label>
             </div>
             <section class="pm-layer-section" id="pm-smoke-options" aria-labelledby="pm-smoke-options-title">
-              <strong class="pm-layer-section-title" id="pm-smoke-options-title">Smoke</strong>
+              <strong class="pm-layer-section-title" id="pm-smoke-options-title">Smoke &amp; PM2.5 (RAQDPS)</strong>
               <label class="pm-field" for="pm-particle">
                 Particles
                 <select class="pm-select" id="pm-particle">
@@ -1672,7 +1704,7 @@
               </label>
             </section>
             <section class="pm-layer-section" id="pm-wildfire-options" aria-labelledby="pm-wildfire-options-title">
-              <strong class="pm-layer-section-title" id="pm-wildfire-options-title">Wildfires</strong>
+              <strong class="pm-layer-section-title" id="pm-wildfire-options-title">Wildfires (WFIGS)</strong>
               <div class="pm-fire-layer-toggles" role="group" aria-label="Visible wildfire geometry">
                 <label class="pm-check" for="pm-show-ignitions">
                   <input id="pm-show-ignitions" type="checkbox" checked>
@@ -1686,6 +1718,15 @@
               <div class="pm-fire-layer-status" id="pm-fire-layer-status" data-state="loading" role="status" aria-live="polite">
                 <span id="pm-fire-layer-status-text">Loading WFIGS wildfires</span>
                 <button type="button" class="pm-fire-retry" id="pm-fire-retry" hidden>Retry</button>
+              </div>
+            </section>
+            <section class="pm-layer-section" id="pm-hms-options" aria-labelledby="pm-hms-options-title" hidden>
+              <strong class="pm-layer-section-title" id="pm-hms-options-title">Observed smoke (HMS)</strong>
+              <p class="pm-hms-note">NOAA analyst-drawn smoke plume extent from satellite imagery — the latest daily analysis. Density is a qualitative Light / Medium / Heavy class, not a PM2.5 concentration, and this layer does not follow the timeline.</p>
+              <div class="pm-hms-legend" id="pm-hms-legend" aria-hidden="true"></div>
+              <div class="pm-fire-layer-status" id="pm-hms-status" data-state="idle" role="status" aria-live="polite" hidden>
+                <span id="pm-hms-status-text"></span>
+                <button type="button" class="pm-fire-retry" id="pm-hms-retry" hidden>Retry</button>
               </div>
             </section>
           </div>
@@ -1837,6 +1878,12 @@
       const wildfireToggle = document.getElementById("pm-show-wildfires");
       const ignitionToggle = document.getElementById("pm-show-ignitions");
       const perimeterToggle = document.getElementById("pm-show-perimeters");
+      const hmsToggle = document.getElementById("pm-show-hms");
+      const hmsOptions = document.getElementById("pm-hms-options");
+      const hmsLegendBox = document.getElementById("pm-hms-legend");
+      const hmsStatus = document.getElementById("pm-hms-status");
+      const hmsStatusText = document.getElementById("pm-hms-status-text");
+      const hmsRetry = document.getElementById("pm-hms-retry");
       const smokeOptions = document.getElementById("pm-smoke-options");
       const wildfireOptions = document.getElementById("pm-wildfire-options");
       const particleSelect = document.getElementById("pm-particle");
@@ -1892,6 +1939,24 @@
       };
       const FIRE_ATTRIBUTION = '<a href="https://www.arcgis.com/home/item.html?id=4181a117dc9e43db8598533e29972015">NIFC WFIGS</a>';
       const FIRE_REFRESH_MS = 5 * 60 * 1000;
+
+      // NOAA HMS (Hazard Mapping System) analyst-drawn smoke plume polygons.
+      // This is an ArcGIS Online hosted FeatureServer (GeoJSON + CORS), the same
+      // class of service as WFIGS, so it is fetched and rendered in the browser
+      // with no build-pipeline involvement. It is OBSERVED plume extent, not a
+      // modeled concentration: the Density field is a qualitative Light/Medium/
+      // Heavy class and must never be presented as µg/m³ or mg/m².
+      const HMS_SERVICE = "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/NOAA_Satellite_Smoke_Detection_(v1)/FeatureServer/0";
+      const HMS_ATTRIBUTION = '<a href="https://www.ospo.noaa.gov/products/land/hms.html">NOAA HMS Smoke</a>';
+      // Graded translucent smoke-grey so the plumes read as haze and never
+      // collide with the PM2.5 colour ramp. A dashed outline keeps them legible
+      // on both the light and dark basemaps where a low-opacity fill washes out.
+      const HMS_DENSITY_STYLE = {
+        Light: { fillColor: "#9aa0a6", fillOpacity: 0.16, color: "#6b7075", weight: 0.8, dashArray: "3 3" },
+        Medium: { fillColor: "#7c8288", fillOpacity: 0.3, color: "#565b60", weight: 0.9, dashArray: "3 3" },
+        Heavy: { fillColor: "#565b60", fillOpacity: 0.46, color: "#3c4044", weight: 1.1, dashArray: null }
+      };
+      const HMS_DENSITY_ORDER = ["Light", "Medium", "Heavy"];
       const FIRE_PAGE_SIZE = 50;
       // IMSR is a bounded, curated set (tens to low hundreds nationwide), so it is
       // safe to load and show every match in one request instead of paginating.
@@ -2084,6 +2149,10 @@
       let wildfiresVisible = true;
       let ignitionsVisible = true;
       let perimetersVisible = true;
+      let hmsVisible = false;
+      let hmsFeatures = null;
+      let hmsLoadPromise = null;
+      let hmsAttributionVisible = false;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -2656,6 +2725,9 @@
       // active at a time, so a single shared pair of panes is sufficient.
       map.createPane("themePane").style.zIndex = "250";
       map.createPane("themeLabelPane").style.zIndex = "260";
+      // HMS observed-smoke polygons sit above the modeled smoke canvas (overlayPane
+      // z 420) but below the WFIGS fire geometry (firePane z 450) so fires stay on top.
+      map.createPane("hmsPane").style.zIndex = "440";
       map.createPane("firePane").style.zIndex = "450";
       // Complex diamonds sit just above the ignition circles in their own pane.
       map.createPane("fireComplexPane").style.zIndex = "460";
@@ -2664,6 +2736,7 @@
       const fireIgnitionGroup = L.layerGroup();
       const fireComplexGroup = L.layerGroup();
       const fireSelectionGroup = L.layerGroup();
+      const hmsGroup = L.layerGroup();
 
       function updateMapAccessibleName() {
         const parts = [];
@@ -2679,6 +2752,9 @@
           parts.push(`${fireMirrorActive ? "filtered " : ""}WFIGS wildfire ${geometry}`);
         }
         if (selectedFireRecord) parts.push(`selected wildfire ${selectedFireRecord.name || "Unnamed wildfire"}`);
+        if (hmsVisible && Array.isArray(hmsFeatures) && hmsFeatures.length) {
+          parts.push("NOAA HMS observed smoke plumes");
+        }
         mapElement.setAttribute(
           "aria-label",
           parts.length ? `North America map showing ${parts.join(" and ")}` : "North America basemap"
@@ -2713,6 +2789,145 @@
         if (shouldShow) map.attributionControl.addAttribution(FIRE_ATTRIBUTION);
         else map.attributionControl.removeAttribution(FIRE_ATTRIBUTION);
         fireAttributionVisible = shouldShow;
+      }
+
+      // ----- NOAA HMS observed-smoke overlay -----
+      // A static layer: the latest daily analysis, showing every polygon the
+      // service currently publishes (all of today's satellite time steps). It is
+      // deliberately NOT tied to the timeline and does no past/forecast filtering,
+      // because HMS is a daily analyst product with no hourly cadence or forecast.
+      function hmsDensityRank(feature) {
+        return HMS_DENSITY_ORDER.indexOf(feature?.properties?.Density);
+      }
+
+      function hmsStyleFor(density) {
+        const style = HMS_DENSITY_STYLE[density] || HMS_DENSITY_STYLE.Light;
+        return {
+          pane: "hmsPane",
+          color: style.color,
+          weight: style.weight,
+          opacity: 0.9,
+          dashArray: style.dashArray || undefined,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity
+        };
+      }
+
+      function renderHmsLegend() {
+        hmsLegendBox.innerHTML = "";
+        HMS_DENSITY_ORDER.forEach((density) => {
+          const style = HMS_DENSITY_STYLE[density];
+          const row = document.createElement("div");
+          row.className = "pm-hms-legend-row";
+          const swatch = document.createElement("span");
+          swatch.className = "pm-hms-swatch";
+          swatch.style.background = style.fillColor;
+          swatch.style.opacity = String(Math.min(1, style.fillOpacity + 0.4));
+          swatch.style.border = `1px solid ${style.color}`;
+          const label = document.createElement("span");
+          label.textContent = `${density} smoke`;
+          row.append(swatch, label);
+          hmsLegendBox.append(row);
+        });
+      }
+
+      function setHmsStatus(state, message, showRetry = false) {
+        if (!message) {
+          hmsStatus.hidden = true;
+          return;
+        }
+        hmsStatus.hidden = false;
+        hmsStatus.dataset.state = state;
+        hmsStatusText.textContent = message;
+        hmsRetry.hidden = !showRetry;
+      }
+
+      function renderHmsFeatures() {
+        hmsGroup.clearLayers();
+        if (!hmsVisible || !Array.isArray(hmsFeatures) || !hmsFeatures.length) return;
+        // Draw Light first and Heavy last so denser plumes sit on top.
+        const ordered = [...hmsFeatures].sort(
+          (a, b) => hmsDensityRank(a) - hmsDensityRank(b)
+        );
+        L.geoJSON(ordered, {
+          pane: "hmsPane",
+          style: (feature) => hmsStyleFor(feature?.properties?.Density),
+          onEachFeature: (feature, layer) => {
+            const density = feature?.properties?.Density || "Unknown";
+            layer.bindTooltip(`HMS observed smoke · ${density} density`, {
+              sticky: true,
+              direction: "top",
+              opacity: 0.9
+            });
+          }
+        }).addTo(hmsGroup);
+      }
+
+      async function loadHmsSmoke() {
+        if (Array.isArray(hmsFeatures)) return hmsFeatures;
+        if (hmsLoadPromise) return hmsLoadPromise;
+        setHmsStatus("loading", "Loading NOAA HMS smoke");
+        hmsLoadPromise = (async () => {
+          const features = await fetchGeojsonFeaturePages(HMS_SERVICE, {
+            where: "1=1",
+            outFields: "Density,Satellite,Start,End_",
+            returnGeometry: true,
+            outSR: 4326,
+            geometryPrecision: 5
+          });
+          return features.filter((feature) => feature?.geometry);
+        })();
+        try {
+          hmsFeatures = await hmsLoadPromise;
+          setHmsStatus(
+            "ready",
+            hmsFeatures.length
+              ? `${hmsFeatures.length} HMS smoke polygons (latest analysis)`
+              : "No HMS smoke polygons in the latest analysis"
+          );
+        } catch (error) {
+          hmsFeatures = null;
+          setHmsStatus("error", "Could not load NOAA HMS smoke", true);
+          throw error;
+        } finally {
+          hmsLoadPromise = null;
+        }
+        return hmsFeatures;
+      }
+
+      function syncHmsAttribution() {
+        const shouldShow = hmsVisible && Array.isArray(hmsFeatures) && hmsFeatures.length > 0;
+        if (shouldShow === hmsAttributionVisible) return;
+        if (shouldShow) map.attributionControl.addAttribution(HMS_ATTRIBUTION);
+        else map.attributionControl.removeAttribution(HMS_ATTRIBUTION);
+        hmsAttributionVisible = shouldShow;
+      }
+
+      async function setHmsVisibility(visible) {
+        hmsVisible = visible;
+        hmsToggle.checked = visible;
+        hmsOptions.hidden = !visible;
+        if (!visible) {
+          hmsGroup.clearLayers();
+          if (map.hasLayer(hmsGroup)) map.removeLayer(hmsGroup);
+          syncHmsAttribution();
+          updateMapAccessibleName();
+          return;
+        }
+        renderHmsLegend();
+        if (!map.hasLayer(hmsGroup)) hmsGroup.addTo(map);
+        try {
+          await loadHmsSmoke();
+        } catch (error) {
+          if (error?.name !== "AbortError") console.warn("HMS smoke load failed", error);
+          syncHmsAttribution();
+          updateMapAccessibleName();
+          return;
+        }
+        if (!hmsVisible) return; // toggled off while the request was in flight
+        renderHmsFeatures();
+        syncHmsAttribution();
+        updateMapAccessibleName();
       }
 
       function arcgisQueryUrl(service, parameters) {
@@ -7231,6 +7446,8 @@
       wildfireToggle.addEventListener("change", () => setWildfireVisibility(wildfireToggle.checked));
       ignitionToggle.addEventListener("change", () => setIgnitionVisibility(ignitionToggle.checked));
       perimeterToggle.addEventListener("change", () => setPerimeterVisibility(perimeterToggle.checked));
+      hmsToggle.addEventListener("change", () => { setHmsVisibility(hmsToggle.checked); });
+      hmsRetry.addEventListener("click", () => { setHmsVisibility(true); });
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
