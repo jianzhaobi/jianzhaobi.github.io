@@ -4518,6 +4518,19 @@
         return records;
       }
 
+      async function finishFireRecordsWithHydratedPerimeters(records, signal) {
+        // The small server-filtered IMSR path has already loaded perimeter
+        // geometry, which also supplied any missing end-state attributes.
+        // Finish only the complex-member and display work before atomic commit.
+        await hydrateComplexMembers(records, signal);
+        records.forEach((record) => {
+          record.pointRadius = firePointRadius(record.size);
+          record.pointColor = activeFirePointColor(record.discovery);
+          record.geometryComplete = true;
+        });
+        return records;
+      }
+
       function registerCanonicalRecord(record) {
         fireMirrorRecords.set(record.id, record);
         canonicalFireRecords.set(record.id, record);
@@ -4552,7 +4565,11 @@
 
       async function loadCurrentOnlyFeatures(signal) {
         if (fireDatabaseFilter !== "all") return [];
-        const cacheKey = "current-only-base";
+        // Query only rows that can survive the current All-view modifiers.
+        // The old cold path downloaded the entire Current database (including
+        // geometry) before filtering the default IMSR subset in the browser.
+        const where = fireDatabaseWhere(false);
+        const cacheKey = `current-only|${where}`;
         const cached = fireDatabasePageCache.get(cacheKey);
         let baseFeatures;
         if (cached && Date.now() - cached.loadedAt < FIRE_DATABASE_CACHE_MS) {
@@ -4561,7 +4578,7 @@
           const currentFeatures = (await fetchGeojsonFeaturePages(
             FIRE_SERVICES.currentLocations,
             {
-              where: FIRE_LIST_BASE_WHERE,
+              where,
               outFields: FIRE_POINT_FIELDS,
               returnGeometry: true,
               outSR: 4326,
@@ -4800,8 +4817,10 @@
         fireMirrorActive = wildfiresVisible && !fireFilterStateIsDefault();
         syncFireMirrorBanner();
         renderFireLayers();
-        // A live refresh owns the layer status line while it runs.
-        if (!fireRefreshController && fireEvents.size) updateFireReadyStatus();
+        // A manual full refresh owns the layer status line while it runs.
+        // Startup no longer needs the legacy full-Current cache, so canonical
+        // list readiness alone is sufficient to mark the visible layer ready.
+        if (!fireRefreshController) updateFireReadyStatus();
       }
 
       function clearFireMirror(reload = true) {
@@ -4947,6 +4966,11 @@
         const orderByFields = fireDatabaseSort === "size"
           ? "IncidentSize DESC,FireDiscoveryDateTime DESC,OBJECTID DESC"
           : "FireDiscoveryDateTime DESC,OBJECTID DESC";
+        // All + IMSR is the startup path and is deliberately unpaginated. Fetch
+        // its already-small YTD and Current candidate sets together, then build
+        // the ordered union directly. This avoids two service-wide ID snapshots
+        // and the former download of every Current incident.
+        const unifiedImsrAll = fireDatabaseFilter === "all" && fireDatabaseImsrOnly;
         const requestParameters = {
           f: "geojson",
           where: requestWhere,
@@ -4964,12 +4988,21 @@
             : (fireDatabaseFilter === "all"
               ? "Loading unified wildfires"
               : "Loading filtered wildfires"));
+        if (fireFilterStateIsDefault() && requestOffset === 0) {
+          setFireLayerStatus(
+            "loading",
+            fireMirrorRecords.size
+              ? "Refreshing significant WFIGS wildfires"
+              : "Loading significant WFIGS wildfires"
+          );
+        }
 
         try {
           if (
             requestOffset === 0 &&
             fireDatabaseCurrentOnlyIndex === 0 &&
-            fireDatabaseFilter === "all"
+            fireDatabaseFilter === "all" &&
+            !unifiedImsrAll
           ) {
             fireDatabaseCurrentOnlyFeatures = await loadCurrentOnlyFeatures(controller.signal);
           }
@@ -5004,49 +5037,106 @@
             nextHasMore = nextBufferedRecords.length > 0 || !nextSourceExhausted;
             usedStoredPage = collected.usedStoredPage;
           } else {
-            const page = await fetchFireDatabasePointPage(
-              requestService,
-              requestParameters,
-              controller.signal,
-              generation
-            );
-            usedStoredPage = page.usedStoredPage;
-            if (generation !== fireDatabaseGeneration) return;
             const source = currentMembersOnly ? "current" : "ytd";
-            const merged = mergeFireFeaturePage(page.features, pageSize, source);
+            let page;
+            let merged;
+            let currentIds = null;
+            if (unifiedImsrAll) {
+              const [ytdPage, currentPage] = await Promise.all([
+                fetchFireDatabasePointPage(
+                  FIRE_SERVICES.ytdLocations,
+                  requestParameters,
+                  controller.signal,
+                  generation
+                ),
+                fetchFireDatabasePointPage(
+                  FIRE_SERVICES.currentLocations,
+                  requestParameters,
+                  controller.signal,
+                  generation
+                )
+              ]);
+              page = ytdPage;
+              usedStoredPage = ytdPage.usedStoredPage || currentPage.usedStoredPage;
+              currentIds = new Set(
+                currentPage.features.map((feature) => featureId(feature, "current"))
+              );
+              const ytdIds = new Set(
+                ytdPage.features.map((feature) => featureId(feature, "ytd"))
+              );
+              fireDatabaseCurrentOnlyFeatures = currentPage.features
+                .filter((feature) => !ytdIds.has(featureId(feature, "current-only")));
+              const entries = [
+                ...ytdPage.features.map((feature) => ({ feature, source: "ytd" })),
+                ...fireDatabaseCurrentOnlyFeatures.map((feature) => ({
+                  feature,
+                  source: "current"
+                }))
+              ].sort((left, right) => fireFeatureSortCompare(left.feature, right.feature));
+              merged = {
+                entries,
+                ytdConsumed: ytdPage.features.length,
+                currentIndex: fireDatabaseCurrentOnlyFeatures.length
+              };
+            } else {
+              page = await fetchFireDatabasePointPage(
+                requestService,
+                requestParameters,
+                controller.signal,
+                generation
+              );
+              usedStoredPage = page.usedStoredPage;
+              merged = mergeFireFeaturePage(page.features, pageSize, source);
+            }
+            if (generation !== fireDatabaseGeneration) return;
             const candidateRecords = merged.entries.map(({ feature, source: entrySource }) => (
               fireRecordFromPointFeature(
                 feature,
-                entrySource === "current",
+                entrySource === "current" ||
+                  Boolean(currentIds?.has(featureId(feature, entrySource))),
                 entrySource
               )
             ));
-            await resolveCurrentMembership(candidateRecords, controller.signal);
-            if (fireDatabaseImsrOnly) {
+            if (!unifiedImsrAll) {
+              await resolveCurrentMembership(candidateRecords, controller.signal);
+            }
+            if (unifiedImsrAll) {
+              // A single full perimeter pass both hydrates canonical geometry
+              // and supplies missing end-state attributes before final filtering.
               await Promise.all([
-                hydratePerimeterFilterAttributes(
+                hydratePerimeters(
                   candidateRecords,
                   "ytd",
                   controller.signal
                 ),
-                hydratePerimeterFilterAttributes(
+                hydratePerimeters(
                   candidateRecords,
                   "current",
                   controller.signal
                 )
               ]);
+            } else if (fireDatabaseImsrOnly) {
+              await Promise.all([
+                hydratePerimeterFilterAttributes(candidateRecords, "ytd", controller.signal),
+                hydratePerimeterFilterAttributes(candidateRecords, "current", controller.signal)
+              ]);
             }
             const matchingRecords = candidateRecords.filter((record) => (
               fireMatchesDatabaseFilters(record)
             ));
-            records = await hydrateFireRecords(
-              matchingRecords,
-              controller.signal,
-              false
-            );
+            records = unifiedImsrAll
+              ? await finishFireRecordsWithHydratedPerimeters(
+                matchingRecords,
+                controller.signal
+              )
+              : await hydrateFireRecords(
+                matchingRecords,
+                controller.signal,
+                false
+              );
             nextOffset = requestOffset + merged.ytdConsumed;
             nextCurrentOnlyIndex = merged.currentIndex;
-            nextHasMore = (
+            nextHasMore = !unifiedImsrAll && (
               merged.ytdConsumed < page.features.length ||
               nextCurrentOnlyIndex < fireDatabaseCurrentOnlyFeatures.length
             );
@@ -5097,7 +5187,11 @@
               currentMembersOnly ? 0 : fireDatabaseCurrentOnlyFeatures.length
             );
           }
+          if (fireFilterStateIsDefault()) {
+            lastFireRefreshAt = Date.now();
+          }
           updateFireMirrorState();
+          return true;
         } catch (error) {
           if (error.name === "AbortError") {
             // A selection or drawer-close abort starts no newer page load, so
@@ -5106,15 +5200,24 @@
               fireLoadMore.disabled = false;
               fireLoadMore.textContent = fireDatabaseNeedsReset ? "Retry" : "Load more";
             }
-            return;
+            return false;
           }
           console.warn("WFIGS database load failed", error);
           fireDatabaseStatus.textContent = fireList.childElementCount
             ? "Wildfire database temporarily unavailable · keeping current list"
             : "Wildfire database temporarily unavailable";
+          if (fireFilterStateIsDefault()) {
+            setFireLayerStatus(
+              "error",
+              fireMirrorRecords.size
+                ? "WFIGS refresh failed · keeping current fires"
+                : "WFIGS wildfires unavailable"
+            );
+          }
           fireLoadMore.hidden = false;
           fireLoadMore.disabled = false;
           fireLoadMore.textContent = "Retry";
+          return false;
         } finally {
           if (fireDatabaseController === controller) fireDatabaseController = null;
         }
@@ -5323,11 +5426,17 @@
           // Turning the layer off from a filtered view deliberately restores
           // the default All + IMSR state. Rebuild the canonical snapshot even
           // when the background Current cache is still fresh.
+          let canonicalReloadStarted = false;
           if (fireDatabaseNeedsReset && !fireDatabaseController) {
             loadFireDatabase(true);
+            canonicalReloadStarted = true;
           }
-          if (!lastFireRefreshAt || Date.now() - lastFireRefreshAt >= FIRE_REFRESH_MS) {
-            refreshWildfires({ force: true });
+          if (
+            !canonicalReloadStarted &&
+            !fireDatabaseController &&
+            (!lastFireRefreshAt || Date.now() - lastFireRefreshAt >= FIRE_REFRESH_MS)
+          ) {
+            loadFireDatabase(true);
           }
         } else {
           if (fireRefreshController) {
@@ -8139,7 +8248,7 @@
         else closeFireDrawer();
       });
       fireDrawerClose.addEventListener("click", () => closeFireDrawer());
-      fireRetry.addEventListener("click", () => refreshWildfires({ force: true }));
+      fireRetry.addEventListener("click", () => loadFireDatabase(true));
       fireLoadMore.addEventListener("click", () => loadFireDatabase(fireDatabaseNeedsReset));
       fireSearch.addEventListener("input", () => {
         if (fireSearchTimer) window.clearTimeout(fireSearchTimer);
@@ -8321,10 +8430,14 @@
           document.visibilityState !== "visible" ||
           combinedRefreshActive ||
           fireRefreshController ||
+          fireDatabaseController ||
           !wildfiresVisible ||
+          !fireFilterStateIsDefault() ||
           Date.now() - lastFireRefreshAt < FIRE_REFRESH_MS
         ) return;
-        refreshWildfires({ force: true });
+        // The canonical snapshot is the visible source of truth. Refresh it
+        // directly instead of downloading the unused full-Current cache first.
+        loadFireDatabase(true);
       }
 
       document.addEventListener("visibilitychange", checkCacheAfterResume);
@@ -8506,9 +8619,10 @@
 
       async function initialize() {
         syncFireAttribution();
-        refreshWildfires({ force: true });
-        // The map mirrors the list, so build the default canonical snapshot on
-        // startup (in parallel with the background refresh) while the drawer is closed.
+        // The canonical All + IMSR snapshot is the only startup wildfire load.
+        // The legacy full-Current health cache is deferred to the five-minute
+        // refresh cycle so it cannot duplicate requests or exhaust ArcGIS quota
+        // while the first visible fire set is being assembled.
         loadFireDatabase(true);
         timelineInteractionLocked = true;
         updateControlAvailability(0);

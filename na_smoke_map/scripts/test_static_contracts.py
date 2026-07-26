@@ -197,7 +197,21 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn('"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"', self.index)
         self.assertIn("async function fetchServiceObjectIds(service, signal)", self.index)
         self.assertIn("const fireDatabaseMembershipCache = new Map();", self.index)
-        self.assertIn('const cacheKey = "current-only-base";', self.index)
+        self.assertIn('const cacheKey = `current-only|${where}`;', self.index)
+        self.assertIn("const unifiedImsrAll =", self.index)
+        self.assertIn("const [ytdPage, currentPage] = await Promise.all([", self.index)
+        initialize = self.index.split(
+            "async function initialize()",
+            1,
+        )[1].split("initialize();", 1)[0]
+        self.assertIn("loadFireDatabase(true);", initialize)
+        self.assertNotIn("refreshWildfires({ force: true });", initialize)
+        automatic_refresh = self.index.split(
+            "function checkWildfiresAfterResume()",
+            1,
+        )[1].split("document.addEventListener", 1)[0]
+        self.assertIn("loadFireDatabase(true);", automatic_refresh)
+        self.assertNotIn("refreshWildfires", automatic_refresh)
         self.assertIn(".filter(fireFeatureMatchesDatabaseModifiers)", self.index)
         self.assertIn("const fireDatabasePerimeterCache = new Map();", self.index)
         self.assertIn("const fireDatabasePerimeterAttributeCache = new Map();", self.index)
