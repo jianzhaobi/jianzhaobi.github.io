@@ -925,6 +925,15 @@
       box-shadow: 0 1px 3px rgb(0 0 0 / 45%);
     }
 
+    /* Mirrors the ignition circles' hover, which snap instantly via setStyle
+       (no transition): the diamond grows (~circle radius +1.5) and its shadow
+       deepens, so a complex reacts to hover just like a point fire or
+       perimeter does. */
+    #north-america-pm25 .pm-fire-complex-diamond.pm-hovered {
+      transform: rotate(45deg) scale(1.18);
+      box-shadow: 0 2px 5px rgb(0 0 0 / 55%);
+    }
+
     #north-america-pm25 .pm-fire-mirror-banner {
       position: absolute;
       z-index: 1002;
@@ -3324,6 +3333,19 @@
             pane: "fireComplexPane",
             keyboard: false,
             title: record.name || "Complex"
+          });
+          // Hover mirrors the ignition circles / perimeters: cursor turns to a
+          // pointer (pm-fire-hover) and the diamond grows via pm-hovered. The
+          // divIcon has no setStyle, so toggle the class on its DOM element.
+          marker.on("mouseover", () => {
+            mapElement.classList.add("pm-fire-hover");
+            marker.getElement()?.querySelector(".pm-fire-complex-diamond")
+              ?.classList.add("pm-hovered");
+          });
+          marker.on("mouseout", () => {
+            mapElement.classList.remove("pm-fire-hover");
+            marker.getElement()?.querySelector(".pm-fire-complex-diamond")
+              ?.classList.remove("pm-hovered");
           });
           marker.on("click", (event) => {
             L.DomEvent.stop(event);
