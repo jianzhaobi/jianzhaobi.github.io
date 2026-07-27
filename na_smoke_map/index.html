@@ -3196,8 +3196,8 @@
         return hmsFeatures;
       }
 
-      async function refreshHmsCache() {
-        if (!hmsVisible) return false;
+      async function refreshHmsCache(options = {}) {
+        if (!hmsVisible && !options.allowHidden) return false;
         try {
           await loadHmsSmoke({ force: true });
         } catch (error) {
@@ -3206,10 +3206,11 @@
           }
           return false;
         }
-        if (!hmsVisible) return false;
-        renderHmsFeatures();
-        syncHmsAttribution();
-        updateMapAccessibleName();
+        if (hmsVisible) {
+          renderHmsFeatures();
+          syncHmsAttribution();
+          updateMapAccessibleName();
+        }
         return true;
       }
 
@@ -6149,9 +6150,9 @@
           cacheRefreshButton.dataset.state = "idle";
           cacheRefreshButton.setAttribute(
             "aria-label",
-            "Refresh smoke and wildfire data"
+            "Refresh smoke, wildfire, and HMS data"
           );
-          cacheRefreshButton.title = "Refresh smoke and wildfire data";
+          cacheRefreshButton.title = "Refresh smoke, wildfire, and HMS data";
           cacheRefreshButton.innerHTML =
             '<i data-lucide="refresh-cw" aria-hidden="true"></i>';
           cacheRefreshLabel = L.DomUtil.create(
@@ -8032,7 +8033,7 @@
 
       function setCacheRefreshState(
         state = "idle",
-        message = "Refresh smoke and wildfire data",
+        message = "Refresh smoke, wildfire, and HMS data",
         resetDelay = 0
       ) {
         if (cacheFeedbackTimer) {
@@ -8052,12 +8053,12 @@
         if (resetDelay > 0) {
           cacheFeedbackTimer = window.setTimeout(() => {
             cacheRefreshButton.dataset.state = "idle";
-            cacheRefreshLabel.textContent = "Refresh smoke and wildfire data";
+            cacheRefreshLabel.textContent = "Refresh smoke, wildfire, and HMS data";
             cacheRefreshButton.setAttribute(
               "aria-label",
-              "Refresh smoke and wildfire data"
+              "Refresh smoke, wildfire, and HMS data"
             );
-            cacheRefreshButton.title = "Refresh smoke and wildfire data";
+            cacheRefreshButton.title = "Refresh smoke, wildfire, and HMS data";
             cacheFeedbackTimer = 0;
           }, resetDelay);
         }
@@ -8764,13 +8765,14 @@
         updateControlAvailability();
         setCacheRefreshState(
           "loading",
-          "Refreshing smoke and wildfire data"
+          "Refreshing smoke, wildfire, and HMS data"
         );
 
         try {
-          const [smokeReady, wildfiresReady] = await Promise.all([
+          const [smokeReady, wildfiresReady, hmsReady] = await Promise.all([
             refreshCache({ combined: true, forceReload: true }),
-            refreshWildfires({ force: true, fullReload: true })
+            refreshWildfires({ force: true, fullReload: true }),
+            refreshHmsCache({ allowHidden: true })
           ]);
           if (!smokeReady) {
             datasetGeneration += 1;
@@ -8791,20 +8793,25 @@
           if (!fireDrawer.hidden && !fireDatabaseController) {
             loadFireDatabase(true);
           }
-          const bothReady = smokeReady && wildfiresReady;
-          // A partially successful WFIGS refresh still replaced live Current
-          // data, so it must not be reported as a total failure.
-          const eitherReady = smokeReady || wildfiresReady || fireRefreshPartialResult;
+          const allReady = smokeReady && wildfiresReady && hmsReady;
+          // Any validated cache replacement counts as partial success;
+          // unavailable sources retain their current snapshots.
+          const anyReady = (
+            smokeReady ||
+            wildfiresReady ||
+            hmsReady ||
+            fireRefreshPartialResult
+          );
           setCacheRefreshState(
-            bothReady ? "success" : (eitherReady ? "partial" : "error"),
-            bothReady
-              ? "Smoke and wildfire data refreshed"
-              : (eitherReady
+            allReady ? "success" : (anyReady ? "partial" : "error"),
+            allReady
+              ? "Smoke, wildfire, and HMS data refreshed"
+              : (anyReady
                   ? "Refresh partially completed; current data retained where unavailable"
                   : "Refresh unavailable; current map retained"),
-            bothReady ? 2600 : 3600
+            allReady ? 2600 : 3600
           );
-          return bothReady;
+          return allReady;
         } catch {
           setCacheRefreshState(
             "error",

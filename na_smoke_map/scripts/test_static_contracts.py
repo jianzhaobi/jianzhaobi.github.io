@@ -267,6 +267,19 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("Build hourly NOAA HMS smoke cache", workflow)
         self.assertIn("scripts/build_hms_cache.py", workflow)
         self.assertIn("_frame-cache/site-cache/hms", workflow)
+        refresh = self.index.split(
+            "async function refreshAllData()",
+            1,
+        )[1].split("async function changeDataset()", 1)[0]
+        self.assertIn("resetMapToInitialState();", refresh)
+        self.assertIn("refreshHmsCache({ allowHidden: true })", refresh)
+        self.assertIn("smokeReady && wildfiresReady && hmsReady", refresh)
+        reset = self.index.split(
+            "function resetMapToInitialState()",
+            1,
+        )[1].split("async function refreshAllData()", 1)[0]
+        self.assertIn("setHmsVisibility(false);", reset)
+        self.assertIn("Refresh smoke, wildfire, and HMS data", self.index)
 
 
 class WildfireCacheBuilderTests(unittest.TestCase):
