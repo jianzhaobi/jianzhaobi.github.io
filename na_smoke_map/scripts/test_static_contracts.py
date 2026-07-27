@@ -8,7 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
+import build_wildfire_cache as wildfire_cache
 from cache_timeline import timeline_hours
 
 
@@ -96,18 +98,51 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
 
-    def test_wfigs_uses_one_canonical_snapshot(self) -> None:
-        self.assertIn(
-            'const FIRE_DATABASE_STORAGE_KEY = "na-smoke-map:wfigs-database:v3"',
-            self.index,
+    def test_wfigs_uses_hourly_cache_and_one_canonical_snapshot(self) -> None:
+        self.assertIn("./cache/wildfires/manifest.json", self.index)
+        self.assertIn("function validWildfireCacheManifest(manifest)", self.index)
+        self.assertIn("async function initializeWildfireCache(options = {})", self.index)
+        self.assertIn("function startWildfireCatalogDownload()", self.index)
+        self.assertIn("function wildfireCatalogWorkerSource()", self.index)
+        self.assertIn('priority: "low"', self.index)
+        self.assertIn('const DB_NAME = "na-smoke-map-wildfire-cache";', self.index)
+        worker = self.index.split(
+            "function wildfireCatalogWorkerSource()",
+            1,
+        )[1].split("function downloadWildfireCatalogInWorker", 1)[0]
+        self.assertLess(worker.index("await readStored(version)"), worker.index("await fetch(url"))
+        initializer = self.index.split(
+            "async function initializeWildfireCache(options = {})",
+            1,
+        )[1].split("function sqlString", 1)[0]
+        self.assertNotIn("wildfireDefaultRecords = null", initializer)
+        self.assertIn("manifest.generatedAt !== previousVersion", initializer)
+        csp = self.index.split(
+            'http-equiv="Content-Security-Policy"',
+            1,
+        )[1].split(">", 1)[0]
+        self.assertIn("https://services2.arcgis.com", csp)
+        self.assertNotIn(
+            "https://services3.arcgis.com",
+            csp,
         )
         self.assertIn("const canonicalFireRecords = new Map();", self.index)
         self.assertIn("return canonicalFireRecords.get(id);", self.index)
-        self.assertIn("async function hydrateFireRecords(records, signal", self.index)
-        self.assertIn("async function loadCurrentOnlyFeatures(signal)", self.index)
-        self.assertIn("function mergeFireFeaturePage(ytdFeatures, pageSize, source)", self.index)
-        self.assertIn('f: "geojson",', self.index)
-        self.assertIn("returnGeometry: true,", self.index)
+        cached_loader = self.index.split(
+            "async function loadFireDatabase(reset = false)",
+            1,
+        )[1].split("function openFireDrawer()", 1)[0]
+        self.assertIn("wildfireDefaultRecords", cached_loader)
+        self.assertIn("wildfireCatalogRecords", cached_loader)
+        self.assertIn(".filter(fireMatchesDatabaseFilters)", cached_loader)
+        self.assertNotIn("fetchArcgis", cached_loader)
+        self.assertNotIn("FIRE_SERVICES", cached_loader)
+        cache_inflater = self.index.split(
+            "function fireRecordFromCache(wire)",
+            1,
+        )[1].split("async function inflateWildfireCacheRecords", 1)[0]
+        self.assertIn("blankFireRecord", cache_inflater)
+        self.assertIn("record.perimeterFeatures = wire.g", cache_inflater)
         self.assertNotIn("const live = fireEvents.get(record.id);", self.index)
 
     def test_wfigs_selection_reuses_canonical_geometry(self) -> None:
@@ -137,32 +172,23 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
 
-    def test_wfigs_status_filter_fills_pages_after_final_membership(self) -> None:
-        collector = self.index.split(
-            "async function collectFilteredStatusPage(",
+    def test_wfigs_filters_and_pagination_are_local(self) -> None:
+        filters = self.index.split(
+            "function fireMatchesDatabaseFilters(record)",
             1,
-        )[1].split(
-            "// The default filter state",
+        )[1].split("function rebuildFireEvents()", 1)[0]
+        self.assertIn("record.name", filters)
+        self.assertIn("fireDatabaseLargeOnly", filters)
+        self.assertIn("fireMatchesDatabaseStatus(record)", filters)
+        self.assertIn("isImsrGradeFire(record)", filters)
+        loader = self.index.split(
+            "async function loadFireDatabase(reset = false)",
             1,
-        )[0]
-        self.assertIn("resultRecordCount: scanSize + 1", collector)
-        self.assertLess(
-            collector.index("await resolveCurrentMembership(records, signal)"),
-            collector.index("fireMatchesDatabaseFilters(record)"),
-        )
-        self.assertLess(
-            collector.index("hydratePerimeterFilterAttributes(records, \"ytd\", signal)"),
-            collector.index("fireMatchesDatabaseFilters(record)"),
-        )
-        self.assertIn("FIRE_NOT_CURRENT_SCAN_SIZE", collector)
-        self.assertIn(
-            "nextHasMore = nextBufferedRecords.length > 0 || !nextSourceExhausted",
-            self.index,
-        )
-        self.assertNotIn(
-            'fireDatabaseStatus.textContent = fireDatabaseOffset ? "No more wildfires"',
-            self.index,
-        )
+        )[1].split("function openFireDrawer()", 1)[0]
+        self.assertIn("matching.slice(offset, offset + pageSize)", loader)
+        self.assertIn("fireDatabaseTotal = matching.length;", loader)
+        self.assertIn("wildfirePendingFilterReload = true;", loader)
+        self.assertIn("Preparing full wildfire database", loader)
 
     def test_wfigs_imsr_excludes_official_end_dates(self) -> None:
         imsr_function = self.index.split(
@@ -189,37 +215,165 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
 
-    def test_wfigs_hydration_uses_bounded_parallel_cached_batches(self) -> None:
-        self.assertIn("async function mapWithConcurrency(items, limit, callback)", self.index)
-        self.assertIn("const FIRE_ARCGIS_BATCH_CONCURRENCY = 2;", self.index)
-        self.assertIn("const FIRE_PERIMETER_BATCH_SIZE = 500;", self.index)
-        self.assertIn("const usePost = requestUrl.href.length > 1800;", self.index)
-        self.assertIn('"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"', self.index)
-        self.assertIn("async function fetchServiceObjectIds(service, signal)", self.index)
-        self.assertIn("const fireDatabaseMembershipCache = new Map();", self.index)
-        self.assertIn('const cacheKey = `current-only|${where}`;', self.index)
-        self.assertIn("const unifiedImsrAll =", self.index)
-        self.assertIn("const [ytdPage, currentPage] = await Promise.all([", self.index)
+    def test_wfigs_startup_and_refresh_never_call_live_arcgis(self) -> None:
         initialize = self.index.split(
             "async function initialize()",
             1,
         )[1].split("initialize();", 1)[0]
-        self.assertIn("loadFireDatabase(true);", initialize)
-        self.assertNotIn("refreshWildfires({ force: true });", initialize)
+        self.assertIn("initializeWildfireCache();", initialize)
+        self.assertNotIn("fetchArcgis", initialize)
+        refresh = self.index.split(
+            "async function refreshWildfires(options = {})",
+            1,
+        )[1].split("const fireDateFormatter", 1)[0]
+        self.assertIn("initializeWildfireCache({ force: true })", refresh)
+        self.assertNotIn("FIRE_SERVICES", refresh)
         automatic_refresh = self.index.split(
             "function checkWildfiresAfterResume()",
             1,
         )[1].split("document.addEventListener", 1)[0]
-        self.assertIn("loadFireDatabase(true);", automatic_refresh)
-        self.assertNotIn("refreshWildfires", automatic_refresh)
-        self.assertIn(".filter(fireFeatureMatchesDatabaseModifiers)", self.index)
-        self.assertIn("const fireDatabasePerimeterCache = new Map();", self.index)
-        self.assertIn("const fireDatabasePerimeterAttributeCache = new Map();", self.index)
-        self.assertIn("const fireDatabaseComplexMemberCache = new Map();", self.index)
-        self.assertIn(
-            'const cacheKey = `${source}:${record.id}`;',
-            self.index,
-        )
+        self.assertIn("initializeWildfireCache({ force: true });", automatic_refresh)
+        self.assertNotIn("fetchArcgis", automatic_refresh)
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("Build hourly WFIGS wildfire cache", workflow)
+        self.assertIn("scripts/build_wildfire_cache.py", workflow)
+        self.assertIn("_frame-cache/site-cache/wildfires/", workflow)
+
+
+class WildfireCacheBuilderTests(unittest.TestCase):
+    @staticmethod
+    def point(
+        identifier: str,
+        object_id: int,
+        *,
+        category: str = "WF",
+        child: int = 0,
+        parent: str | None = None,
+        report: str | None = "U",
+        containment: int | None = None,
+    ) -> dict:
+        return {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [-120, 45]},
+            "properties": {
+                "OBJECTID": object_id,
+                "IrwinID": identifier,
+                "IncidentName": identifier,
+                "IncidentTypeCategory": category,
+                "IsCpxChild": child,
+                "CpxID": parent,
+                "ICS209ReportStatus": report,
+                "PercentContained": containment,
+                "FireDiscoveryDateTime": 1_700_000_000_000 + object_id,
+            },
+        }
+
+    @staticmethod
+    def perimeter(identifier: str, object_id: int) -> dict:
+        return {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-120, 45], [-120, 46], [-119, 45], [-120, 45]]],
+            },
+            "properties": {
+                "OBJECTID": object_id,
+                "attr_IrwinID": identifier,
+                "attr_IncidentTypeCategory": "WF",
+            },
+        }
+
+    def test_builds_atomic_default_and_catalog_and_retains_prior_on_failure(self) -> None:
+        current = [
+            self.point("{a}", 1),
+            self.point("{c}", 3, category="CX", report=None),
+            self.point("{m}", 4, child=1, parent="{c}"),
+        ]
+        ytd = [
+            self.point("{a}", 1),
+            self.point("{b}", 2, report="F"),
+            self.point("{c}", 3, category="CX", report=None),
+            self.point("{m}", 4, child=1, parent="{c}"),
+            self.point("{rx}", 5, category="RX"),
+        ]
+        sources = {
+            "currentLocations": current,
+            "currentPerimeters": [self.perimeter("{a}", 11)],
+            "ytdLocations": ytd,
+            "ytdPerimeters": [
+                self.perimeter("{a}", 11),
+                self.perimeter("{b}", 12),
+                self.perimeter("{m}", 14),
+                self.perimeter("{d}", 15),
+            ],
+        }
+
+        def fake_fetch(name: str, _service: str, _retries: int) -> tuple:
+            return name, sources[name], 1_700_000_000_000
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = SimpleNamespace(
+                output=output,
+                retries=1,
+                jobs=2,
+                fail_without_existing_cache=False,
+            )
+            with mock.patch.object(wildfire_cache, "fetch_source", side_effect=fake_fetch):
+                wildfire_cache.build_cache(args)
+
+            manifest_path = output / "manifest.json"
+            manifest_bytes = manifest_path.read_bytes()
+            manifest = wildfire_cache.json.loads(manifest_bytes)
+            self.assertEqual(manifest["defaultCount"], 1)
+            self.assertEqual(manifest["catalogCount"], 4)
+            self.assertEqual(manifest["refreshIntervalMinutes"], 60)
+            for name in ("default", "catalog"):
+                asset = output / manifest[name]["path"]
+                content = asset.read_bytes()
+                self.assertEqual(len(content), manifest[name]["bytes"])
+                self.assertEqual(
+                    wildfire_cache.hashlib.sha256(content).hexdigest(),
+                    manifest[name]["sha256"],
+                )
+            catalog = wildfire_cache.json.loads(
+                (output / manifest["catalog"]["path"]).read_text(encoding="utf-8")
+            )
+            identifiers = {record["i"] for record in catalog["records"]}
+            self.assertEqual(identifiers, {"a", "b", "c", "d"})
+            complex_record = next(
+                record for record in catalog["records"] if record["i"] == "c"
+            )
+            self.assertEqual([record["i"] for record in complex_record["m"]], ["m"])
+            perimeter_only = next(
+                record for record in catalog["records"] if record["i"] == "d"
+            )
+            self.assertIsNone(perimeter_only["p"])
+            self.assertEqual(len(perimeter_only["g"]), 1)
+
+            with mock.patch.object(
+                wildfire_cache,
+                "fetch_source",
+                side_effect=RuntimeError("temporary WFIGS failure"),
+            ), mock.patch.object(
+                wildfire_cache.sys,
+                "argv",
+                ["build_wildfire_cache.py", "--output", str(output)],
+            ):
+                self.assertEqual(wildfire_cache.main(), 0)
+            self.assertEqual(manifest_path.read_bytes(), manifest_bytes)
+
+            (output / manifest["catalog"]["path"]).write_bytes(b"corrupt")
+            with mock.patch.object(
+                wildfire_cache,
+                "fetch_source",
+                side_effect=RuntimeError("temporary WFIGS failure"),
+            ), mock.patch.object(
+                wildfire_cache.sys,
+                "argv",
+                ["build_wildfire_cache.py", "--output", str(output)],
+            ):
+                self.assertEqual(wildfire_cache.main(), 1)
 
     def test_rolling_cache_uses_a_unique_save_key(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")

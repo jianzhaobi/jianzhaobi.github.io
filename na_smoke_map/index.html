@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services3.arcgis.com https://services2.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services2.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <meta
@@ -1941,7 +1941,7 @@
         ytdPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0`
       };
       const FIRE_ATTRIBUTION = '<a href="https://www.arcgis.com/home/item.html?id=4181a117dc9e43db8598533e29972015">NIFC WFIGS</a>';
-      const FIRE_REFRESH_MS = 5 * 60 * 1000;
+      const FIRE_REFRESH_MS = 60 * 60 * 1000;
 
       // NOAA HMS (Hazard Mapping System) analyst-drawn smoke plume polygons.
       // This is an ArcGIS Online hosted FeatureServer (GeoJSON + CORS), the same
@@ -2268,6 +2268,23 @@
       let fieldRenderingFailed = false;
       let datasetChangeDepth = 0;
       const cacheManifestUrl = new URL("./cache/manifest.json", document.baseURI);
+      const wildfireCacheManifestUrl = new URL(
+        "./cache/wildfires/manifest.json",
+        document.baseURI
+      );
+      let wildfireCacheManifest = null;
+      let wildfireCacheGeneratedAt = null;
+      let wildfireDefaultRecords = null;
+      let wildfireCatalogRecords = null;
+      let wildfireCachePromise = null;
+      let wildfireCatalogPromise = null;
+      let wildfireCatalogWorker = null;
+      let wildfireCatalogScheduleHandle = 0;
+      let wildfireCatalogScheduleIsIdle = false;
+      let wildfireCatalogRetryTimer = 0;
+      let wildfireCatalogAttempt = 0;
+      let wildfirePendingFilterReload = false;
+      let wildfireCacheGeneration = 0;
 
       function validCacheManifest(manifest) {
         return (
@@ -2302,6 +2319,92 @@
       }
 
       let cacheManifestPromise = fetchCacheManifest().catch(() => null);
+
+      function validWildfireCacheManifest(manifest) {
+        return (
+          manifest?.schemaVersion === 1 &&
+          typeof manifest.generatedAt === "string" &&
+          Number.isFinite(new Date(manifest.generatedAt).getTime()) &&
+          manifest.default &&
+          typeof manifest.default.path === "string" &&
+          typeof manifest.default.sha256 === "string" &&
+          manifest.catalog &&
+          typeof manifest.catalog.path === "string" &&
+          typeof manifest.catalog.sha256 === "string"
+        ) ? manifest : null;
+      }
+
+      async function fetchWildfireCacheManifest(cacheBust = false) {
+        const requestUrl = new URL(wildfireCacheManifestUrl);
+        if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+        try {
+          const response = await fetch(requestUrl, {
+            cache: "no-store",
+            signal: controller.signal
+          });
+          if (!response.ok) throw new Error("Wildfire cache manifest unavailable");
+          const manifest = validWildfireCacheManifest(await response.json());
+          if (!manifest) throw new Error("Wildfire cache manifest invalid");
+          return manifest;
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+
+      async function sha256Hex(buffer) {
+        const digest = await crypto.subtle.digest("SHA-256", buffer);
+        return [...new Uint8Array(digest)]
+          .map((value) => value.toString(16).padStart(2, "0"))
+          .join("");
+      }
+
+      async function fetchWildfireCacheAsset(manifest, asset, cacheBust = false) {
+        const requestUrl = new URL(asset.path, wildfireCacheManifestUrl);
+        if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
+        const response = await fetch(requestUrl, {
+          cache: cacheBust ? "reload" : "force-cache"
+        });
+        if (!response.ok) throw new Error("Wildfire cache asset unavailable");
+        const buffer = await response.arrayBuffer();
+        if (Number.isFinite(Number(asset.bytes)) && buffer.byteLength !== Number(asset.bytes)) {
+          throw new Error("Wildfire cache asset size mismatch");
+        }
+        if (await sha256Hex(buffer) !== asset.sha256) {
+          throw new Error("Wildfire cache asset digest mismatch");
+        }
+        const payload = JSON.parse(new TextDecoder().decode(buffer));
+        if (
+          payload?.schemaVersion !== 1 ||
+          payload.generatedAt !== manifest.generatedAt ||
+          !Array.isArray(payload.records)
+        ) {
+          throw new Error("Wildfire cache asset invalid");
+        }
+        return payload;
+      }
+
+      function wildfireCacheAgeText(now = Date.now()) {
+        const generated = new Date(wildfireCacheGeneratedAt || 0).getTime();
+        if (!Number.isFinite(generated) || generated <= 0) return "update time unavailable";
+        const minutes = Math.max(0, Math.floor((now - generated) / 60000));
+        if (minutes < 1) return "updated just now";
+        if (minutes < 60) return `updated ${minutes} min ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 48) return `updated ${hours} h ago`;
+        return `updated ${Math.floor(hours / 24)} d ago`;
+      }
+
+      function idleTurn(timeout = 250) {
+        return new Promise((resolve) => {
+          if ("requestIdleCallback" in window) {
+            window.requestIdleCallback(resolve, { timeout });
+          } else {
+            window.setTimeout(resolve, 0);
+          }
+        });
+      }
 
       const map = L.map(mapElement, {
         zoomControl: true,
@@ -2811,13 +2914,16 @@
         // The map mirrors the loaded list, so the layer count is the list size.
         const n = fireMirrorRecords.size;
         if (fireMirrorActive) {
-          setFireLayerStatus("ready", `Filtered · ${n.toLocaleString()} from the database list shown`);
+          setFireLayerStatus(
+            "ready",
+            `Filtered · ${n.toLocaleString()} shown · ${wildfireCacheAgeText()}`
+          );
           return;
         }
         // Default view (All + IMSR): the significant-fire set.
         setFireLayerStatus(
           "ready",
-          `${n.toLocaleString()} significant (IMSR) ${n === 1 ? "wildfire" : "wildfires"} shown`
+          `${n.toLocaleString()} significant (IMSR) ${n === 1 ? "wildfire" : "wildfires"} · ${wildfireCacheAgeText()}`
         );
       }
 
@@ -3284,6 +3390,16 @@
       }
 
       function fireMatchesDatabaseFilters(record) {
+        const search = fireSearch.value.trim().replace(/[%_]/g, " ").slice(0, 80);
+        if (
+          search &&
+          !String(record.name || "").toLowerCase().includes(search.toLowerCase())
+        ) return false;
+        if (
+          fireDatabaseLargeOnly &&
+          (reportedFireNumber(record.size) ?? Number.NEGATIVE_INFINITY) <
+            FIRE_LARGE_ACRES
+        ) return false;
         return fireMatchesDatabaseStatus(record) &&
           (!fireDatabaseImsrOnly || isImsrGradeFire(record));
       }
@@ -3732,7 +3848,7 @@
         );
       }
 
-      async function refreshWildfires(options = {}) {
+      async function refreshWildfiresFromArcgis(options = {}) {
         if (!wildfiresVisible && !options.force) return false;
         if (fireRefreshController) fireRefreshController.abort();
         const controller = new AbortController();
@@ -3829,6 +3945,21 @@
           window.clearTimeout(timeout);
           if (fireRefreshController === controller) fireRefreshController = null;
         }
+      }
+
+      async function refreshWildfires(options = {}) {
+        if (!wildfiresVisible && !options.force) return false;
+        setFireLayerStatus(
+          "loading",
+          fireMirrorRecords.size
+            ? "Checking hourly wildfire cache"
+            : "Loading hourly wildfire cache"
+        );
+        const ready = await initializeWildfireCache({ force: true });
+        if (!ready && fireMirrorRecords.size) {
+          updateFireReadyStatus();
+        }
+        return Boolean(ready);
       }
 
       const fireDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -3980,6 +4111,302 @@
         record.active = currentMember;
         record.source = source || (currentMember ? "current" : "ytd");
         return record;
+      }
+
+      function fireRecordFromCache(wire) {
+        if (!wire || typeof wire !== "object" || !Array.isArray(wire.g)) {
+          throw new Error("Wildfire cache record is invalid");
+        }
+        const record = wire.p && typeof wire.p === "object"
+          ? fireRecordFromPointFeature(wire.p, Boolean(wire.a), wire.s)
+          : blankFireRecord(wire.i || "database:unknown");
+        if (typeof wire.i === "string" && wire.i) record.id = wire.i;
+        record.active = Boolean(wire.a);
+        record.source = wire.s || (record.active ? "current" : "ytd");
+        record.perimeterFeatures = wire.g;
+        record.perimeterFeatures.forEach((feature) => {
+          mergeFireAttributes(record, perimeterAttributes(feature.properties));
+        });
+        if (!record.category && record.perimeterFeatures.length) {
+          record.category =
+            record.perimeterFeatures[0].properties?.attr_IncidentTypeCategory || null;
+        }
+        record.memberRecords = Array.isArray(wire.m)
+          ? wire.m.map(fireRecordFromCache)
+          : [];
+        record.pointRadius = firePointRadius(record.size);
+        record.pointColor = activeFirePointColor(record.discovery);
+        record.geometryComplete = true;
+        return record;
+      }
+
+      async function inflateWildfireCacheRecords(wires, chunkSize = 300) {
+        const records = [];
+        for (let index = 0; index < wires.length; index += chunkSize) {
+          const end = Math.min(wires.length, index + chunkSize);
+          for (let offset = index; offset < end; offset += 1) {
+            records.push(fireRecordFromCache(wires[offset]));
+          }
+          if (end < wires.length) await idleTurn();
+        }
+        return records;
+      }
+
+      function wildfireCatalogWorkerSource() {
+        return `
+          const DB_NAME = "na-smoke-map-wildfire-cache";
+          const STORE_NAME = "catalogs";
+          function openDatabase() {
+            return new Promise((resolve, reject) => {
+              const request = indexedDB.open(DB_NAME, 1);
+              request.onupgradeneeded = () => {
+                if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+                  request.result.createObjectStore(STORE_NAME);
+                }
+              };
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            });
+          }
+          async function readStored(key) {
+            try {
+              const database = await openDatabase();
+              return await new Promise((resolve, reject) => {
+                const request = database
+                  .transaction(STORE_NAME, "readonly")
+                  .objectStore(STORE_NAME)
+                  .get(key);
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = () => reject(request.error);
+              });
+            } catch {
+              return null;
+            }
+          }
+          async function writeStored(key, payload) {
+            try {
+              const database = await openDatabase();
+              await new Promise((resolve, reject) => {
+                const transaction = database.transaction(STORE_NAME, "readwrite");
+                transaction.objectStore(STORE_NAME).put(payload, key);
+                transaction.oncomplete = resolve;
+                transaction.onerror = () => reject(transaction.error);
+              });
+            } catch {
+              /* IndexedDB is an optimization, never a readiness requirement. */
+            }
+          }
+          async function digestHex(buffer) {
+            const digest = await crypto.subtle.digest("SHA-256", buffer);
+            return [...new Uint8Array(digest)]
+              .map((value) => value.toString(16).padStart(2, "0"))
+              .join("");
+          }
+          self.onmessage = async (event) => {
+            const { url, version, sha256, bytes } = event.data;
+            const stored = await readStored(version);
+            if (stored?.generatedAt === version && Array.isArray(stored.records)) {
+              self.postMessage({ ok: true, payload: stored, stored: true });
+              return;
+            }
+            try {
+              const response = await fetch(url, {
+                cache: "force-cache",
+                priority: "low"
+              });
+              if (!response.ok) throw new Error("Catalog download failed");
+              const buffer = await response.arrayBuffer();
+              if (Number.isFinite(Number(bytes)) && buffer.byteLength !== Number(bytes)) {
+                throw new Error("Catalog size mismatch");
+              }
+              if (await digestHex(buffer) !== sha256) {
+                throw new Error("Catalog digest mismatch");
+              }
+              const payload = JSON.parse(new TextDecoder().decode(buffer));
+              if (
+                payload?.schemaVersion !== 1 ||
+                payload.generatedAt !== version ||
+                !Array.isArray(payload.records)
+              ) {
+                throw new Error("Catalog payload invalid");
+              }
+              await writeStored(version, payload);
+              self.postMessage({ ok: true, payload, stored: false });
+            } catch (error) {
+              self.postMessage({
+                ok: false,
+                error: error?.message || "Catalog unavailable"
+              });
+            }
+          };
+        `;
+      }
+
+      function downloadWildfireCatalogInWorker(manifest) {
+        return new Promise((resolve, reject) => {
+          const blob = new Blob([wildfireCatalogWorkerSource()], {
+            type: "text/javascript"
+          });
+          const workerUrl = URL.createObjectURL(blob);
+          const worker = new Worker(workerUrl);
+          wildfireCatalogWorker = worker;
+          const finish = () => {
+            worker.terminate();
+            if (wildfireCatalogWorker === worker) wildfireCatalogWorker = null;
+            URL.revokeObjectURL(workerUrl);
+          };
+          worker.onmessage = (event) => {
+            finish();
+            if (event.data?.ok) resolve(event.data.payload);
+            else reject(new Error(event.data?.error || "Wildfire catalog unavailable"));
+          };
+          worker.onerror = (event) => {
+            finish();
+            reject(new Error(event.message || "Wildfire catalog worker failed"));
+          };
+          worker.postMessage({
+            url: new URL(manifest.catalog.path, wildfireCacheManifestUrl).href,
+            version: manifest.generatedAt,
+            sha256: manifest.catalog.sha256,
+            bytes: manifest.catalog.bytes
+          });
+        });
+      }
+
+      function scheduleWildfireCatalogDownload() {
+        if (
+          wildfireCatalogRecords ||
+          wildfireCatalogPromise ||
+          wildfireCatalogScheduleHandle ||
+          wildfireCatalogRetryTimer ||
+          !wildfireCacheManifest
+        ) return;
+        const begin = () => {
+          wildfireCatalogScheduleHandle = 0;
+          wildfireCatalogScheduleIsIdle = false;
+          startWildfireCatalogDownload();
+        };
+        if ("requestIdleCallback" in window) {
+          wildfireCatalogScheduleIsIdle = true;
+          wildfireCatalogScheduleHandle = window.requestIdleCallback(begin, {
+            timeout: 2000
+          });
+        } else {
+          wildfireCatalogScheduleHandle = window.setTimeout(begin, 600);
+        }
+      }
+
+      function startWildfireCatalogDownload() {
+        if (
+          wildfireCatalogRecords ||
+          wildfireCatalogPromise ||
+          !wildfireCacheManifest
+        ) return wildfireCatalogPromise;
+        const manifest = wildfireCacheManifest;
+        const generation = wildfireCacheGeneration;
+        wildfireCatalogPromise = downloadWildfireCatalogInWorker(manifest)
+          .then(async (payload) => {
+            const records = await inflateWildfireCacheRecords(payload.records);
+            if (
+              generation !== wildfireCacheGeneration ||
+              manifest !== wildfireCacheManifest
+            ) return null;
+            wildfireCatalogRecords = records;
+            wildfireCatalogAttempt = 0;
+            wildfireCatalogPromise = null;
+            if (wildfirePendingFilterReload || !fireFilterStateIsDefault()) {
+              wildfirePendingFilterReload = false;
+              loadFireDatabase(true);
+            } else if (!fireDrawer.hidden) {
+              renderFireListStatus();
+            }
+            return records;
+          })
+          .catch((error) => {
+            if (generation !== wildfireCacheGeneration) return null;
+            console.warn("Wildfire catalog background load failed", error);
+            wildfireCatalogPromise = null;
+            wildfireCatalogAttempt += 1;
+            const waitMs = Math.min(
+              60000,
+              1000 * (2 ** Math.min(wildfireCatalogAttempt, 6))
+            );
+            wildfireCatalogRetryTimer = window.setTimeout(() => {
+              wildfireCatalogRetryTimer = 0;
+              startWildfireCatalogDownload();
+            }, waitMs);
+            if (!fireDrawer.hidden) {
+              fireDatabaseStatus.textContent =
+                `Preparing full wildfire database · retrying automatically · ${wildfireCacheAgeText()}`;
+            }
+            return null;
+          });
+        return wildfireCatalogPromise;
+      }
+
+      async function initializeWildfireCache(options = {}) {
+        if (wildfireCachePromise && !options.force) return wildfireCachePromise;
+        const generation = ++wildfireCacheGeneration;
+        const previousVersion = wildfireCacheManifest?.generatedAt || null;
+        if (options.force) {
+          if (wildfireCatalogScheduleHandle) {
+            if (wildfireCatalogScheduleIsIdle) {
+              window.cancelIdleCallback(wildfireCatalogScheduleHandle);
+            } else {
+              window.clearTimeout(wildfireCatalogScheduleHandle);
+            }
+            wildfireCatalogScheduleHandle = 0;
+            wildfireCatalogScheduleIsIdle = false;
+          }
+          if (wildfireCatalogWorker) {
+            wildfireCatalogWorker.terminate();
+            wildfireCatalogWorker = null;
+          }
+          if (wildfireCatalogRetryTimer) {
+            window.clearTimeout(wildfireCatalogRetryTimer);
+            wildfireCatalogRetryTimer = 0;
+          }
+          wildfireCatalogPromise = null;
+        }
+        wildfireCachePromise = (async () => {
+          const manifest = await fetchWildfireCacheManifest(Boolean(options.force));
+          const payload = await fetchWildfireCacheAsset(
+            manifest,
+            manifest.default,
+            Boolean(options.force)
+          );
+          const records = await inflateWildfireCacheRecords(payload.records, 100);
+          if (generation !== wildfireCacheGeneration) return false;
+          if (manifest.generatedAt !== previousVersion) {
+            wildfireCatalogRecords = null;
+            wildfireCatalogAttempt = 0;
+          }
+          wildfireCacheManifest = manifest;
+          wildfireCacheGeneratedAt = manifest.generatedAt;
+          wildfireDefaultRecords = records;
+          lastFireRefreshAt = Date.now();
+          await loadFireDatabase(true);
+          scheduleWildfireCatalogDownload();
+          return true;
+        })()
+          .catch((error) => {
+            if (generation !== wildfireCacheGeneration) return false;
+            console.warn("Wildfire default cache load failed", error);
+            setFireLayerStatus(
+              "error",
+              fireMirrorRecords.size
+                ? "Wildfire cache unavailable · keeping current fires"
+                : "Wildfire cache unavailable"
+            );
+            fireDatabaseStatus.textContent = fireList.childElementCount
+              ? "Wildfire cache temporarily unavailable · keeping current list"
+              : "Wildfire cache temporarily unavailable";
+            return false;
+          })
+          .finally(() => {
+            if (generation === wildfireCacheGeneration) wildfireCachePromise = null;
+          });
+        return wildfireCachePromise;
       }
 
       function sqlString(value) {
@@ -4845,7 +5272,7 @@
         renderFireLayers();
         if (!fireRefreshController && fireEvents.size) updateFireReadyStatus();
         fireDatabaseNeedsReset = true;
-        if (reload && !fireDrawer.hidden) loadFireDatabase(true);
+        if (reload && wildfiresVisible) loadFireDatabase(true);
       }
 
       // Composes the drawer status line from current state, e.g.
@@ -4854,11 +5281,11 @@
       function renderFireListStatus() {
         const shown = fireList.childElementCount;
         if (!shown) {
-          fireDatabaseStatus.textContent = "No matching wildfires";
+          fireDatabaseStatus.textContent = `No matching wildfires · ${wildfireCacheAgeText()}`;
           return;
         }
         if (fireDatabaseLastUsedStored) {
-          fireDatabaseStatus.textContent = `${shown.toLocaleString()} cached wildfires shown · live WFIGS busy`;
+          fireDatabaseStatus.textContent = `${shown.toLocaleString()} cached wildfires shown · ${wildfireCacheAgeText()}`;
           return;
         }
         const total = fireDatabaseTotal;
@@ -4867,7 +5294,11 @@
           : shown.toLocaleString();
         const tags = `${fireDatabaseLargeOnly ? " large" : ""}${fireDatabaseImsrOnly ? " IMSR" : ""}`;
         const order = fireDatabaseSort === "size" ? "largest acreage first" : "newest discoveries first";
-        fireDatabaseStatus.textContent = `${countText}${tags} wildfires shown · ${order}`;
+        const catalogState = wildfireCatalogRecords
+          ? ""
+          : " · preparing full database";
+        fireDatabaseStatus.textContent =
+          `${countText}${tags} wildfires shown · ${order} · ${wildfireCacheAgeText()}${catalogState}`;
       }
 
       // Count-only companion query for the current filter, so the status can read
@@ -4933,7 +5364,7 @@
         );
       }
 
-      async function loadFireDatabase(reset = false) {
+      async function loadFireDatabaseFromArcgis(reset = false) {
         if (reset) {
           if (fireDatabaseTotalController) fireDatabaseTotalController.abort();
           fireDatabaseTotalController = null;
@@ -5223,6 +5654,72 @@
         }
       }
 
+      async function loadFireDatabase(reset = false) {
+        if (!wildfireDefaultRecords) {
+          if (!wildfireCachePromise) initializeWildfireCache();
+          fireDatabaseStatus.textContent = "Loading cached wildfire data";
+          return false;
+        }
+        const needsCatalog = !fireFilterStateIsDefault();
+        if (needsCatalog && !wildfireCatalogRecords) {
+          wildfirePendingFilterReload = true;
+          scheduleWildfireCatalogDownload();
+          startWildfireCatalogDownload();
+          fireDatabaseStatus.textContent =
+            `Preparing full wildfire database · ${wildfireCacheAgeText()}`;
+          fireLoadMore.hidden = true;
+          return false;
+        }
+
+        const sourceRecords = needsCatalog
+          ? wildfireCatalogRecords
+          : wildfireDefaultRecords;
+        if (!Array.isArray(sourceRecords)) return false;
+        if (reset) {
+          fireDatabaseOffset = 0;
+          fireDatabaseHasMore = true;
+          fireDatabaseNeedsReset = true;
+          fireDatabaseTotal = null;
+        }
+        const generation = ++fireDatabaseGeneration;
+        const pageSize = fireDatabaseImsrOnly
+          ? Number.POSITIVE_INFINITY
+          : FIRE_PAGE_SIZE;
+        const matching = sourceRecords
+          .filter(fireMatchesDatabaseFilters)
+          .slice()
+          .sort(fireRecordSortCompare);
+        const offset = fireDatabaseOffset;
+        const page = Number.isFinite(pageSize)
+          ? matching.slice(offset, offset + pageSize)
+          : matching.slice(offset);
+        await idleTurn(100);
+        if (generation !== fireDatabaseGeneration) return false;
+
+        if (fireDatabaseNeedsReset || reset) {
+          fireList.replaceChildren();
+          fireMirrorRecords.clear();
+          canonicalFireRecords.clear();
+          fireDatabaseNeedsReset = false;
+        }
+        page.forEach((record) => {
+          if (fireMirrorRecords.has(record.id)) return;
+          registerCanonicalRecord(record);
+          appendFireDatabaseRow(record);
+        });
+        fireDatabaseOffset = offset + page.length;
+        fireDatabaseHasMore = fireDatabaseOffset < matching.length;
+        fireDatabaseTotal = matching.length;
+        fireDatabaseLastUsedStored = false;
+        fireLoadMore.hidden = !fireDatabaseHasMore;
+        fireLoadMore.disabled = false;
+        fireLoadMore.textContent = "Load more";
+        renderFireListStatus();
+        lastFireRefreshAt = Date.now();
+        updateFireMirrorState();
+        return true;
+      }
+
       function openFireDrawer() {
         menus.forEach((menu) => { menu.open = false; });
         fireDrawer.hidden = false;
@@ -5230,6 +5727,7 @@
         if (!fireList.childElementCount || fireDatabaseNeedsReset) {
           loadFireDatabase(fireDatabaseNeedsReset || !fireList.childElementCount);
         } else {
+          renderFireListStatus();
           resumeFireDatabaseTotalIfNeeded();
         }
         window.requestAnimationFrame(() => fireSearch.focus({ preventScroll: true }));
@@ -8435,9 +8933,10 @@
           !fireFilterStateIsDefault() ||
           Date.now() - lastFireRefreshAt < FIRE_REFRESH_MS
         ) return;
-        // The canonical snapshot is the visible source of truth. Refresh it
-        // directly instead of downloading the unused full-Current cache first.
-        loadFireDatabase(true);
+        // The browser never queries WFIGS directly. Check the hourly manifest;
+        // a new content-addressed version replaces the complete snapshot only
+        // after its default asset validates.
+        initializeWildfireCache({ force: true });
       }
 
       document.addEventListener("visibilitychange", checkCacheAfterResume);
@@ -8451,6 +8950,12 @@
       // A continuously visible tab (kiosk use) never fires visibility events,
       // so the hourly cache check needs its own periodic tick as well.
       window.setInterval(checkCacheAfterResume, FIRE_REFRESH_MS);
+      // Keep the human-readable cache age current without reloading or
+      // rebuilding any wildfire geometry.
+      window.setInterval(() => {
+        if (fireMirrorRecords.size && !fireRefreshController) updateFireReadyStatus();
+        if (!fireDrawer.hidden && fireList.childElementCount) renderFireListStatus();
+      }, 60000);
 
       const probeCanvas = document.createElement("canvas");
       probeCanvas.width = 1;
@@ -8619,11 +9124,11 @@
 
       async function initialize() {
         syncFireAttribution();
-        // The canonical All + IMSR snapshot is the only startup wildfire load.
-        // The legacy full-Current health cache is deferred to the five-minute
-        // refresh cycle so it cannot duplicate requests or exhaust ArcGIS quota
-        // while the first visible fire set is being assembled.
-        loadFireDatabase(true);
+        // Render the small, hourly All + IMSR cache first. Its matching complete
+        // catalog starts in a low-priority Worker only after the default snapshot
+        // commits, so WFIGS is never queried by a browser and foreground map work
+        // is not blocked by the full database download or JSON parsing.
+        initializeWildfireCache();
         timelineInteractionLocked = true;
         updateControlAvailability(0);
         setFrameStatus("loading", "Loading available forecast frames");
