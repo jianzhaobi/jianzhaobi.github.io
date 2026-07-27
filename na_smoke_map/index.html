@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self' https://services2.arcgis.com; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src 'self' blob: data: https:; connect-src 'self'; manifest-src 'self'; worker-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
   >
   <title>North America Smoke &amp; PM2.5 Forecast</title>
   <meta
@@ -1725,7 +1725,7 @@
             </section>
             <section class="pm-layer-section" id="pm-hms-options" aria-labelledby="pm-hms-options-title" hidden>
               <strong class="pm-layer-section-title" id="pm-hms-options-title">Observed smoke (HMS)</strong>
-              <p class="pm-hms-note">NOAA analyst-drawn smoke plume extent from satellite imagery — the latest daily analysis. Density is a qualitative Light / Medium / Heavy class, not a PM2.5 concentration, and this layer does not follow the timeline.</p>
+              <p class="pm-hms-note">NOAA analyst-drawn smoke plume extent from satellite imagery, served from the hourly cache. The status below shows the latest observation time; a dated previous analysis may appear before NOAA publishes today's first classification. Density is a qualitative Light / Medium / Heavy class, not a PM2.5 concentration, and this layer does not follow the timeline.</p>
               <div class="pm-hms-legend" id="pm-hms-legend" aria-hidden="true"></div>
               <div class="pm-fire-layer-status" id="pm-hms-status" data-state="idle" role="status" aria-live="polite" hidden>
                 <span id="pm-hms-status-text"></span>
@@ -1944,12 +1944,12 @@
       const FIRE_REFRESH_MS = 60 * 60 * 1000;
 
       // NOAA HMS (Hazard Mapping System) analyst-drawn smoke plume polygons.
-      // This is an ArcGIS Online hosted FeatureServer (GeoJSON + CORS), the same
-      // class of service as WFIGS, so it is fetched and rendered in the browser
-      // with no build-pipeline involvement. It is OBSERVED plume extent, not a
-      // modeled concentration: the Density field is a qualitative Light/Medium/
-      // Heavy class and must never be presented as µg/m³ or mg/m².
-      const HMS_SERVICE = "https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/NOAA_Satellite_Smoke_Detection_(v1)/FeatureServer/0";
+      // The hourly build publishes a validated, same-origin GeoJSON cache,
+      // preferring today's live ArcGIS layer and falling back to NOAA's latest
+      // official daily KML archive when the live layer is temporarily empty.
+      // The browser never queries NOAA or ArcGIS directly. HMS is OBSERVED plume
+      // extent, not modeled concentration: Density is a qualitative Light/
+      // Medium/Heavy class and must never be presented as µg/m³ or mg/m².
       const HMS_ATTRIBUTION = '<a href="https://www.ospo.noaa.gov/products/land/hms.html">NOAA HMS Smoke</a>';
       // Graded translucent smoke-grey so the plumes read as haze and never
       // collide with the PM2.5 colour ramp. A dashed outline keeps them legible
@@ -2172,6 +2172,9 @@
       let hmsLoadController = null;
       let hmsLoadGeneration = 0;
       let hmsAttributionVisible = false;
+      let hmsCacheManifest = null;
+      let hmsCacheGeneratedAt = null;
+      let lastHmsRefreshAt = 0;
       let selectedHour = 0;
       let activeKey = "";
       let activeProcessed = null;
@@ -2272,6 +2275,10 @@
         "./cache/wildfires/manifest.json",
         document.baseURI
       );
+      const hmsCacheManifestUrl = new URL(
+        "./cache/hms/manifest.json",
+        document.baseURI
+      );
       let wildfireCacheManifest = null;
       let wildfireCacheGeneratedAt = null;
       let wildfireDefaultRecords = null;
@@ -2358,6 +2365,64 @@
         return [...new Uint8Array(digest)]
           .map((value) => value.toString(16).padStart(2, "0"))
           .join("");
+      }
+
+      function validHmsCacheManifest(manifest) {
+        return (
+          manifest?.schemaVersion === 1 &&
+          typeof manifest.generatedAt === "string" &&
+          Number.isFinite(new Date(manifest.generatedAt).getTime()) &&
+          ["live", "archive"].includes(manifest.sourceKind) &&
+          typeof manifest.analysisDate === "string" &&
+          Number.isFinite(Number(manifest.polygonCount)) &&
+          manifest.asset &&
+          typeof manifest.asset.path === "string" &&
+          typeof manifest.asset.sha256 === "string"
+        ) ? manifest : null;
+      }
+
+      async function fetchHmsCacheManifest(cacheBust = false, signal) {
+        const requestUrl = new URL(hmsCacheManifestUrl);
+        if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
+        const response = await fetch(requestUrl, {
+          cache: "no-store",
+          signal
+        });
+        if (!response.ok) throw new Error("HMS cache manifest unavailable");
+        const manifest = validHmsCacheManifest(await response.json());
+        if (!manifest) throw new Error("HMS cache manifest invalid");
+        return manifest;
+      }
+
+      async function fetchHmsCacheAsset(manifest, cacheBust = false, signal) {
+        const requestUrl = new URL(manifest.asset.path, hmsCacheManifestUrl);
+        if (cacheBust) requestUrl.searchParams.set("refresh", String(Date.now()));
+        const response = await fetch(requestUrl, {
+          cache: cacheBust ? "reload" : "force-cache",
+          signal
+        });
+        if (!response.ok) throw new Error("HMS cache asset unavailable");
+        const buffer = await response.arrayBuffer();
+        if (
+          Number.isFinite(Number(manifest.asset.bytes)) &&
+          buffer.byteLength !== Number(manifest.asset.bytes)
+        ) {
+          throw new Error("HMS cache asset size mismatch");
+        }
+        if (await sha256Hex(buffer) !== manifest.asset.sha256) {
+          throw new Error("HMS cache asset digest mismatch");
+        }
+        const payload = JSON.parse(new TextDecoder().decode(buffer));
+        if (
+          payload?.schemaVersion !== 1 ||
+          payload.generatedAt !== manifest.generatedAt ||
+          payload.analysisDate !== manifest.analysisDate ||
+          !Array.isArray(payload.features) ||
+          payload.features.length !== Number(manifest.polygonCount)
+        ) {
+          throw new Error("HMS cache asset invalid");
+        }
+        return payload;
       }
 
       async function fetchWildfireCacheAsset(manifest, asset, cacheBust = false) {
@@ -2938,10 +3003,10 @@
       }
 
       // ----- NOAA HMS observed-smoke overlay -----
-      // A static layer: the latest daily analysis, showing every polygon the
-      // service currently publishes (all of today's satellite time steps). It is
-      // deliberately NOT tied to the timeline and does no past/forecast filtering,
-      // because HMS is a daily analyst product with no hourly cadence or forecast.
+      // A static layer: the newest analysis in the hourly cache, showing every
+      // polygon in that one dated NOAA analysis. It is deliberately NOT tied to
+      // the timeline and does no past/forecast filtering, because HMS is a daily
+      // analyst product with no hourly cadence or forecast.
       function hmsDensity(feature) {
         const value = String(feature?.properties?.Density || "").trim().toLowerCase();
         return HMS_DENSITY_ORDER.find((density) => density.toLowerCase() === value) || "Unknown";
@@ -2994,6 +3059,52 @@
         hmsRetry.hidden = !showRetry;
       }
 
+      const hmsObservedFormatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short"
+      });
+      const hmsAnalysisFormatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+
+      function hmsCacheAgeText(now = Date.now()) {
+        const generated = new Date(hmsCacheGeneratedAt || 0).getTime();
+        if (!Number.isFinite(generated) || generated <= 0) {
+          return "cache time unavailable";
+        }
+        const minutes = Math.max(0, Math.floor((now - generated) / 60000));
+        if (minutes < 1) return "cache checked just now";
+        if (minutes < 60) return `cache checked ${minutes} min ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 48) return `cache checked ${hours} h ago`;
+        return `cache checked ${Math.floor(hours / 24)} d ago`;
+      }
+
+      function hmsReadyStatus() {
+        const count = Array.isArray(hmsFeatures) ? hmsFeatures.length : 0;
+        if (!count) return `No cached HMS smoke polygons · ${hmsCacheAgeText()}`;
+        const previous = hmsCacheManifest?.sourceKind === "archive"
+          ? " · previous analysis"
+          : "";
+        const observed = new Date(hmsCacheManifest?.observedEnd || 0);
+        let timeliness = "";
+        if (Number.isFinite(observed.getTime()) && observed.getTime() > 0) {
+          timeliness = `observed through ${hmsObservedFormatter.format(observed)}`;
+        } else {
+          const analysis = new Date(`${hmsCacheManifest?.analysisDate || ""}T12:00:00`);
+          timeliness = Number.isFinite(analysis.getTime())
+            ? `analysis ${hmsAnalysisFormatter.format(analysis)}`
+            : "analysis time unavailable";
+        }
+        return `${count.toLocaleString()} HMS smoke ${count === 1 ? "polygon" : "polygons"}${previous} · ${timeliness} · ${hmsCacheAgeText()}`;
+      }
+
       function renderHmsFeatures() {
         hmsGroup.clearLayers();
         if (!hmsVisible || !Array.isArray(hmsFeatures) || !hmsFeatures.length) return;
@@ -3016,51 +3127,90 @@
         }).addTo(hmsGroup);
       }
 
-      async function loadHmsSmoke() {
-        if (Array.isArray(hmsFeatures)) return hmsFeatures;
-        if (hmsLoadPromise) return hmsLoadPromise;
-        setHmsStatus("loading", "Loading NOAA HMS smoke");
+      async function loadHmsSmoke(options = {}) {
+        if (Array.isArray(hmsFeatures) && !options.force) {
+          setHmsStatus("ready", hmsReadyStatus());
+          return hmsFeatures;
+        }
+        if (hmsLoadPromise && !options.force) return hmsLoadPromise;
+        if (hmsLoadController && options.force) {
+          hmsLoadGeneration += 1;
+          hmsLoadController.abort();
+        }
+        setHmsStatus(
+          "loading",
+          Array.isArray(hmsFeatures)
+            ? "Checking hourly HMS smoke cache"
+            : "Loading hourly HMS smoke cache"
+        );
         const controller = new AbortController();
         const generation = ++hmsLoadGeneration;
         hmsLoadController = controller;
+        const timeout = window.setTimeout(() => controller.abort(), 30000);
         const promise = (async () => {
-          const features = await fetchGeojsonFeaturePages(HMS_SERVICE, {
-            where: "1=1",
-            outFields: "Density,Satellite,Start,End_",
-            returnGeometry: true,
-            outSR: 4326,
-            geometryPrecision: 5
-          }, controller.signal);
-          return features.filter((feature) => feature?.geometry);
+          const manifest = await fetchHmsCacheManifest(
+            Boolean(options.force),
+            controller.signal
+          );
+          const payload = await fetchHmsCacheAsset(
+            manifest,
+            Boolean(options.force),
+            controller.signal
+          );
+          if (payload.features.some((feature) => !feature?.geometry)) {
+            throw new Error("HMS cache contains a feature without geometry");
+          }
+          return { manifest, features: payload.features };
         })();
         hmsLoadPromise = promise;
         try {
-          const features = await promise;
+          const { manifest, features } = await promise;
           if (generation !== hmsLoadGeneration) {
             const stale = new Error("HMS smoke request superseded");
             stale.name = "AbortError";
             throw stale;
           }
+          hmsCacheManifest = manifest;
+          hmsCacheGeneratedAt = manifest.generatedAt;
           hmsFeatures = features;
-          setHmsStatus(
-            "ready",
-            hmsFeatures.length
-              ? `${hmsFeatures.length} HMS smoke polygons (latest analysis)`
-              : "No HMS smoke polygons in the latest analysis"
-          );
+          lastHmsRefreshAt = Date.now();
+          setHmsStatus("ready", hmsReadyStatus());
         } catch (error) {
           if (generation === hmsLoadGeneration) {
-            hmsFeatures = null;
             if (error?.name !== "AbortError") {
-              setHmsStatus("error", "Could not load NOAA HMS smoke", true);
+              setHmsStatus(
+                "error",
+                Array.isArray(hmsFeatures)
+                  ? `Could not refresh HMS cache · ${hmsReadyStatus()}`
+                  : "Could not load hourly HMS smoke cache",
+                true
+              );
             }
           }
           throw error;
         } finally {
+          window.clearTimeout(timeout);
           if (hmsLoadController === controller) hmsLoadController = null;
           if (hmsLoadPromise === promise) hmsLoadPromise = null;
         }
         return hmsFeatures;
+      }
+
+      async function refreshHmsCache() {
+        if (!hmsVisible) return false;
+        try {
+          await loadHmsSmoke({ force: true });
+        } catch (error) {
+          if (error?.name !== "AbortError") {
+            console.warn("HMS smoke cache refresh failed", error);
+          }
+          return false;
+        }
+        if (!hmsVisible) return false;
+        renderHmsFeatures();
+        syncHmsAttribution();
+        updateMapAccessibleName();
+        return true;
       }
 
       function syncHmsAttribution() {
@@ -8580,6 +8730,7 @@
         ignitionToggle.checked = true;
         perimeterToggle.checked = true;
         wildfireOptions.hidden = false;
+        setHmsVisibility(false);
         renderFireLayers();
         setBasemap("day");
         // The legend and time labels intentionally keep describing the
@@ -8737,7 +8888,7 @@
       ignitionToggle.addEventListener("change", () => setIgnitionVisibility(ignitionToggle.checked));
       perimeterToggle.addEventListener("change", () => setPerimeterVisibility(perimeterToggle.checked));
       hmsToggle.addEventListener("change", () => { setHmsVisibility(hmsToggle.checked); });
-      hmsRetry.addEventListener("click", () => { setHmsVisibility(true); });
+      hmsRetry.addEventListener("click", () => { refreshHmsCache(); });
       particleSelect.addEventListener("change", changeDataset);
       extentSelect.addEventListener("change", changeDataset);
       basemapInputs.forEach((input) => input.addEventListener("change", changeBasemap));
@@ -8939,14 +9090,27 @@
         initializeWildfireCache({ force: true });
       }
 
+      function checkHmsAfterResume() {
+        if (
+          document.visibilityState !== "visible" ||
+          !hmsVisible ||
+          hmsLoadController ||
+          Date.now() - lastHmsRefreshAt < FIRE_REFRESH_MS
+        ) return;
+        refreshHmsCache();
+      }
+
       document.addEventListener("visibilitychange", checkCacheAfterResume);
       document.addEventListener("visibilitychange", checkWildfiresAfterResume);
+      document.addEventListener("visibilitychange", checkHmsAfterResume);
       window.addEventListener("pageshow", () => {
         checkCacheAfterResume();
         checkWildfiresAfterResume();
+        checkHmsAfterResume();
         resumeFireDatabaseTotalIfNeeded();
       });
       fireRefreshTimer = window.setInterval(checkWildfiresAfterResume, FIRE_REFRESH_MS);
+      window.setInterval(checkHmsAfterResume, FIRE_REFRESH_MS);
       // A continuously visible tab (kiosk use) never fires visibility events,
       // so the hourly cache check needs its own periodic tick as well.
       window.setInterval(checkCacheAfterResume, FIRE_REFRESH_MS);
@@ -8955,6 +9119,14 @@
       window.setInterval(() => {
         if (fireMirrorRecords.size && !fireRefreshController) updateFireReadyStatus();
         if (!fireDrawer.hidden && fireList.childElementCount) renderFireListStatus();
+        if (
+          hmsVisible &&
+          Array.isArray(hmsFeatures) &&
+          !hmsLoadController &&
+          hmsStatus.dataset.state !== "error"
+        ) {
+          setHmsStatus("ready", hmsReadyStatus());
+        }
       }, 60000);
 
       const probeCanvas = document.createElement("canvas");

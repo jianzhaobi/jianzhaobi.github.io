@@ -74,6 +74,13 @@ jobs:
             --jobs 2 \
             --retries 3
 
+      - name: Build hourly NOAA HMS smoke cache
+        run: |
+          python na_smoke_map/scripts/build_hms_cache.py \
+            --output _frame-cache/site-cache/hms \
+            --archive-lookback-days 14 \
+            --retries 3
+
       - name: Build same-origin PM2.5 frame cache
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -131,6 +138,10 @@ jobs:
             rsync -a --delete \
               _frame-cache/site-cache/wildfires/ \
               _site/na_smoke_map/cache/wildfires/
+            mkdir -p _site/na_smoke_map/cache/hms
+            rsync -a --delete \
+              _frame-cache/site-cache/hms/ \
+              _site/na_smoke_map/cache/hms/
             rm -rf _site/na_smoke_map/cache/fields _site/na_smoke_map/cache/frames
           else
             rsync -a --delete \

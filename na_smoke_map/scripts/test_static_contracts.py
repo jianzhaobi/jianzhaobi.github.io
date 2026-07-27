@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import build_hms_cache as hms_cache
 import build_wildfire_cache as wildfire_cache
 from cache_timeline import timeline_hours
 
@@ -121,7 +124,7 @@ class StaticAppContractTests(unittest.TestCase):
             'http-equiv="Content-Security-Policy"',
             1,
         )[1].split(">", 1)[0]
-        self.assertIn("https://services2.arcgis.com", csp)
+        self.assertNotIn("https://services2.arcgis.com", csp)
         self.assertNotIn(
             "https://services3.arcgis.com",
             csp,
@@ -238,6 +241,32 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("Build hourly WFIGS wildfire cache", workflow)
         self.assertIn("scripts/build_wildfire_cache.py", workflow)
         self.assertIn("_frame-cache/site-cache/wildfires/", workflow)
+
+    def test_hms_uses_hourly_same_origin_cache_with_timeliness(self) -> None:
+        self.assertIn("./cache/hms/manifest.json", self.index)
+        self.assertIn("function validHmsCacheManifest(manifest)", self.index)
+        self.assertIn("async function fetchHmsCacheAsset(", self.index)
+        self.assertIn("function hmsReadyStatus()", self.index)
+        self.assertIn("observed through", self.index)
+        self.assertIn("cache checked", self.index)
+        loader = self.index.split(
+            "async function loadHmsSmoke(options = {})",
+            1,
+        )[1].split("function syncHmsAttribution", 1)[0]
+        self.assertIn("fetchHmsCacheManifest", loader)
+        self.assertIn("fetchHmsCacheAsset", loader)
+        self.assertNotIn("fetchGeojsonFeaturePages", loader)
+        self.assertNotIn("services2.arcgis.com", self.index)
+        csp = self.index.split(
+            'http-equiv="Content-Security-Policy"',
+            1,
+        )[1].split(">", 1)[0]
+        self.assertIn("connect-src 'self'", csp)
+        self.assertNotIn("services2.arcgis.com", csp)
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("Build hourly NOAA HMS smoke cache", workflow)
+        self.assertIn("scripts/build_hms_cache.py", workflow)
+        self.assertIn("_frame-cache/site-cache/hms", workflow)
 
 
 class WildfireCacheBuilderTests(unittest.TestCase):
@@ -384,6 +413,191 @@ class WildfireCacheBuilderTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count(unique_key), 2)
         save_step = workflow.split("- name: Save rolling frame cache", 1)[1]
         self.assertNotIn("cache-hit", save_step.split("- name:", 1)[0])
+
+
+class HmsCacheBuilderTests(unittest.TestCase):
+    @staticmethod
+    def feature(
+        density: str = "Light",
+        start: str = "2026207 1200",
+        end: str = "2026207 1500",
+    ) -> dict:
+        return {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-120, 45],
+                    [-120, 46],
+                    [-119, 45],
+                    [-120, 45],
+                ]],
+            },
+            "properties": {
+                "Density": density,
+                "Satellite": "GOES-WEST",
+                "Start": start,
+                "End_": end,
+            },
+        }
+
+    def test_parses_official_kml_fields_geometry_and_timestamps(self) -> None:
+        kml = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>
+        <description><![CDATA[<div>Start Time: 2026207 1200UTC<br>
+        End Time: 2026207 1500UTC<br>Density: Heavy<br>
+        Satellite: GOES-WEST</div>]]></description>
+        <Polygon><outerBoundaryIs><LinearRing><coordinates>
+        -120,45,0 -120,46,0 -119,45,0 -120,45,0
+        </coordinates></LinearRing></outerBoundaryIs></Polygon>
+        </Placemark></Document></kml>"""
+        features = hms_cache.parse_archive_kml(kml)
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0]["properties"]["Density"], "Heavy")
+        self.assertEqual(features[0]["properties"]["Start"], "2026207 1200")
+        self.assertEqual(features[0]["properties"]["End_"], "2026207 1500")
+        self.assertEqual(features[0]["geometry"]["type"], "Polygon")
+        start, end = hms_cache.observation_window(features)
+        self.assertEqual(start, "2026-07-26T12:00:00Z")
+        self.assertEqual(end, "2026-07-26T15:00:00Z")
+
+    def test_empty_live_layer_falls_back_to_latest_archive(self) -> None:
+        archive_feature = self.feature()
+        now = hms_cache.dt.datetime(2026, 7, 27, 14, 0, tzinfo=hms_cache.UTC)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = SimpleNamespace(
+                output=output,
+                retries=1,
+                archive_lookback_days=14,
+                fail_without_existing_cache=False,
+            )
+            live = {
+                "features": [],
+                "sourceKind": "live",
+                "sourceUrl": hms_cache.HMS_SERVICE,
+                "sourceUpdatedAt": "2026-07-27T13:51:46Z",
+                "analysisDate": "2026-07-27",
+            }
+            archive = {
+                "features": [archive_feature],
+                "sourceKind": "archive",
+                "sourceUrl": hms_cache.archive_url(now.date() - hms_cache.dt.timedelta(days=1)),
+                "sourceUpdatedAt": "2026-07-27T10:05:28Z",
+                "analysisDate": "2026-07-26",
+            }
+            with mock.patch.object(
+                hms_cache,
+                "fetch_live_source",
+                return_value=live,
+            ), mock.patch.object(
+                hms_cache,
+                "fetch_archive_source",
+                return_value=archive,
+            ):
+                hms_cache.build_cache(args, now=now)
+
+            manifest = json.loads(
+                (output / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["sourceKind"], "archive")
+            self.assertEqual(manifest["analysisDate"], "2026-07-26")
+            self.assertEqual(manifest["observedEnd"], "2026-07-26T15:00:00Z")
+            self.assertEqual(manifest["polygonCount"], 1)
+            asset_content = (output / manifest["asset"]["path"]).read_bytes()
+            self.assertEqual(
+                hashlib.sha256(asset_content).hexdigest(),
+                manifest["asset"]["sha256"],
+            )
+            payload = json.loads(asset_content)
+            self.assertEqual(payload["features"], [archive_feature])
+
+    def test_nonempty_live_layer_wins_over_archive(self) -> None:
+        now = hms_cache.dt.datetime(2026, 7, 27, 20, 0, tzinfo=hms_cache.UTC)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = SimpleNamespace(
+                output=output,
+                retries=1,
+                archive_lookback_days=14,
+                fail_without_existing_cache=False,
+            )
+            live = {
+                "features": [self.feature(start="2026208 1600", end="2026208 1900")],
+                "sourceKind": "live",
+                "sourceUrl": hms_cache.HMS_SERVICE,
+                "sourceUpdatedAt": "2026-07-27T19:10:00Z",
+                "analysisDate": "2026-07-27",
+            }
+            with mock.patch.object(
+                hms_cache,
+                "fetch_live_source",
+                return_value=live,
+            ), mock.patch.object(
+                hms_cache,
+                "fetch_archive_source",
+            ) as archive_fetch:
+                hms_cache.build_cache(args, now=now)
+            archive_fetch.assert_not_called()
+            manifest = json.loads(
+                (output / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["sourceKind"], "live")
+            self.assertEqual(manifest["analysisDate"], "2026-07-27")
+            self.assertEqual(manifest["observedEnd"], "2026-07-27T19:00:00Z")
+
+    def test_failed_refresh_retains_only_a_complete_prior_cache(self) -> None:
+        now = hms_cache.dt.datetime(2026, 7, 27, 20, 0, tzinfo=hms_cache.UTC)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = SimpleNamespace(
+                output=output,
+                retries=1,
+                archive_lookback_days=14,
+                fail_without_existing_cache=False,
+            )
+            live = {
+                "features": [self.feature()],
+                "sourceKind": "live",
+                "sourceUrl": hms_cache.HMS_SERVICE,
+                "sourceUpdatedAt": "2026-07-27T19:10:00Z",
+                "analysisDate": "2026-07-27",
+            }
+            with mock.patch.object(
+                hms_cache,
+                "fetch_live_source",
+                return_value=live,
+            ):
+                hms_cache.build_cache(args, now=now)
+            manifest_path = output / "manifest.json"
+            manifest_bytes = manifest_path.read_bytes()
+            manifest = json.loads(manifest_bytes)
+
+            failure = RuntimeError("temporary HMS failure")
+            argv = ["build_hms_cache.py", "--output", str(output)]
+            with mock.patch.object(
+                hms_cache,
+                "fetch_live_source",
+                side_effect=failure,
+            ), mock.patch.object(
+                hms_cache,
+                "fetch_archive_source",
+                side_effect=failure,
+            ), mock.patch.object(hms_cache.sys, "argv", argv):
+                self.assertEqual(hms_cache.main(), 0)
+            self.assertEqual(manifest_path.read_bytes(), manifest_bytes)
+
+            (output / manifest["asset"]["path"]).write_bytes(b"corrupt")
+            with mock.patch.object(
+                hms_cache,
+                "fetch_live_source",
+                side_effect=failure,
+            ), mock.patch.object(
+                hms_cache,
+                "fetch_archive_source",
+                side_effect=failure,
+            ), mock.patch.object(hms_cache.sys, "argv", argv):
+                self.assertEqual(hms_cache.main(), 1)
 
 
 if __name__ == "__main__":
