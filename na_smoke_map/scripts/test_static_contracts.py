@@ -276,6 +276,9 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
         self.assertIn('priorityBadge.textContent = "CIFFC Priority";', self.index)
+        self.assertIn("function canadianPriorityCoverageText()", self.index)
+        self.assertIn("CIFFC Priority ${fireWord} mapped", self.index)
+        self.assertIn("could not be mapped", self.index)
         self.assertNotIn("formatFireHectares", self.index)
         self.assertNotIn("CANADA_FIRE_LARGE_HECTARES", self.index)
 
@@ -532,11 +535,46 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
             self.assertEqual(manifest["defaultCount"], 1)
             self.assertEqual(manifest["activeCount"], 1)
             self.assertEqual(manifest["matchedPriorityCount"], 1)
+            self.assertEqual(manifest["priorityFireCount"], 1)
+            self.assertEqual(manifest["matchedPriorityFireCount"], 1)
+            self.assertEqual(manifest["unmatchedPriorityFireCount"], 0)
+            self.assertEqual(manifest["unmatchedPriorityFires"], [])
             default = json.loads(
                 (output / manifest["default"]["path"]).read_text(encoding="utf-8")
             )
             self.assertEqual(default["records"][0]["c"]["priority"]["name"], "Pear Lake")
             self.assertEqual(default["records"][0]["i"], "2026_BC_2026-C40983")
+
+    def test_audits_each_fire_id_inside_a_grouped_priority_row(self) -> None:
+        features = [
+            self.feature("2026_BC_2026-K51402", "2026-K51402"),
+        ]
+        priorities = [{
+            "agency_code": "BC",
+            "field_fire_id": "Bradley Creek (K41315) (Quilpituk Creek K51402)",
+            "field_stage_of_control": "OC",
+            "field_size": "742",
+            "field_latitude": "51",
+            "field_longitude": "-121",
+            "field_incident_type": None,
+        }]
+
+        matched, unmatched_rows, coverage = canada_wildfire_cache.match_priorities(
+            features,
+            priorities,
+            "2026-08-04",
+        )
+
+        self.assertEqual(set(matched), {"2026_BC_2026-K51402"})
+        self.assertEqual(unmatched_rows, [])
+        self.assertEqual(coverage["priorityFireCount"], 2)
+        self.assertEqual(coverage["matchedPriorityFireCount"], 1)
+        self.assertEqual(coverage["unmatchedPriorityFireCount"], 1)
+        self.assertEqual(coverage["unmatchedPriorityFires"], [{
+            "agencyCode": "BC",
+            "fireId": "K41315",
+            "sourceLabel": "Bradley Creek (K41315) (Quilpituk Creek K51402)",
+        }])
 
     def test_active_is_derived_from_non_extinguished_reported_records(self) -> None:
         records = canada_wildfire_cache.wire_records([

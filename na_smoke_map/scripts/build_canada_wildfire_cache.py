@@ -147,12 +147,21 @@ def normalize_fire_token(value: Any) -> str:
     return re.sub(r"^20\d{2}", "", token)
 
 
-def priority_tokens(value: Any) -> list[str]:
+def priority_fire_references(value: Any) -> list[tuple[str, str]]:
     text = str(value or "").strip()
-    tokens = [normalize_fire_token(token) for token in re.findall(r"[A-Za-z]+\d{3,8}", text)]
-    if not tokens:
-        tokens = [normalize_fire_token(text)]
-    return list(dict.fromkeys(token for token in tokens if token))
+    raw_tokens = re.findall(r"[A-Za-z]+\d{3,8}", text)
+    if not raw_tokens:
+        raw_tokens = [text]
+    references: dict[str, str] = {}
+    for raw_token in raw_tokens:
+        token = normalize_fire_token(raw_token)
+        if token and token not in references:
+            references[token] = raw_token
+    return list(references.items())
+
+
+def priority_tokens(value: Any) -> list[str]:
+    return [token for token, _display in priority_fire_references(value)]
 
 
 def priority_name(value: Any) -> str | None:
@@ -200,7 +209,11 @@ def match_priorities(
     features: list[dict[str, Any]],
     priorities: list[dict[str, Any]],
     report_date: str | None,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any],
+]:
     by_agency: dict[str, list[dict[str, Any]]] = {}
     by_token: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for feature in features:
@@ -212,10 +225,22 @@ def match_priorities(
             by_token.setdefault((agency, token), []).append(feature)
 
     matched: dict[str, dict[str, Any]] = {}
-    unmatched: list[dict[str, Any]] = []
+    unmatched_rows: list[dict[str, Any]] = []
+    priority_references: dict[tuple[str, str], dict[str, str]] = {}
+    matched_references: set[tuple[str, str]] = set()
     for priority in priorities:
         agency = priority["agency_code"]
-        tokens = priority_tokens(priority.get("field_fire_id"))
+        references = priority_fire_references(priority.get("field_fire_id"))
+        tokens = [token for token, _display in references]
+        for token, display in references:
+            priority_references.setdefault(
+                (agency, token),
+                {
+                    "agencyCode": agency,
+                    "fireId": display,
+                    "sourceLabel": str(priority.get("field_fire_id") or "").strip(),
+                },
+            )
         candidates: list[dict[str, Any]] = []
         for token in tokens:
             token_candidates = by_token.get((agency, token), [])
@@ -227,6 +252,12 @@ def match_priorities(
                         (feature.get("properties") or {}).get("agency_fire_id")
                     ).endswith(token)
                 ]
+            token_candidates = [
+                feature for feature in token_candidates
+                if (feature.get("properties") or {}).get("national_fire_id")
+            ]
+            if token_candidates:
+                matched_references.add((agency, token))
             for feature in token_candidates:
                 if feature not in candidates:
                     candidates.append(feature)
@@ -237,6 +268,8 @@ def match_priorities(
                 nearby = []
                 for feature in by_agency.get(agency, []):
                     properties = feature.get("properties") or {}
+                    if not properties.get("national_fire_id"):
+                        continue
                     fire_lat = valid_number(properties.get("latitude"))
                     fire_lon = valid_number(properties.get("longitude"))
                     if fire_lat is None or fire_lon is None:
@@ -246,8 +279,10 @@ def match_priorities(
                         nearby.append((distance, feature))
                 nearby.sort(key=lambda item: item[0])
                 candidates = [nearby[0][1]] if nearby else []
+                if candidates and len(tokens) == 1:
+                    matched_references.add((agency, tokens[0]))
         if not candidates:
-            unmatched.append(priority)
+            unmatched_rows.append(priority)
             continue
         display_name = priority_name(priority.get("field_fire_id")) if len(tokens) == 1 else None
         for feature in candidates:
@@ -262,7 +297,18 @@ def match_priorities(
                 "sizeHa": valid_number(priority.get("field_size")),
                 "incidentType": priority.get("field_incident_type"),
             }
-    return matched, unmatched
+    unmatched_fires = [
+        details
+        for reference, details in priority_references.items()
+        if reference not in matched_references
+    ]
+    coverage = {
+        "priorityFireCount": len(priority_references),
+        "matchedPriorityFireCount": len(matched_references),
+        "unmatchedPriorityFireCount": len(unmatched_fires),
+        "unmatchedPriorityFires": unmatched_fires,
+    }
+    return matched, unmatched_rows, coverage
 
 
 def fire_sort_key(record: dict[str, Any]) -> tuple[float, str]:
@@ -354,7 +400,7 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
     features, source_timestamp = fetch_reported_fires(args.retries, generated)
     sitrep = request_json(CIFFC_SITREP, None, args.retries)
     priorities = priority_rows(sitrep)
-    matched, unmatched = match_priorities(
+    matched, unmatched_rows, priority_coverage = match_priorities(
         features,
         priorities,
         sitrep.get("field_date"),
@@ -384,8 +430,9 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
         "defaultCount": len(default_records),
         "catalogCount": len(records),
         "priorityCount": len(priorities),
-        "matchedPriorityCount": len(priorities) - len(unmatched),
-        "unmatchedPriorityCount": len(unmatched),
+        "matchedPriorityCount": len(priorities) - len(unmatched_rows),
+        "unmatchedPriorityCount": len(unmatched_rows),
+        **priority_coverage,
         "activeCount": sum(1 for record in records if record["a"]),
         "default": default_asset,
         "catalog": catalog_asset,
@@ -401,7 +448,9 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
     print(
         "Canadian wildfire cache ready: "
         f"{len(default_records)} priority / {len(records)} catalog records; "
-        f"{len(unmatched)} unmatched priority rows",
+        f"{priority_coverage['matchedPriorityFireCount']}/"
+        f"{priority_coverage['priorityFireCount']} priority fire IDs matched; "
+        f"{priority_coverage['unmatchedPriorityFireCount']} unmatched",
         flush=True,
     )
 

@@ -3087,6 +3087,23 @@
         fireRetry.hidden = state !== "error";
       }
 
+      function canadianPriorityCoverageText() {
+        if (fireCountry !== "ca") return "";
+        const total = Number(canadaWildfireCacheManifest?.priorityFireCount);
+        const matched = Number(canadaWildfireCacheManifest?.matchedPriorityFireCount);
+        const unmatched = Number(canadaWildfireCacheManifest?.unmatchedPriorityFireCount);
+        if (
+          !Number.isInteger(total) || total < 1 ||
+          !Number.isInteger(matched) || matched < 0 || matched > total ||
+          !Number.isInteger(unmatched) || unmatched !== total - matched
+        ) return "";
+        const fireWord = total === 1 ? "fire" : "fires";
+        const unmatchedText = unmatched
+          ? ` · ${unmatched.toLocaleString()} could not be mapped`
+          : "";
+        return ` · ${matched.toLocaleString()} of ${total.toLocaleString()} CIFFC Priority ${fireWord} mapped${unmatchedText}`;
+      }
+
       function updateFireReadyStatus() {
         // The map mirrors the loaded list, so the layer count is the list size.
         const n = fireMirrorRecords.size;
@@ -3099,9 +3116,10 @@
         }
         // Default view (All + IMSR): the significant-fire set.
         const significance = fireCountry === "ca" ? "CIFFC Priority" : "IMSR";
+        const coverage = fireCountry === "ca" ? canadianPriorityCoverageText() : "";
         setFireLayerStatus(
           "ready",
-          `${n.toLocaleString()} significant (${significance}) ${n === 1 ? "wildfire" : "wildfires"} · ${wildfireCacheAgeText()}`
+          `${n.toLocaleString()} significant (${significance}) ${n === 1 ? "wildfire" : "wildfires"}${coverage} · ${wildfireCacheAgeText()}`
         );
       }
 
@@ -5773,6 +5791,9 @@
           : shown.toLocaleString();
         const significance = fireCountry === "ca" ? " CIFFC Priority" : " IMSR";
         const tags = `${fireDatabaseLargeOnly ? " large" : ""}${fireDatabaseImsrOnly ? significance : ""}`;
+        const priorityCoverage = fireDatabaseImsrOnly
+          ? canadianPriorityCoverageText()
+          : "";
         const order = fireDatabaseSort === "size"
           ? (fireCountry === "ca" ? "largest area first" : "largest acreage first")
           : (fireCountry === "ca" ? "latest reports first" : "newest discoveries first");
@@ -5783,7 +5804,7 @@
           ? ""
           : " · preparing full database";
         fireDatabaseStatus.textContent =
-          `${countText}${tags} wildfires shown · ${order} · ${wildfireCacheAgeText()}${catalogState}`;
+          `${countText}${tags} wildfires shown${priorityCoverage} · ${order} · ${wildfireCacheAgeText()}${catalogState}`;
       }
 
       // Count-only companion query for the current filter, so the status can read
@@ -6289,7 +6310,7 @@
         });
         fireImsrFilter.textContent = canadian ? "CIFFC Priority" : "IMSR";
         fireImsrFilter.title = canadian
-          ? "Fires listed as Priority in the latest CIFFC situation report; shows every matched fire"
+          ? "Fires listed as CIFFC Priority in the latest situation report and matched to CWFIS; the status reports any source fires that could not be mapped"
           : "Fires with ongoing ICS-209 incident reporting, below 100% containment, and no official containment, control, or out date; shows every match";
         fireLargeFilter.textContent = "Large · 300+ acres";
         fireSearch.placeholder = canadian ? "Search by fire name or ID" : "Search by incident name";
