@@ -427,12 +427,18 @@ summary:focus-visible {
 }
 
 .source-label { flex: 0 0 auto; font-size: 0.56rem; }
-.source-links { display: inline; }
-.source-link { color: #657982; }
-.source-link + .source-link::before {
-  content: " · ";
-  color: var(--quiet);
-  text-decoration: none;
+.source-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.source-link {
+  color: #516a75;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-decoration-color: #aab6ba;
 }
 
 .incident-toolbar {
@@ -690,6 +696,61 @@ summary:focus-visible {
   font-size: 0.75rem;
   font-weight: 750;
 }
+
+.references-disclosure {
+  margin-top: 22px;
+  border-block: 1px solid var(--line-strong);
+  background: var(--white);
+}
+
+.references-disclosure > summary {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 38px 13px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.references-disclosure > summary::-webkit-details-marker { display: none; }
+.references-disclosure > summary::after {
+  content: "+";
+  position: absolute;
+  right: 14px;
+  color: var(--muted);
+}
+.references-disclosure[open] > summary::after { content: "–"; }
+.references-disclosure > summary span { color: var(--navy); font-weight: 800; }
+.references-disclosure > summary small { color: var(--muted); font-size: 0.68rem; }
+
+.reference-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.reference-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reference-item:last-child { border-bottom: 0; }
+.reference-number {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+.reference-item a { color: var(--ink); font-size: 0.76rem; font-weight: 700; }
+.reference-item small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.65rem; }
 
 .empty-state {
   margin: 0;

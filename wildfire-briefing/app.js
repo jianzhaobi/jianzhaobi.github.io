@@ -77,7 +77,12 @@ function formatCutoff(value) {
 }
 
 function sourceMap(report) {
-  return new Map((report.sources || []).map((source) => [source.id, source]));
+  return new Map(
+    (report.sources || []).map((source, index) => [
+      source.id,
+      { ...source, reference_number: index + 1 },
+    ]),
+  );
 }
 
 function unique(values) {
@@ -90,7 +95,7 @@ function sourceLinks(ids, sources) {
     .filter(Boolean)
     .map(
       (source) =>
-        `<a class="source-link" href="${escapeHTML(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(source.title)}</a>`,
+        `<a class="source-link" href="${escapeHTML(source.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHTML(source.title)}" aria-label="Reference ${source.reference_number}: ${escapeHTML(source.title)}">[${source.reference_number}]</a>`,
     );
   if (!links.length) return "";
   return `<div class="source-row"><span class="source-label">Evidence</span><span class="source-links">${links.join("")}</span></div>`;
@@ -289,6 +294,34 @@ function renderGlobal(report, sources) {
   </section>`;
 }
 
+function formatReferenceTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone: "America/New_York",
+  }).format(new Date(value));
+}
+
+function renderReferences(report) {
+  const references = (report.sources || [])
+    .map((source, index) => {
+      const metadata = [
+        source.publisher,
+        source.published_at ? `Published ${formatReferenceTime(source.published_at)}` : "",
+        source.accessed_at ? `Accessed ${formatReferenceTime(source.accessed_at)}` : "",
+      ].filter(Boolean);
+      return `<li class="reference-item"><span class="reference-number">[${index + 1}]</span><span><a href="${escapeHTML(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(source.title)}</a>${metadata.length ? `<small>${metadata.map(escapeHTML).join(" · ")}</small>` : ""}</span></li>`;
+    })
+    .join("");
+  if (!references) return "";
+  return `<details class="references-disclosure"><summary><span>References</span><small>${report.sources.length} full citations</small></summary><ol class="reference-list">${references}</ol></details>`;
+}
+
 function renderSources(report) {
   const checks = report.source_checks || [];
   const item = (check) => {
@@ -306,6 +339,7 @@ function renderSources(report) {
   return `<section class="section" id="sources" aria-labelledby="sources-heading">
     ${renderSectionHeader("sources", "Source status", "Designated national and regional checks")}
     ${checks.length ? `${issueBlock}${routineBlock}` : '<p class="empty-state">No source checks were recorded.</p>'}
+    ${renderReferences(report)}
   </section>`;
 }
 
