@@ -2020,7 +2020,6 @@
       const FIRE_ARCGIS_BATCH_CONCURRENCY = 2;
       const FIRE_PERIMETER_BATCH_SIZE = 500;
       const FIRE_LARGE_ACRES = 300;
-      const CANADA_FIRE_LARGE_HECTARES = 120;
       const FIRE_DATABASE_CACHE_MS = 5 * 60 * 1000;
       const FIRE_DATABASE_CACHE_LIMIT = 24;
       const FIRE_DATABASE_GEOMETRY_CACHE_LIMIT = 1500;
@@ -3686,9 +3685,7 @@
         ) return false;
         if (
           fireDatabaseLargeOnly &&
-          (record.country === "ca"
-            ? (reportedFireNumber(record.sizeHa) ?? Number.NEGATIVE_INFINITY) < CANADA_FIRE_LARGE_HECTARES
-            : (reportedFireNumber(record.size) ?? Number.NEGATIVE_INFINITY) < FIRE_LARGE_ACRES)
+          (reportedFireNumber(record.size) ?? Number.NEGATIVE_INFINITY) < FIRE_LARGE_ACRES
         ) return false;
         return fireMatchesDatabaseStatus(record) &&
           (!fireDatabaseImsrOnly || isImsrGradeFire(record));
@@ -4308,11 +4305,6 @@
         return number === null ? "Not reported" : `${fireNumberFormatter.format(number)} acres`;
       }
 
-      function formatFireHectares(value) {
-        const number = reportedFireNumber(value);
-        return number === null ? "Not reported" : `${fireNumberFormatter.format(number)} ha`;
-      }
-
       function formatFirePercent(value) {
         const number = reportedFireNumber(value);
         return number === null ? "Not reported" : `${Math.round(number)}%`;
@@ -4363,7 +4355,7 @@
         grid.className = "pm-fire-popup-grid";
         if (record.country === "ca") {
           appendFirePopupRow(grid, "Reported", formatFireDate(record.reportTime));
-          appendFirePopupRow(grid, "Size", formatFireHectares(record.sizeHa));
+          appendFirePopupRow(grid, "Size", formatFireAcres(record.size));
           appendFirePopupRow(grid, "Contained", formatFirePercent(record.percentContained));
           appendFirePopupRow(grid, "Agency · region", formatFireLocation(record));
           appendFirePopupRow(grid, "Fire ID", record.agencyFireId || record.nationalFireId || "Not reported");
@@ -4977,7 +4969,7 @@
           const priorityBadge = document.createElement("span");
           priorityBadge.className = "pm-fire-badge";
           priorityBadge.dataset.status = "complex";
-          priorityBadge.textContent = "Priority";
+          priorityBadge.textContent = "CIFFC Priority";
           head.append(priorityBadge);
         }
         if (record.category === "CX") {
@@ -4997,7 +4989,7 @@
         const sizeContainment = document.createElement("span");
         sizeContainment.className = "pm-fire-row-meta";
         sizeContainment.textContent = record.country === "ca"
-          ? `${formatFireHectares(record.sizeHa)} · ${record.response || "Response not reported"}`
+          ? `${formatFireAcres(record.size)} · ${record.response || "Response not reported"}`
           : `${formatFireAcres(record.size)} · ${formatFirePercent(record.percentContained)} contained`;
         button.append(head, dateLocation, sizeContainment);
         button.addEventListener(
@@ -5779,7 +5771,7 @@
         const countText = (total !== null && total > shown)
           ? `${shown.toLocaleString()} of ${total.toLocaleString()}`
           : shown.toLocaleString();
-        const significance = fireCountry === "ca" ? " Priority" : " IMSR";
+        const significance = fireCountry === "ca" ? " CIFFC Priority" : " IMSR";
         const tags = `${fireDatabaseLargeOnly ? " large" : ""}${fireDatabaseImsrOnly ? significance : ""}`;
         const order = fireDatabaseSort === "size"
           ? (fireCountry === "ca" ? "largest area first" : "largest acreage first")
@@ -6295,11 +6287,11 @@
         fireFilters.forEach((button) => {
           button.hidden = button.dataset.fireCountry !== fireCountry;
         });
-        fireImsrFilter.textContent = canadian ? "Priority" : "IMSR";
+        fireImsrFilter.textContent = canadian ? "CIFFC Priority" : "IMSR";
         fireImsrFilter.title = canadian
           ? "Fires listed as Priority in the latest CIFFC situation report; shows every matched fire"
           : "Fires with ongoing ICS-209 incident reporting, below 100% containment, and no official containment, control, or out date; shows every match";
-        fireLargeFilter.textContent = canadian ? "Large · 120+ ha" : "Large · 300+ acres";
+        fireLargeFilter.textContent = "Large · 300+ acres";
         fireSearch.placeholder = canadian ? "Search by fire name or ID" : "Search by incident name";
         fireSort.setAttribute(
           "aria-label",
@@ -6311,7 +6303,7 @@
         fireMirrorClear.setAttribute(
           "aria-label",
           canadian
-            ? "Clear wildfire filter and restore the default Priority view"
+            ? "Clear wildfire filter and restore the default CIFFC Priority view"
             : "Clear wildfire filter and restore the default IMSR view"
         );
         fireCountryTabs.forEach((tab) => {

@@ -262,6 +262,23 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("scripts/build_canada_wildfire_cache.py", workflow)
         self.assertIn("_frame-cache/site-cache/canada-wildfires", workflow)
 
+    def test_canadian_fire_copy_uses_us_units_and_names_ciffc(self) -> None:
+        self.assertIn(
+            'fireImsrFilter.textContent = canadian ? "CIFFC Priority" : "IMSR";',
+            self.index,
+        )
+        self.assertIn(
+            'fireLargeFilter.textContent = "Large · 300+ acres";',
+            self.index,
+        )
+        self.assertIn(
+            'appendFirePopupRow(grid, "Size", formatFireAcres(record.size));',
+            self.index,
+        )
+        self.assertIn('priorityBadge.textContent = "CIFFC Priority";', self.index)
+        self.assertNotIn("formatFireHectares", self.index)
+        self.assertNotIn("CANADA_FIRE_LARGE_HECTARES", self.index)
+
     def test_hms_uses_hourly_same_origin_cache_with_timeliness(self) -> None:
         self.assertIn("./cache/hms/manifest.json", self.index)
         self.assertIn("function validHmsCacheManifest(manifest)", self.index)
