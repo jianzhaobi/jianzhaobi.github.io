@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import build_hms_cache as hms_cache
+import build_canada_wildfire_cache as canada_wildfire_cache
 import build_wildfire_cache as wildfire_cache
 from cache_timeline import timeline_hours
 
@@ -242,6 +243,25 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("scripts/build_wildfire_cache.py", workflow)
         self.assertIn("_frame-cache/site-cache/wildfires/", workflow)
 
+    def test_canadian_fires_are_lazy_cache_only_and_us_stays_default(self) -> None:
+        self.assertIn("./cache/canada-wildfires/manifest.json", self.index)
+        self.assertIn('let fireCountry = "us";', self.index)
+        self.assertIn("function switchFireCountry(country)", self.index)
+        self.assertIn("async function initializeCanadianWildfireCache(options = {})", self.index)
+        self.assertIn("async function loadCanadianFireDatabase(reset = false)", self.index)
+        initializer = self.index.split(
+            "async function initialize()",
+            1,
+        )[1].split("initialize();", 1)[0]
+        self.assertIn("initializeWildfireCache();", initializer)
+        self.assertNotIn("initializeCanadianWildfireCache", initializer)
+        self.assertNotIn("geoserver.cwfif.nrcan.gc.ca", self.index)
+        self.assertNotIn("api.ciffc.net", self.index)
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("Build hourly CWFIS and CIFFC Canadian wildfire cache", workflow)
+        self.assertIn("scripts/build_canada_wildfire_cache.py", workflow)
+        self.assertIn("_frame-cache/site-cache/canada-wildfires", workflow)
+
     def test_hms_uses_hourly_same_origin_cache_with_timeliness(self) -> None:
         self.assertIn("./cache/hms/manifest.json", self.index)
         self.assertIn("function validHmsCacheManifest(manifest)", self.index)
@@ -416,6 +436,99 @@ class WildfireCacheBuilderTests(unittest.TestCase):
                 ["build_wildfire_cache.py", "--output", str(output)],
             ):
                 self.assertEqual(wildfire_cache.main(), 1)
+
+
+class CanadianWildfireCacheBuilderTests(unittest.TestCase):
+    @staticmethod
+    def feature(
+        identifier: str,
+        agency_fire_id: str,
+        stage: str = "OC",
+        size: float = 10,
+    ) -> dict:
+        return {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [-121, 51]},
+            "properties": {
+                "id": len(identifier),
+                "agency_code": "BC",
+                "region_code": "C4",
+                "national_fire_id": identifier,
+                "agency_fire_id": agency_fire_id,
+                "national_fire_cause": "N",
+                "fire_was_prescribed": 0,
+                "percent_contained": -1,
+                "fire_size": size,
+                "response_type": "FUL",
+                "stage_of_control_status": stage,
+                "situation_report_date": "2026-08-04T12:00:00Z",
+                "status_date": "2026-08-04T16:00:00Z",
+                "latitude": 51,
+                "longitude": -121,
+                "record_start": "2026-08-04T00:00:00Z",
+                "record_end": "2026-12-31T23:59:59Z",
+            },
+        }
+
+    def test_builds_priority_default_from_one_reported_catalog(self) -> None:
+        features = [
+            self.feature("2026_BC_2026-C40983", "2026-C40983"),
+            self.feature("2026_BC_2026-V10000", "2026-V10000", "EX"),
+        ]
+        sitrep = {
+            "field_date": "2026-08-04",
+            "agencies_sitereps": {
+                "BC": {
+                    "priority_fires": [{
+                        "field_fire_id": "Pear Lake (C40983)",
+                        "field_stage_of_control": "OC",
+                        "field_size": "115250",
+                        "field_latitude": "50.979",
+                        "field_longitude": "-121.08",
+                        "field_incident_type": None,
+                    }]
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            args = SimpleNamespace(
+                output=output,
+                retries=1,
+                fail_without_existing_cache=False,
+            )
+            with mock.patch.object(
+                canada_wildfire_cache,
+                "fetch_reported_fires",
+                return_value=(features, "2026-08-05T13:45:00Z"),
+            ), mock.patch.object(
+                canada_wildfire_cache,
+                "request_json",
+                return_value=sitrep,
+            ):
+                canada_wildfire_cache.build_cache(args)
+
+            manifest = json.loads(
+                (output / "manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["catalogCount"], 2)
+            self.assertEqual(manifest["defaultCount"], 1)
+            self.assertEqual(manifest["activeCount"], 1)
+            self.assertEqual(manifest["matchedPriorityCount"], 1)
+            default = json.loads(
+                (output / manifest["default"]["path"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(default["records"][0]["c"]["priority"]["name"], "Pear Lake")
+            self.assertEqual(default["records"][0]["i"], "2026_BC_2026-C40983")
+
+    def test_active_is_derived_from_non_extinguished_reported_records(self) -> None:
+        records = canada_wildfire_cache.wire_records([
+            self.feature("oc", "1", "OC"),
+            self.feature("bh", "2", "BH"),
+            self.feature("uc", "3", "UC"),
+            self.feature("ex", "4", "EX"),
+        ], {})
+        self.assertEqual({record["i"] for record in records if record["a"]}, {"oc", "bh", "uc"})
 
     def test_rolling_cache_uses_a_unique_save_key(self) -> None:
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")

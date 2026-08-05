@@ -74,6 +74,12 @@ jobs:
             --jobs 2 \
             --retries 3
 
+      - name: Build hourly CWFIS and CIFFC Canadian wildfire cache
+        run: |
+          python na_smoke_map/scripts/build_canada_wildfire_cache.py \
+            --output _frame-cache/site-cache/canada-wildfires \
+            --retries 3
+
       - name: Build hourly NOAA HMS smoke cache
         run: |
           python na_smoke_map/scripts/build_hms_cache.py \
@@ -138,6 +144,10 @@ jobs:
             rsync -a --delete \
               _frame-cache/site-cache/wildfires/ \
               _site/na_smoke_map/cache/wildfires/
+            mkdir -p _site/na_smoke_map/cache/canada-wildfires
+            rsync -a --delete \
+              _frame-cache/site-cache/canada-wildfires/ \
+              _site/na_smoke_map/cache/canada-wildfires/
             mkdir -p _site/na_smoke_map/cache/hms
             rsync -a --delete \
               _frame-cache/site-cache/hms/ \
