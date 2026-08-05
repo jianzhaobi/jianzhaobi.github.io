@@ -2,11 +2,10 @@
 
 const DATA_URL = "data/reports.json";
 const SECTION_DEFS = [
-  ["overview", "Overview"],
-  ["watchlist", "Watchlist"],
-  ["incidents", "Fire events"],
-  ["global", "Global scan"],
-  ["sources", "Source status"],
+  ["overview", "Brief"],
+  ["incidents", "Incidents"],
+  ["global", "Global"],
+  ["sources", "Sources"],
 ];
 
 const state = {
@@ -17,7 +16,6 @@ const state = {
 
 const elements = {
   dateSelect: document.querySelector("#date-select"),
-  dateList: document.querySelector("#date-list"),
   reportMeta: document.querySelector("#report-meta"),
   sectionNav: document.querySelector("#section-nav"),
   reportRoot: document.querySelector("#report-root"),
@@ -95,7 +93,7 @@ function sourceLinks(ids, sources) {
         `<a class="source-link" href="${escapeHTML(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(source.title)}</a>`,
     );
   if (!links.length) return "";
-  return `<div class="source-row"><span class="source-label">Sources</span>${links.join("")}</div>`;
+  return `<div class="source-row"><span class="source-label">Evidence</span><span class="source-links">${links.join("")}</span></div>`;
 }
 
 function number(value) {
@@ -168,68 +166,35 @@ function renderSectionHeader(id, title, note = "", tools = "") {
 function renderOverview(report, sources) {
   const stats = reportStats(report);
   const cards = [
-    [stats.us, "U.S. incidents", ""],
-    [stats.ca, "Canada incidents", ""],
-    [stats.critical, "Critical alerts", "stat-card--alert"],
-    [stats.issues, "Source issues", stats.issues ? "stat-card--alert" : ""],
+    [stats.us, "U.S.", ""],
+    [stats.ca, "Canada", ""],
+    [stats.critical, "Critical", stats.critical ? "signal-item--alert" : ""],
+    [stats.issues, "Source issues", stats.issues ? "signal-item--alert" : ""],
   ]
     .map(
       ([value, label, modifier]) =>
-        `<article class="stat-card ${modifier}"><span class="stat-card__label">${label}</span><strong class="stat-card__value">${value}</strong></article>`,
+        `<div class="signal-item ${modifier}"><strong>${value}</strong><span>${label}</span></div>`,
     )
     .join("");
 
   const posture = (report.national_posture || [])
     .map((item) => {
+      const headline =
+        item.preparedness_level != null
+          ? `Preparedness Level ${item.preparedness_level}`
+          : "Operational posture";
       const level =
         item.preparedness_level != null && item.level_meaning
           ? `<p class="posture-level"><strong>Preparedness Level ${item.preparedness_level}:</strong> ${escapeHTML(item.level_meaning)}</p>`
           : "";
-      return `<article class="posture-card"><span class="country-badge">${escapeHTML(item.country)}</span><p>${escapeHTML(item.statement)}</p>${level}${sourceLinks(item.source_ids, sources)}</article>`;
+      return `<details class="posture-row"><summary><span class="country-badge">${escapeHTML(item.country)}</span><span><strong>${headline}</strong><small>View verified national posture</small></span></summary><div class="posture-body"><p>${escapeHTML(item.statement)}</p>${level}${sourceLinks(item.source_ids, sources)}</div></details>`;
     })
     .join("");
 
   return `<section class="section" id="overview" aria-labelledby="overview-heading">
-    ${renderSectionHeader("overview", "National posture", "The operational frame at the report cutoff")}
-    <div class="stat-grid">${cards}</div>
-    <div class="posture-grid" style="margin-top:12px">${posture || '<p class="empty-state">National posture was not reported.</p>'}</div>
-  </section>`;
-}
-
-function watchSources(incident) {
-  return unique([
-    incident.official_source_id,
-    ...(incident.source_ids || []),
-    ...(incident.attention?.representative_source_ids || []),
-  ]);
-}
-
-function renderWatchCountry(report, sources, country, label) {
-  const incidents = (report.incidents || []).filter((item) => item.country === country);
-  if (!incidents.length) {
-    return `<div class="watch-country"><h3 class="watch-country__title">${label}</h3><p class="empty-state">No promoted incidents.</p></div>`;
-  }
-  const cards = incidents
-    .map(
-      (incident, index) => `<article class="watch-card">
-        <div class="watch-rank"><small>Rank</small><strong>${index + 1}</strong></div>
-        <div class="watch-card__body">
-          <div class="watch-card__top"><h3>${escapeHTML(incident.name)} <span class="sr-only">in</span><small>(${escapeHTML(incident.jurisdiction)})</small></h3>${attentionBadge(incident.attention?.level)}</div>
-          <div class="watch-card__meta"><span>${incident.start_date ? `Started ${dateLabel(incident.start_date, { short: true })}` : "Start date not reported"}</span><span>${escapeHTML(area(incident))}</span><span>${escapeHTML(status(incident))}</span></div>
-          <p class="watch-impact"><strong>Structural impact:</strong> ${escapeHTML(structureImpact(incident))}</p>
-          ${sourceLinks(watchSources(incident), sources)}
-        </div>
-      </article>`,
-    )
-    .join("");
-  return `<div class="watch-country"><h3 class="watch-country__title">${label}</h3><div class="watch-grid">${cards}</div></div>`;
-}
-
-function renderWatchlist(report, sources) {
-  return `<section class="section" id="watchlist" aria-labelledby="watchlist-heading">
-    ${renderSectionHeader("watchlist", "Structural-impact watchlist", "Ordered by attention, ignition recency, and suppression status")}
-    ${renderWatchCountry(report, sources, "US", "United States")}
-    ${renderWatchCountry(report, sources, "CA", "Canada")}
+    ${renderSectionHeader("overview", "What matters now", "Verified at the report cutoff")}
+    <div class="signal-strip" aria-label="Briefing counts">${cards}</div>
+    <div class="posture-list">${posture || '<p class="empty-state">National posture was not reported.</p>'}</div>
   </section>`;
 }
 
@@ -256,11 +221,13 @@ function renderIncident(incident, sources, index) {
     ? `<p><strong>Critical infrastructure:</strong> ${escapeHTML(incident.critical_infrastructure.join(", "))}</p>`
     : "";
 
-  return `<details class="incident-card" ${index === 0 ? "open" : ""}>
+  return `<details class="incident-card">
     <summary>
+      <span class="incident-rank" aria-label="Rank ${index + 1}">${index + 1}</span>
       <div class="incident-summary">
-        <div class="incident-summary__top"><h3>${escapeHTML(incident.name)} — ${escapeHTML(incident.jurisdiction)}</h3>${attentionBadge(incident.attention?.level)}</div>
-        <div class="incident-summary__meta"><span>${escapeHTML(area(incident))}</span><span>${escapeHTML(status(incident))}</span><span>${escapeHTML(structureImpact(incident))}</span></div>
+        <div class="incident-summary__top"><h3>${escapeHTML(incident.name)} <small>${escapeHTML(incident.jurisdiction)}</small></h3>${attentionBadge(incident.attention?.level)}</div>
+        <div class="incident-summary__meta"><span>${incident.start_date ? `Started ${dateLabel(incident.start_date, { short: true })}` : "Start not reported"}</span><span>${escapeHTML(area(incident))}</span><span>${escapeHTML(status(incident))}</span></div>
+        <p class="incident-impact">${escapeHTML(structureImpact(incident))}</p>
       </div>
     </summary>
     <div class="incident-body">
@@ -284,7 +251,7 @@ function renderIncidents(report, sources) {
   const incidents = report.incidents || [];
   const tools = `<div class="incident-toolbar"><button class="text-button" type="button" data-expand="all">Expand all</button><button class="text-button" type="button" data-expand="none">Collapse all</button></div>`;
   return `<section class="section" id="incidents" aria-labelledby="incidents-heading">
-    ${renderSectionHeader("incidents", "U.S. and Canada fire events", "Official facts first; recent coverage is explicitly separated", tools)}
+    ${renderSectionHeader("incidents", "Ranked incidents", "Attention, ignition recency, suppression status, then structural impact", tools)}
     <div class="incident-list">${incidents.map((item, index) => renderIncident(item, sources, index)).join("") || '<p class="empty-state">No promoted fire events.</p>'}</div>
   </section>`;
 }
@@ -301,17 +268,18 @@ function renderGlobal(report, sources) {
     : "";
   const cards = (report.global_events || [])
     .map(
-      (event) => `<article class="global-card">
-        <span class="kicker">${escapeHTML(event.country)}</span>
-        <h3>${escapeHTML(event.name)}</h3>
-        <p><strong>Started:</strong> ${event.start_date ? dateLabel(event.start_date) : "Not reported"}</p>
-        <p><strong>Situation:</strong> ${escapeHTML(event.status)}; ${escapeHTML(globalArea(event))}</p>
-        ${event.structure_loss_description ? `<p><strong>Structural loss:</strong> ${escapeHTML(event.structure_loss_description)}</p>` : ""}
-        ${event.evacuations ? `<p><strong>Evacuations:</strong> ${escapeHTML(event.evacuations)}</p>` : ""}
-        ${event.fatalities != null ? `<p><strong>Fatalities:</strong> ${number(event.fatalities)}</p>` : ""}
-        <p>${escapeHTML(event.summary)}</p>
-        ${sourceLinks(event.source_ids, sources)}
-      </article>`,
+      (event) => `<details class="global-card">
+        <summary><span><span class="kicker">${escapeHTML(event.country)}</span><strong>${escapeHTML(event.name)}</strong></span><span>${escapeHTML(event.status)}</span></summary>
+        <div class="global-card__body">
+          <p><strong>Started:</strong> ${event.start_date ? dateLabel(event.start_date) : "Not reported"}</p>
+          <p><strong>Situation:</strong> ${escapeHTML(event.status)}; ${escapeHTML(globalArea(event))}</p>
+          ${event.structure_loss_description ? `<p><strong>Structural loss:</strong> ${escapeHTML(event.structure_loss_description)}</p>` : ""}
+          ${event.evacuations ? `<p><strong>Evacuations:</strong> ${escapeHTML(event.evacuations)}</p>` : ""}
+          ${event.fatalities != null ? `<p><strong>Fatalities:</strong> ${number(event.fatalities)}</p>` : ""}
+          <p>${escapeHTML(event.summary)}</p>
+          ${sourceLinks(event.source_ids, sources)}
+        </div>
+      </details>`,
     )
     .join("");
   return `<section class="section" id="global" aria-labelledby="global-heading">
@@ -322,15 +290,22 @@ function renderGlobal(report, sources) {
 }
 
 function renderSources(report) {
-  const cards = (report.source_checks || [])
-    .map((check) => {
-      const modifier = check.status === "ok" ? "" : `status-dot--${escapeHTML(check.status)}`;
-      return `<a class="status-card" href="${escapeHTML(check.url)}" target="_blank" rel="noopener noreferrer"><span class="status-dot ${modifier}" aria-hidden="true"></span><span><strong>${escapeHTML(check.title)} — ${escapeHTML(check.status)}</strong><span>${escapeHTML(check.detail || "Checked successfully.")}</span></span></a>`;
-    })
-    .join("");
+  const checks = report.source_checks || [];
+  const item = (check) => {
+    const modifier = check.status === "ok" ? "" : `status-dot--${escapeHTML(check.status)}`;
+    return `<a class="status-card" href="${escapeHTML(check.url)}" target="_blank" rel="noopener noreferrer"><span class="status-dot ${modifier}" aria-hidden="true"></span><span><strong>${escapeHTML(check.title)}</strong><small>${escapeHTML(check.status)} · ${escapeHTML(check.detail || "Checked successfully.")}</small></span></a>`;
+  };
+  const issues = checks.filter((check) => check.status !== "ok");
+  const passed = checks.filter((check) => check.status === "ok");
+  const issueBlock = issues.length
+    ? `<div class="source-issues"><p class="source-summary source-summary--warning"><strong>${issues.length} source issue${issues.length === 1 ? "" : "s"}</strong> need attention.</p><div class="source-status-grid">${issues.map(item).join("")}</div></div>`
+    : `<p class="source-summary"><strong>All designated checks completed.</strong> No source failures were recorded.</p>`;
+  const routineBlock = passed.length
+    ? `<details class="checks-disclosure"><summary>${passed.length} routine check${passed.length === 1 ? "" : "s"} passed</summary><div class="source-status-grid">${passed.map(item).join("")}</div></details>`
+    : "";
   return `<section class="section" id="sources" aria-labelledby="sources-heading">
     ${renderSectionHeader("sources", "Source status", "Designated national and regional checks")}
-    <div class="source-status-grid">${cards || '<p class="empty-state">No source checks were recorded.</p>'}</div>
+    ${checks.length ? `${issueBlock}${routineBlock}` : '<p class="empty-state">No source checks were recorded.</p>'}
   </section>`;
 }
 
@@ -338,13 +313,12 @@ function renderReport(report) {
   const sources = sourceMap(report);
   const reportDate = report.report_date;
   const header = `<header class="report-header">
-    <div><p class="kicker">${weekdayLabel(reportDate)} briefing</p><h2 class="report-title">${dateLabel(reportDate)}</h2></div>
-    <div class="report-links"><a class="download-link" href="${escapeHTML(report.canonical_markdown_url)}">Canonical Markdown</a><a class="download-link" href="${escapeHTML(report.evidence_url)}">JSON evidence</a></div>
+    <div><p class="kicker">${weekdayLabel(reportDate)} · Daily briefing</p><h1 class="report-title">${dateLabel(reportDate)}</h1></div>
+    <div class="report-links"><a class="download-link" href="${escapeHTML(report.canonical_markdown_url)}">Markdown</a><a class="download-link" href="${escapeHTML(report.evidence_url)}">Evidence</a></div>
   </header>`;
   elements.reportRoot.innerHTML = [
     header,
     renderOverview(report, sources),
-    renderWatchlist(report, sources),
     renderIncidents(report, sources),
     renderGlobal(report, sources),
     renderSources(report),
@@ -357,16 +331,11 @@ function renderDateControls(selectedDate) {
   elements.dateSelect.innerHTML = reports
     .map((report) => `<option value="${report.report_date}" ${report.report_date === selectedDate ? "selected" : ""}>${dateLabel(report.report_date)}</option>`)
     .join("");
-  elements.dateList.innerHTML = reports
-    .map(
-      (report) => `<button class="date-button" type="button" data-date="${report.report_date}" ${report.report_date === selectedDate ? 'aria-current="date"' : ""}><strong>${dateLabel(report.report_date, { short: true })}</strong><span>${weekdayLabel(report.report_date)}</span></button>`,
-    )
-    .join("");
 }
 
 function renderMeta(report) {
   const validation = report.validation?.passed ? "Validated" : "Validation issue";
-  elements.reportMeta.innerHTML = `<span class="meta-item"><span>Cutoff</span><strong>${escapeHTML(formatCutoff(report.cutoff_et))}</strong></span><span class="meta-item"><span>Status</span><strong>${validation}</strong></span>`;
+  elements.reportMeta.innerHTML = `<span>${escapeHTML(formatCutoff(report.cutoff_et))}</span><strong class="validation-status">${validation}</strong>`;
 }
 
 function renderNav(activeSection) {
@@ -417,12 +386,6 @@ function wireReportActions() {
 function wireGlobalActions() {
   elements.dateSelect.addEventListener("change", (event) => {
     selectReport(event.target.value, { section: "overview" });
-    window.scrollTo({ top: document.querySelector(".section-nav").offsetTop, behavior: "smooth" });
-  });
-  elements.dateList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-date]");
-    if (!button) return;
-    selectReport(button.dataset.date, { section: "overview" });
     window.scrollTo({ top: document.querySelector(".section-nav").offsetTop, behavior: "smooth" });
   });
   elements.sectionNav.addEventListener("click", (event) => {

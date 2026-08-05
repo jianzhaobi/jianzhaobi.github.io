@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#102a38">
+  <meta name="theme-color" content="#fbfaf7">
   <meta name="description" content="A citation-complete rolling 15-day wildfire structural-impact briefing for the United States and Canada.">
   <title>Wildfire Structural-Impact Briefing</title>
   <link rel="stylesheet" href="styles.css">
@@ -13,29 +13,20 @@
 <body>
   <a class="skip-link" href="#report-root">Skip to report</a>
 
-  <header class="masthead">
-    <div class="masthead__inner">
-      <div class="brand-row">
-        <a class="brand" href="./" aria-label="Wildfire briefing home">
-          <span class="brand__mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" role="img">
-              <path d="M18.8 2.7c.8 5-2.5 6.9-4.4 10.1-1.4 2.4-1.3 4.8.3 6.3-.2-3 1.7-4.5 3.4-6.2 2.8 2.3 4.8 5.2 4.3 9-.4 3.5-3.1 6.4-7.3 6.4-4.7 0-8.2-3.6-8-8.2.1-3.8 2.3-6.2 4.7-8.9.1 2 .7 3.3 1.7 4.1-.2-4.8 3.6-7.5 5.3-12.6Z" fill="currentColor"/>
-            </svg>
-          </span>
-          <span>Wildfire Intelligence</span>
-        </a>
-        <span class="live-badge"><span aria-hidden="true"></span> Daily at 9 AM ET</span>
-      </div>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <a class="brand" href="./" aria-label="Wildfire briefing home">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="img">
+            <path d="M18.8 2.7c.8 5-2.5 6.9-4.4 10.1-1.4 2.4-1.3 4.8.3 6.3-.2-3 1.7-4.5 3.4-6.2 2.8 2.3 4.8 5.2 4.3 9-.4 3.5-3.1 6.4-7.3 6.4-4.7 0-8.2-3.6-8-8.2.1-3.8 2.3-6.2 4.7-8.9.1 2 .7 3.3 1.7 4.1-.2-4.8 3.6-7.5 5.3-12.6Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <span><strong>Wildfire Briefing</strong><small>Structural impact intelligence</small></span>
+      </a>
 
-      <div class="hero-copy">
-        <p class="eyebrow">Structural-impact briefing</p>
-        <h1>Operational clarity for consequential fire days.</h1>
-        <p class="hero-copy__dek">Verified U.S. and Canadian fire intelligence, structural-loss signals, and a concise global scan—organized for rapid catastrophe assessment.</p>
-      </div>
-
-      <div class="report-controls" aria-label="Report controls">
+      <div class="header-controls" aria-label="Report controls">
         <label class="date-control" for="date-select">
-          <span>Report date</span>
+          <span class="sr-only">Report date</span>
           <select id="date-select" aria-describedby="date-help"></select>
         </label>
         <p id="date-help" class="sr-only">Choose from available reports in the rolling 15-day window.</p>
@@ -48,22 +39,12 @@
     <div class="section-nav__inner" id="section-nav"></div>
   </nav>
 
-  <div class="page-shell">
-    <aside class="date-rail" aria-label="Recent report dates">
-      <div class="date-rail__sticky">
-        <p class="rail-label">Recent reports</p>
-        <div id="date-list" class="date-list"></div>
-        <p class="rail-note">Rolling 15-day window. The source archive remains complete.</p>
-      </div>
-    </aside>
-
-    <main id="report-root" class="report-root" tabindex="-1" aria-live="polite">
-      <div class="loading-state">
-        <span class="loading-state__mark" aria-hidden="true"></span>
-        <p>Loading verified briefing…</p>
-      </div>
-    </main>
-  </div>
+  <main id="report-root" class="report-root" tabindex="-1" aria-live="polite">
+    <div class="loading-state">
+      <span class="loading-state__mark" aria-hidden="true"></span>
+      <p>Loading verified briefing…</p>
+    </div>
+  </main>
 
   <footer class="site-footer">
     <p>Official operational sources control fire facts. News coverage is shown separately for context.</p>
