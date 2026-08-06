@@ -100,17 +100,20 @@ a:hover { color: var(--ember-dark); }
 .brand:hover { color: var(--navy); }
 
 .brand__mark {
-  display: grid;
-  width: 31px;
-  height: 31px;
+  display: block;
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--ember);
-  color: var(--white);
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--navy);
 }
 
-.brand__mark svg { width: 20px; height: 20px; }
+.brand__mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 
 .brand strong,
 .brand small { display: block; }
