@@ -576,6 +576,55 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
             "sourceLabel": "Bradley Creek (K41315) (Quilpituk Creek K51402)",
         }])
 
+    def test_plain_priority_name_uses_coordinate_match_and_survives_cache(self) -> None:
+        features = [
+            self.feature("2026_BC_2026-V10755", "2026-V10755"),
+        ]
+        priorities = [{
+            "agency_code": "BC",
+            "field_fire_id": "Ainslie Creek",
+            "field_stage_of_control": "OC",
+            "field_size": "40599",
+            "field_latitude": "51",
+            "field_longitude": "-121",
+            "field_incident_type": None,
+        }]
+
+        matched, unmatched_rows, coverage = canada_wildfire_cache.match_priorities(
+            features,
+            priorities,
+            "2026-08-05",
+        )
+        records = canada_wildfire_cache.wire_records(features, matched)
+
+        self.assertEqual(unmatched_rows, [])
+        self.assertEqual(coverage["priorityFireCount"], 1)
+        self.assertEqual(coverage["matchedPriorityFireCount"], 1)
+        self.assertEqual(coverage["unmatchedPriorityFires"], [])
+        self.assertEqual(records[0]["c"]["priority"]["name"], "Ainslie Creek")
+
+    def test_unmatched_plain_priority_name_is_not_reported_as_a_fire_id(self) -> None:
+        priorities = [{
+            "agency_code": "BC",
+            "field_fire_id": "Pear Lake",
+            "field_latitude": "50.979",
+            "field_longitude": "-121.08",
+        }]
+
+        matched, unmatched_rows, coverage = canada_wildfire_cache.match_priorities(
+            [],
+            priorities,
+            "2026-08-05",
+        )
+
+        self.assertEqual(matched, {})
+        self.assertEqual(unmatched_rows, priorities)
+        self.assertEqual(coverage["unmatchedPriorityFires"], [{
+            "agencyCode": "BC",
+            "fireId": None,
+            "sourceLabel": "Pear Lake",
+        }])
+
     def test_active_is_derived_from_non_extinguished_reported_records(self) -> None:
         records = canada_wildfire_cache.wire_records([
             self.feature("oc", "1", "OC"),
