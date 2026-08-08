@@ -101,6 +101,14 @@ function sourceLinks(ids, sources) {
   return `<div class="source-row"><span class="source-label">Evidence</span><span class="source-links">${links.join("")}</span></div>`;
 }
 
+function claimSourceIds(incident, sources, ...claimTypes) {
+  const candidates = unique([incident.official_source_id, ...(incident.source_ids || [])]);
+  return candidates.filter((id) => {
+    const source = sources.get(id);
+    return (source?.claim_types || []).some((claimType) => claimTypes.includes(claimType));
+  });
+}
+
 function number(value) {
   return Number(value).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
@@ -215,6 +223,8 @@ function callout(kind, label, content, ids, sources) {
 function renderIncident(incident, sources, index) {
   const officialIds = unique([incident.official_source_id, ...(incident.source_ids || [])]);
   const startIds = incident.start_source_ids?.length ? incident.start_source_ids : [incident.official_source_id];
+  const fatalityIds = claimSourceIds(incident, sources, "fatality", "fatalities");
+  const injuryIds = claimSourceIds(incident, sources, "injury", "injuries");
   const critical = (incident.critical_alert_reasons || []).join("; ");
   const conflicts = (incident.conflicting_values || [])
     .map((item) => callout("warning", "Unresolved evidence conflict", escapeHTML(item), officialIds, sources))
@@ -240,6 +250,8 @@ function renderIncident(incident, sources, index) {
         ${factBlock("Started", incident.start_date ? dateLabel(incident.start_date) : "Not reported", startIds, sources)}
         ${factBlock("Current status", `${escapeHTML(area(incident))}; ${escapeHTML(status(incident))}`, [incident.official_source_id], sources)}
         ${factBlock("Structural impact", escapeHTML(structureImpact(incident)), officialIds, sources)}
+        ${incident.fatalities > 0 ? factBlock("Fire-related fatalities", `${number(incident.fatalities)} officially reported`, fatalityIds, sources) : ""}
+        ${incident.injuries > 0 ? factBlock("Fire-related injuries", `${number(incident.injuries)} officially reported`, injuryIds, sources) : ""}
         ${factBlock("Evacuation", escapeHTML(incident.evacuation?.description || "No reviewed evacuation description was published."), officialIds, sources)}
         ${factBlock("Operational outlook", escapeHTML(incident.operational_outlook || "Not reported"), officialIds, sources, true)}
       </div>

@@ -1,7 +1,7 @@
 {
   "report_date": "2026-08-08",
-  "cutoff_et": "2026-08-08T09:00:54-04:00",
-  "generated_at": "2026-08-08T13:11:03.018419Z",
+  "cutoff_et": "2026-08-08T09:00:00-04:00",
+  "generated_at": "2026-08-08T13:32:06.859539Z",
   "sources": [
     {
       "id": "nifc_imsr_20260807",
@@ -312,6 +312,135 @@
       ]
     },
     {
+      "id": "osfm_wrights_20260807",
+      "title": "Emergency Conflagration Act invoked for Wrights Spring Fire in Klamath County",
+      "url": "https://apps.oregon.gov/oregon-newsroom/OR/OSFM/Posts/Post/wrights-spring-conflagration",
+      "publisher": "Oregon State Fire Marshal",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:20:00-04:00",
+      "claim_types": [
+        "start",
+        "status",
+        "area",
+        "evacuation",
+        "outlook",
+        "operational_escalation",
+        "resources"
+      ]
+    },
+    {
+      "id": "scofmp_wrights_20260808",
+      "title": "Wrights Spring Fire evening update — August 7, 2026",
+      "url": "https://www.facebook.com/SCOFMPFIREINFO/posts/evening-update-8726wrights-spring-fire-current-situation-the-northwest-complex-i/1482690113895193/",
+      "publisher": "South Central Oregon Fire Management Partnership",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:20:00-04:00",
+      "claim_types": [
+        "status",
+        "evacuation",
+        "outlook",
+        "operational_escalation",
+        "resources"
+      ]
+    },
+    {
+      "id": "klamath_sheriff_wrights_fatality",
+      "title": "A tragic loss on the Wrights Spring Fire",
+      "url": "https://www.facebook.com/KlamathSheriff/posts/a-tragic-lossthe-wrights-spring-fire-has-claimed-the-life-of-jason-ensign-a-47-y/1031417396144922/",
+      "publisher": "Klamath County Sheriff's Office",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:21:00-04:00",
+      "claim_types": [
+        "fatalities"
+      ]
+    },
+    {
+      "id": "opb_wrights",
+      "title": "Man killed battling Wrights Spring Fire in Klamath County",
+      "url": "https://www.opb.org/article/2026/08/07/wrights-spring-fire-oregon/",
+      "publisher": "Oregon Public Broadcasting",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:22:00-04:00",
+      "claim_types": [
+        "status",
+        "area",
+        "evacuation",
+        "fatalities",
+        "attention"
+      ]
+    },
+    {
+      "id": "sltrib_widemouth_crash",
+      "title": "Fate of 2 firefighters unknown after helicopter crashes while battling Utah's massive Widemouth 2 Fire",
+      "url": "https://www.sltrib.com/news/2026/08/07/helicopter-crashes-near-utahs/",
+      "publisher": "The Salt Lake Tribune",
+      "published_at": "2026-08-07T16:58:00-04:00",
+      "accessed_at": "2026-08-08T09:18:00-04:00",
+      "claim_types": [
+        "status",
+        "area",
+        "evacuation",
+        "resources",
+        "attention"
+      ]
+    },
+    {
+      "id": "hidden_forest_official",
+      "title": "Wildfire Fact Sheet / Hidden Forest (#685)",
+      "url": "https://centraloregonfire.org/2026/08/07/wildfire-fact-sheet-683685/",
+      "publisher": "Central Oregon Fire Information",
+      "published_at": "2026-08-07T11:16:00-04:00",
+      "accessed_at": "2026-08-08T09:23:00-04:00",
+      "claim_types": [
+        "start",
+        "status",
+        "area",
+        "evacuation",
+        "resources"
+      ]
+    },
+    {
+      "id": "yahoo_greece_20260808",
+      "title": "In Greece, horses flee flames as fast-moving wildfire destroys more than 100 homes",
+      "url": "https://www.yahoo.com/news/world/articles/greece-horses-flee-flames-fast-001800783.html",
+      "publisher": "Yahoo",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:22:00-04:00",
+      "claim_types": [
+        "global",
+        "status",
+        "structures",
+        "evacuation"
+      ]
+    },
+    {
+      "id": "ap_serbia_20260807",
+      "title": "Serbia races to contain wildfires as Europe's blistering heat wave grips the Balkans",
+      "url": "https://www.local10.com/news/world/2026/08/07/serbia-races-to-contain-wildfires-as-europes-blistering-heat-wave-grips-the-balkans/",
+      "publisher": "Associated Press via Local 10",
+      "published_at": "2026-08-07T11:22:00-04:00",
+      "accessed_at": "2026-08-08T09:23:00-04:00",
+      "claim_types": [
+        "global",
+        "status",
+        "evacuation",
+        "resources"
+      ]
+    },
+    {
+      "id": "euronews_france_20260807",
+      "title": "Wildfire burns 100 hectares near Narbonne in France",
+      "url": "https://www.euronews.com/video/2026/08/07/wildfire-burns-100-hectares-near-narbonne-in-france",
+      "publisher": "Euronews",
+      "published_at": "2026-08-07T17:41:00-04:00",
+      "accessed_at": "2026-08-08T09:23:00-04:00",
+      "claim_types": [
+        "global",
+        "status",
+        "area"
+      ]
+    },
+    {
       "id": "gnews_spokane_1d",
       "title": "Google News search — Spokane Area Fires, preceding 24 hours",
       "url": "https://news.google.com/search?q=Spokane%20Area%20Fires%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
@@ -410,6 +539,28 @@
         "global",
         "attention"
       ]
+    },
+    {
+      "id": "gnews_wrights_1d",
+      "title": "Google News search — Wrights Spring Fire Oregon, preceding 24 hours",
+      "url": "https://news.google.com/search?q=Wrights%20Spring%20Fire%20Oregon%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
+      "publisher": "Google News",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:19:00-04:00",
+      "claim_types": [
+        "attention"
+      ]
+    },
+    {
+      "id": "gnews_hidden_forest_1d",
+      "title": "Google News search — Hidden Forest Fire Oregon, preceding 24 hours",
+      "url": "https://news.google.com/search?q=Hidden%20Forest%20Fire%20Oregon%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
+      "publisher": "Google News",
+      "published_at": null,
+      "accessed_at": "2026-08-08T09:19:00-04:00",
+      "claim_types": [
+        "attention"
+      ]
     }
   ],
   "source_checks": [
@@ -417,15 +568,15 @@
       "source_id": "nifc_imsr",
       "title": "NIFC Incident Management Situation Report",
       "url": "https://www.nifc.gov/nicc/incident-information/imsr",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
-      "detail": "captured 37686 characters"
+      "detail": "captured 38820 characters"
     },
     {
       "source_id": "gacc",
       "title": "Geographic Area Coordination Centers",
       "url": "https://gacc.nifc.gov/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 1040 characters"
     },
@@ -433,7 +584,7 @@
       "source_id": "inciweb",
       "title": "InciWeb",
       "url": "https://inciweb.wildfire.gov/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 1178 characters"
     },
@@ -441,7 +592,7 @@
       "source_id": "alaska_aicc",
       "title": "Alaska Interagency Coordination Center",
       "url": "https://fire.ak.blm.gov/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 1937 characters"
     },
@@ -449,7 +600,7 @@
       "source_id": "alaska_fire_info",
       "title": "Alaska Wildland Fire Information",
       "url": "https://akfireinfo.com/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 8309 characters"
     },
@@ -457,7 +608,7 @@
       "source_id": "hiema",
       "title": "Hawaii Emergency Management Agency",
       "url": "https://dod.hawaii.gov/hiema/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 5230 characters"
     },
@@ -465,7 +616,7 @@
       "source_id": "hawaii_dofaw",
       "title": "Hawaii DLNR Division of Forestry and Wildlife",
       "url": "https://dlnr.hawaii.gov/dofaw/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 5844 characters"
     },
@@ -473,7 +624,7 @@
       "source_id": "nws_honolulu",
       "title": "NWS Honolulu",
       "url": "https://www.weather.gov/hfo/",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 8340 characters"
     },
@@ -489,7 +640,7 @@
       "source_id": "cwfis",
       "title": "CWFIS National Wildland Fire Summary",
       "url": "https://cwfis.cfs.nrcan.gc.ca/en/summary",
-      "accessed_at": "2026-08-08T13:11:03.021456Z",
+      "accessed_at": "2026-08-08T13:32:06.862274Z",
       "status": "ok",
       "detail": "captured 101 characters"
     }
@@ -564,19 +715,19 @@
       "operational_escalation": true,
       "attention": {
         "level": "High",
-        "articles_24h": 60,
-        "distinct_publishers_24h": 30,
+        "articles_24h": 100,
+        "distinct_publishers_24h": 47,
         "baseline_daily_articles_7d": 20.0,
-        "acceleration": 3.0,
+        "acceleration": 5.0,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_spokane_1d"
         ],
-        "coverage_summary": "Coverage focused on the arson case, a reported rise in burned structures, assistance for affected residents, and containment progress.",
+        "coverage_summary": "Coverage focused on the arson case, extensive structure loss, evacuee recovery, assistance for affected residents, and containment progress.",
         "coverage_source_ids": [
           "nbc_spokane"
         ],
-        "methodology_note": "Browser-visible search was capped at 60 unique result links; counts are censored observations and no auditable public-discussion count was available."
+        "methodology_note": "Browser-visible search was capped at 100 unique result links; counts are censored observations and no auditable public-discussion count was available."
       },
       "confidence": "official_confirmed",
       "conflicting_values": [],
@@ -589,6 +740,82 @@
       "priority_score": 7750.0,
       "critical_alert_reasons": [
         "at least 25 newly damaged or destroyed structures",
+        "named community under evacuation with structure involvement or imminent threat"
+      ]
+    },
+    {
+      "id": "us-widemouth-2-2026",
+      "name": "Widemouth 2 Fire",
+      "aliases": [
+        "Wide Mouth 2 Fire"
+      ],
+      "country": "US",
+      "jurisdiction": "Utah",
+      "location": "Fishlake National Forest between Kanosh, Meadow, and Fillmore",
+      "controlling_agency": "Great Basin Complex Incident Management Team 2 and Fishlake National Forest",
+      "official_source_id": "inciweb_widemouth_20260808",
+      "start_date": "2026-07-27",
+      "start_source_ids": [
+        "inciweb_widemouth_20260808"
+      ],
+      "source_updated_at": "2026-08-08T03:00:00-04:00",
+      "area_acres": 99485.0,
+      "area_hectares": null,
+      "containment_percent": 19.0,
+      "canadian_control_stage": null,
+      "structures": {
+        "threatened": null,
+        "damaged": null,
+        "destroyed": 6,
+        "residences_destroyed": null,
+        "commercial_destroyed": null,
+        "outbuildings_destroyed": null,
+        "properties_with_structure_loss": null,
+        "newly_damaged_or_destroyed": 6
+      },
+      "evacuation": {
+        "level": "order",
+        "description": "The IMSR reported evacuations, road and area closures; the incident page directs residents to local evacuation information.",
+        "named_community": true
+      },
+      "fatalities": null,
+      "injuries": null,
+      "affected_communities": [
+        "Kanosh",
+        "Meadow",
+        "Fillmore"
+      ],
+      "critical_infrastructure": [
+        "critical infrastructure"
+      ],
+      "operational_outlook": "The August 7 IMSR reported extreme fire behavior and numerous structures and infrastructure threatened.",
+      "operational_escalation": true,
+      "attention": {
+        "level": "High",
+        "articles_24h": 45,
+        "distinct_publishers_24h": 33,
+        "baseline_daily_articles_7d": 12.0,
+        "acceleration": 3.8,
+        "public_discussion_count_24h": null,
+        "representative_source_ids": [
+          "gnews_widemouth_1d"
+        ],
+        "coverage_summary": "Coverage was dominated by the crash of a firefighting helicopter assigned to the incident, uncertainty over the two people aboard at the cutoff, continued fire growth, closures, and difficult containment conditions.",
+        "coverage_source_ids": [
+          "sltrib_widemouth_crash"
+        ],
+        "methodology_note": "The browser-visible sample met the High threshold; news-area estimates do not replace the official IMSR acreage, and no fatality is recorded because officials had not confirmed the occupants' status at the cutoff."
+      },
+      "confidence": "official_confirmed",
+      "conflicting_values": [],
+      "source_ids": [
+        "inciweb_widemouth_20260808",
+        "nifc_imsr_20260807",
+        "sltrib_widemouth_crash"
+      ],
+      "analyst_note": "**Source reconciliation:** The direct incident page was stale at cutoff; the newer August 7 IMSR controls the 99,485-acre, 19%-contained operational record. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
+      "priority_score": 1090.0,
+      "critical_alert_reasons": [
         "named community under evacuation with structure involvement or imminent threat"
       ]
     },
@@ -641,15 +868,15 @@
       "operational_escalation": true,
       "attention": {
         "level": "Elevated",
-        "articles_24h": 32,
+        "articles_24h": 39,
         "distinct_publishers_24h": 18,
         "baseline_daily_articles_7d": 14.0,
-        "acceleration": 2.3,
+        "acceleration": 2.8,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_grasshopper_1d"
         ],
-        "coverage_summary": "Coverage emphasized growth above 43,000 acres, Highway 35 closures, evacuation constraints, Mount Hood access, and power-protection measures.",
+        "coverage_summary": "Coverage emphasized growth, Highway 35 closures, evacuation constraints, Mount Hood access, National Guard support, and power-protection measures.",
         "coverage_source_ids": [
           "katu_grasshopper"
         ],
@@ -665,6 +892,79 @@
       "analyst_note": "**Cat-modeling interpretation:** Official sources report qualitative structural and infrastructure threat, not a numeric structure-loss count. ([InciWeb](https://inciweb.wildfire.gov/incident-information/ormhf-grasshopper))",
       "priority_score": 1190.0,
       "critical_alert_reasons": [
+        "named community under evacuation with structure involvement or imminent threat"
+      ]
+    },
+    {
+      "id": "us-wrights-spring-2026",
+      "name": "Wrights Spring Fire",
+      "aliases": [],
+      "country": "US",
+      "jurisdiction": "Oregon",
+      "location": "Southeast of Chiloquin in Klamath County",
+      "controlling_agency": "Northwest Complex Incident Management Team 8 and Oregon State Fire Marshal Green Incident Management Team",
+      "official_source_id": "osfm_wrights_20260807",
+      "start_date": "2026-08-05",
+      "start_source_ids": [
+        "osfm_wrights_20260807"
+      ],
+      "source_updated_at": null,
+      "area_acres": 8722.0,
+      "area_hectares": null,
+      "containment_percent": 0.0,
+      "canadian_control_stage": null,
+      "structures": {
+        "threatened": null,
+        "damaged": null,
+        "destroyed": null,
+        "residences_destroyed": null,
+        "commercial_destroyed": null,
+        "outbuildings_destroyed": null,
+        "properties_with_structure_loss": null,
+        "newly_damaged_or_destroyed": null
+      },
+      "evacuation": {
+        "level": "order",
+        "description": "Level 1, 2, and 3 evacuations were in effect for Sprague River and along Sprague River Road east of Chiloquin, with a Red Cross shelter at Chiloquin Elementary School.",
+        "named_community": true
+      },
+      "fatalities": 1,
+      "injuries": null,
+      "affected_communities": [
+        "Sprague River",
+        "Chiloquin"
+      ],
+      "critical_infrastructure": [],
+      "operational_outlook": "The incident team reported extreme fire behavior that temporarily forced crews to withdraw, ordered additional resources, and assigned dozers and Oregon State Fire Marshal crews to overnight structure protection.",
+      "operational_escalation": true,
+      "attention": {
+        "level": "Elevated",
+        "articles_24h": 38,
+        "distinct_publishers_24h": 19,
+        "baseline_daily_articles_7d": 6.1,
+        "acceleration": 6.2,
+        "public_discussion_count_24h": null,
+        "representative_source_ids": [
+          "gnews_wrights_1d"
+        ],
+        "coverage_summary": "Coverage centered on the official fire-line fatality, rapid growth, escalating Level 3 evacuations, the Emergency Conflagration Act response, and structure-protection operations.",
+        "coverage_source_ids": [
+          "opb_wrights"
+        ],
+        "methodology_note": "The 24-hour sample remained below the 40-item High threshold; the seven-day baseline was estimated from 43 visible results divided by seven, and no auditable public-discussion count was available."
+      },
+      "confidence": "official_confirmed",
+      "conflicting_values": [],
+      "source_ids": [
+        "osfm_wrights_20260807",
+        "scofmp_wrights_20260808",
+        "klamath_sheriff_wrights_fatality",
+        "opb_wrights"
+      ],
+      "analyst_note": "**Cat-modeling interpretation:** No structure-loss count was reported, but the confirmed fire-line fatality, named-community evacuation orders, extreme behavior, and overnight structure protection make this a critical catastrophe-intelligence event. ([Klamath County Sheriff's Office fatality statement](https://www.facebook.com/KlamathSheriff/posts/a-tragic-lossthe-wrights-spring-fire-has-claimed-the-life-of-jason-ensign-a-47-y/1031417396144922/); [Wrights Spring Fire evening update](https://www.facebook.com/SCOFMPFIREINFO/posts/evening-update-8726wrights-spring-fire-current-situation-the-northwest-complex-i/1482690113895193/))",
+      "priority_score": 1590.0,
+      "critical_alert_reasons": [
+        "officially reported fire-related fatality",
         "named community under evacuation with structure involvement or imminent threat"
       ]
     },
@@ -713,15 +1013,15 @@
       "operational_escalation": false,
       "attention": {
         "level": "Elevated",
-        "articles_24h": 24,
-        "distinct_publishers_24h": 12,
+        "articles_24h": 23,
+        "distinct_publishers_24h": 13,
         "baseline_daily_articles_7d": 12.0,
-        "acceleration": 2.0,
+        "acceleration": 1.9,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_aspen_1d"
         ],
-        "coverage_summary": "Coverage emphasized stable containment near 71%, the handoff to a smaller management team, closures, and community recovery rather than a new loss increment.",
+        "coverage_summary": "Coverage emphasized stable containment near 71%, road reopening, the handoff to a smaller management team, and community recovery rather than a new loss increment.",
         "coverage_source_ids": [
           "gazette_aspen"
         ],
@@ -737,82 +1037,6 @@
       "analyst_note": "**Cat-modeling interpretation:** The 915 lost structures are cumulative and unspecified by occupancy. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
       "priority_score": 9390.0,
       "critical_alert_reasons": []
-    },
-    {
-      "id": "us-widemouth-2-2026",
-      "name": "Widemouth 2 Fire",
-      "aliases": [
-        "Wide Mouth 2 Fire"
-      ],
-      "country": "US",
-      "jurisdiction": "Utah",
-      "location": "Fishlake National Forest between Kanosh, Meadow, and Fillmore",
-      "controlling_agency": "Great Basin Complex Incident Management Team 2 and Fishlake National Forest",
-      "official_source_id": "inciweb_widemouth_20260808",
-      "start_date": "2026-07-27",
-      "start_source_ids": [
-        "inciweb_widemouth_20260808"
-      ],
-      "source_updated_at": "2026-08-08T03:00:00-04:00",
-      "area_acres": 99485.0,
-      "area_hectares": null,
-      "containment_percent": 19.0,
-      "canadian_control_stage": null,
-      "structures": {
-        "threatened": null,
-        "damaged": null,
-        "destroyed": 6,
-        "residences_destroyed": null,
-        "commercial_destroyed": null,
-        "outbuildings_destroyed": null,
-        "properties_with_structure_loss": null,
-        "newly_damaged_or_destroyed": 6
-      },
-      "evacuation": {
-        "level": "order",
-        "description": "The IMSR reported evacuations, road and area closures; the incident page directs residents to local evacuation information.",
-        "named_community": true
-      },
-      "fatalities": null,
-      "injuries": null,
-      "affected_communities": [
-        "Kanosh",
-        "Meadow",
-        "Fillmore"
-      ],
-      "critical_infrastructure": [
-        "critical infrastructure"
-      ],
-      "operational_outlook": "The August 7 IMSR reported extreme fire behavior and numerous structures and infrastructure threatened.",
-      "operational_escalation": true,
-      "attention": {
-        "level": "Elevated",
-        "articles_24h": 21,
-        "distinct_publishers_24h": 14,
-        "baseline_daily_articles_7d": 12.0,
-        "acceleration": 1.8,
-        "public_discussion_count_24h": null,
-        "representative_source_ids": [
-          "gnews_widemouth_1d"
-        ],
-        "coverage_summary": "Coverage emphasized reported growth toward or above 100,000 acres, continuing closures, governor support, and difficult containment conditions.",
-        "coverage_source_ids": [
-          "fox13_widemouth"
-        ],
-        "methodology_note": "News-area estimates do not replace the official IMSR acreage in the operational record."
-      },
-      "confidence": "official_confirmed",
-      "conflicting_values": [],
-      "source_ids": [
-        "inciweb_widemouth_20260808",
-        "nifc_imsr_20260807",
-        "fox13_widemouth"
-      ],
-      "analyst_note": "**Source reconciliation:** The direct incident page was stale at cutoff; the newer August 7 IMSR controls the 99,485-acre, 19%-contained operational record. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
-      "priority_score": 1030.0,
-      "critical_alert_reasons": [
-        "named community under evacuation with structure involvement or imminent threat"
-      ]
     },
     {
       "id": "ca-bradley-creek-2026",
@@ -863,15 +1087,15 @@
       "operational_escalation": true,
       "attention": {
         "level": "Elevated",
-        "articles_24h": 18,
+        "articles_24h": 21,
         "distinct_publishers_24h": 14,
         "baseline_daily_articles_7d": 10.0,
-        "acceleration": 1.8,
+        "acceleration": 2.1,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_bradley_1d"
         ],
-        "coverage_summary": "Coverage centered on the Okanagan Indian Band's recovery, smoke effects on behavior, evacuation changes, and wind risk.",
+        "coverage_summary": "Coverage centered on the Okanagan Indian Band's recovery, smoke effects on behavior, evacuation changes, utility risk, and strengthening winds.",
         "coverage_source_ids": [
           "ap_bradley"
         ],
@@ -939,10 +1163,10 @@
       "operational_escalation": false,
       "attention": {
         "level": "Elevated",
-        "articles_24h": 12,
-        "distinct_publishers_24h": 8,
+        "articles_24h": 13,
+        "distinct_publishers_24h": 9,
         "baseline_daily_articles_7d": 7.0,
-        "acceleration": 1.7,
+        "acceleration": 1.9,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_kaiser_1d"
@@ -1012,15 +1236,15 @@
       "operational_escalation": false,
       "attention": {
         "level": "Low",
-        "articles_24h": 9,
+        "articles_24h": 11,
         "distinct_publishers_24h": 7,
         "baseline_daily_articles_7d": 8.0,
-        "acceleration": 1.1,
+        "acceleration": 1.4,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_rowe_1d"
         ],
-        "coverage_summary": "Coverage focused on Highway 26 protection, a public meeting, and local near-miss accounts as containment advanced.",
+        "coverage_summary": "Coverage focused on Highway 26 protection, spot-fire suppression, a public meeting, and local near-miss accounts as containment advanced.",
         "coverage_source_ids": [
           "kval_rowe"
         ],
@@ -1089,15 +1313,15 @@
       "operational_escalation": true,
       "attention": {
         "level": "Low",
-        "articles_24h": 8,
-        "distinct_publishers_24h": 7,
+        "articles_24h": 10,
+        "distinct_publishers_24h": 9,
         "baseline_daily_articles_7d": 7.0,
-        "acceleration": 1.1,
+        "acceleration": 1.4,
         "public_discussion_count_24h": null,
         "representative_source_ids": [
           "gnews_pear_1d"
         ],
-        "coverage_summary": "Coverage focused on smoke effects, readiness for rapid evacuation, and the potential for aggressive behavior and growth.",
+        "coverage_summary": "Coverage focused on additional evacuation orders, smoke effects, readiness for rapid evacuation, and the potential for aggressive behavior and growth.",
         "coverage_source_ids": [
           "ctv_pear"
         ],
@@ -1118,47 +1342,67 @@
     }
   ],
   "global_overview": {
-    "statement": "The reviewed international headline sample was concentrated in Greece and the wider European wildfire season, with current reporting on Greek evacuations and renewed fires in the Balkans, plus continuing human and financial impacts from fires in France and Spain. This is a headline scan, not comprehensive worldwide operational intelligence.",
+    "statement": "The reviewed 24-hour international headline sample was concentrated in Europe's heat-driven wildfire activity, led by reported home destruction northwest of Athens, settlement-adjacent fires in Serbia, and a new fire near Narbonne, France. This is a headline scan, not comprehensive worldwide operational intelligence.",
     "source_ids": [
       "gnews_global_scan",
-      "reuters_europe"
+      "yahoo_greece_20260808",
+      "ap_serbia_20260807",
+      "euronews_france_20260807"
     ]
   },
   "global_events": [
     {
-      "id": "greece-wildfires-2026",
-      "name": "Greece wildfire emergency",
+      "id": "greece-attica-wildfire-2026",
+      "name": "Western Attica wildfire",
       "country": "Greece",
       "start_date": null,
       "area_acres": null,
       "area_hectares": null,
-      "status": "New fires and persistent hotspots remained a current headline focus, with continuing life-safety and evacuation reporting.",
-      "structures_destroyed": null,
-      "structure_loss_description": null,
-      "evacuations": "Current headlines described rescues and evacuations around affected Greek communities.",
+      "status": "Current coverage showed a fast-moving wildfire northwest of Athens burning through homes, farmland, and animal habitat while crews continued containment work",
+      "structures_destroyed": 100,
+      "structure_loss_description": "More than 100 homes were reported destroyed in the reviewed headline source; this was not independently reconciled to a controlling Greek operational update.",
+      "evacuations": null,
       "fatalities": null,
-      "summary": "The reviewed headline sample did not provide a defensible consolidated current structure-loss total.",
+      "summary": "The event was promoted for reported structural loss, but the available English-language sample did not provide a defensible ignition date or consolidated operational perimeter.",
       "source_ids": [
         "gnews_global_scan",
-        "reuters_europe"
+        "yahoo_greece_20260808"
       ]
     },
     {
-      "id": "france-spain-wildfires-2026",
-      "name": "France and Spain wildfire impacts",
-      "country": "France and Spain",
+      "id": "serbia-deliblato-wildfires-2026",
+      "name": "Deliblato Sands and Serbia wildfires",
+      "country": "Serbia",
       "start_date": null,
       "area_acres": null,
       "area_hectares": null,
-      "status": "Coverage continued to describe partial respite and recovery alongside ongoing fire-weather risk.",
+      "status": "Helicopters and ground crews fought a major fire in the Deliblato Sands reserve while eight other fires affected parts of Serbia during extreme heat and drought",
+      "structures_destroyed": null,
+      "structure_loss_description": null,
+      "evacuations": "Residents of Sumarak were asked to leave as a precaution; the reviewed Associated Press report said no houses had burned and no casualties were reported.",
+      "fatalities": null,
+      "summary": "The army joined the response, and officials described the nationwide situation as serious but not critical.",
+      "source_ids": [
+        "gnews_global_scan",
+        "ap_serbia_20260807"
+      ]
+    },
+    {
+      "id": "france-narbonne-wildfire-2026",
+      "name": "Narbonne-area wildfire",
+      "country": "France",
+      "start_date": null,
+      "area_acres": null,
+      "area_hectares": 100.0,
+      "status": "Water-bombing aircraft and helicopters fought a wildfire in the Corbières massif near Narbonne after a road accident",
       "structures_destroyed": null,
       "structure_loss_description": null,
       "evacuations": null,
       "fatalities": null,
-      "summary": "No new consolidated cross-country operational loss figure was verified in the reviewed headline sample.",
+      "summary": "The reviewed headline source reported no consolidated structural-loss or casualty figure.",
       "source_ids": [
-        "reuters_europe",
-        "gnews_global_scan"
+        "gnews_global_scan",
+        "euronews_france_20260807"
       ]
     }
   ],
@@ -1182,6 +1426,14 @@
       "reason": "The IMSR described active behavior and qualitative residential/infrastructure threat, but no new qualifying loss or attention signal was verified.",
       "source_ids": [
         "nifc_imsr_20260807"
+      ]
+    },
+    {
+      "name": "Hidden Forest Fire",
+      "reason": "The exact official update reported a new 297-acre fire, a temporary Level 3 evacuation around Arnold Ice Cave, nearby ranches, and rapid resource mobilization, but no structure loss or named-community structural involvement; later coverage reported forward progress stopped and evacuations reduced.",
+      "source_ids": [
+        "hidden_forest_official",
+        "gnews_hidden_forest_1d"
       ]
     }
   ],
