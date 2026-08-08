@@ -447,9 +447,6 @@ async function start() {
     const requestedDate = params.get("date") || payload.latest_report_date;
     const requestedSection = params.get("section") || "overview";
     wireGlobalActions();
-    // A manually supplied date for the latest report is valid, but redundant:
-    // normalize it to the base URL after selecting that report. A clean base URL
-    // is otherwise left untouched on first load.
     selectReport(requestedDate, { updateURL: params.has("date"), section: requestedSection });
     elements.footerWindow.textContent = `${payload.reports.length} report${payload.reports.length === 1 ? "" : "s"} available in the rolling ${payload.window_days}-day window.`;
     if (requestedSection !== "overview") {
