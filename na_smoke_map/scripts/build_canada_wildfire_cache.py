@@ -153,12 +153,10 @@ def normalize_fire_token(value: Any) -> str:
     return re.sub(r"^20\d{2}", "", token)
 
 
-def useful_official_name(value: Any, fire_number: Any) -> str | None:
-    """Return a real provincial event name, never an ID repeated as a name."""
-    name = " ".join(str(value or "").split())
-    if not name or normalize_fire_token(name) == normalize_fire_token(fire_number):
-        return None
-    return name
+def useful_official_name(value: Any) -> str | None:
+    """Return a nonblank provincial INCIDENT_NAME without interpreting its value."""
+    name = str(value or "").strip()
+    return name or None
 
 
 def bc_name_overrides(
@@ -171,7 +169,7 @@ def bc_name_overrides(
         properties = feature.get("attributes") or feature.get("properties") or {}
         fire_number = properties.get("FIRE_NUMBER")
         token = normalize_fire_token(fire_number)
-        name = useful_official_name(properties.get("INCIDENT_NAME"), fire_number)
+        name = useful_official_name(properties.get("INCIDENT_NAME"))
         if not token or not name:
             continue
         usable_name_count += 1
@@ -475,7 +473,25 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
     args.output.mkdir(parents=True, exist_ok=True)
     features, source_timestamp = fetch_reported_fires(args.retries, generated)
     sitrep = request_json(CIFFC_SITREP, None, args.retries)
-    bc_names, bc_name_coverage = fetch_bc_name_overrides(args.retries)
+    bc_name_status = "available"
+    try:
+        bc_names, bc_name_coverage = fetch_bc_name_overrides(args.retries)
+    except Exception as exc:
+        # CWFIS/CIFFC still form a complete Canadian catalog. Do not let an
+        # optional provincial display-name source freeze that catalog at an old
+        # generation; publish without BC names and retry on the next hour.
+        print(
+            "BC wildfire name enrichment unavailable; publishing without BC names: "
+            f"{exc}",
+            file=sys.stderr,
+        )
+        bc_names = {}
+        bc_name_coverage = {
+            "reportedFireCount": 0,
+            "usableNameCount": 0,
+            "ambiguousFireIdCount": 0,
+        }
+        bc_name_status = "unavailable"
     priorities = priority_rows(sitrep)
     matched, unmatched_rows, priority_coverage = match_priorities(
         features,
@@ -506,6 +522,7 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
         "nameSources": {
             "BC": {
                 "source": "BC Wildfire Service Fire Locations - Current",
+                "status": bc_name_status,
                 "reportedFireCount": bc_name_coverage["reportedFireCount"],
                 "usableNameCount": bc_name_coverage["usableNameCount"],
                 "matchedNameCount": sum(

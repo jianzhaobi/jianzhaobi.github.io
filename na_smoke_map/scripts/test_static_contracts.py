@@ -614,7 +614,7 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
         self.assertEqual(coverage["unmatchedPriorityFires"], [])
         self.assertNotIn("name", records[0]["c"]["priority"])
 
-    def test_bc_names_are_exact_id_enrichment_only(self) -> None:
+    def test_bc_incident_names_are_exact_id_enrichment_only(self) -> None:
         overrides, coverage = canada_wildfire_cache.bc_name_overrides([
             {"attributes": {"FIRE_NUMBER": "C40983", "INCIDENT_NAME": "Pear Lake"}},
             {"attributes": {"FIRE_NUMBER": "K21635", "INCIDENT_NAME": "K21635"}},
@@ -631,9 +631,35 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
             by_id["2026_BC_2026-C40983"]["c"]["nameSource"],
             "BC Wildfire Service",
         )
-        self.assertNotIn("name", by_id["2026_BC_2026-K21635"]["c"])
+        self.assertEqual(by_id["2026_BC_2026-K21635"]["c"]["name"], "K21635")
         self.assertEqual(coverage["reportedFireCount"], 3)
-        self.assertEqual(coverage["usableNameCount"], 2)
+        self.assertEqual(coverage["usableNameCount"], 3)
+
+    def test_bc_enrichment_failure_does_not_retain_the_whole_catalog(self) -> None:
+        features = [self.feature("2026_BC_2026-C40983", "2026-C40983")]
+        sitrep = {"field_date": "2026-08-04", "agencies_sitereps": {}}
+        with tempfile.TemporaryDirectory() as directory:
+            args = SimpleNamespace(
+                output=Path(directory), retries=1, fail_without_existing_cache=False,
+            )
+            with mock.patch.object(
+                canada_wildfire_cache, "fetch_reported_fires",
+                return_value=(features, "2026-08-05T13:45:00Z"),
+            ), mock.patch.object(
+                canada_wildfire_cache, "fetch_bc_name_overrides",
+                side_effect=RuntimeError("BC unavailable"),
+            ), mock.patch.object(
+                canada_wildfire_cache, "request_json", return_value=sitrep,
+            ):
+                canada_wildfire_cache.build_cache(args)
+
+            manifest = json.loads((Path(directory) / "manifest.json").read_text())
+            self.assertEqual(manifest["catalogCount"], 1)
+            self.assertEqual(manifest["nameSources"]["BC"]["status"], "unavailable")
+            catalog = json.loads(
+                (Path(directory) / manifest["catalog"]["path"]).read_text()
+            )
+            self.assertNotIn("name", catalog["records"][0]["c"])
 
     def test_unmatched_plain_priority_name_is_not_reported_as_a_fire_id(self) -> None:
         priorities = [{
