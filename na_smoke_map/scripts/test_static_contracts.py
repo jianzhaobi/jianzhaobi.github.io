@@ -102,6 +102,20 @@ class StaticAppContractTests(unittest.TestCase):
             self.index,
         )
 
+    def test_raqdps_defaults_to_entire_atmosphere(self) -> None:
+        self.assertIn(
+            '<option value="column" selected>Entire atmosphere</option>',
+            self.index,
+        )
+        self.assertIn('let particle = "smoke";\n      let extent = "column";', self.index)
+        reset = self.index.split(
+            "function resetMapToInitialState()",
+            1,
+        )[1].split("async function refreshAllData()", 1)[0]
+        self.assertIn('particle = "smoke";\n        extent = "column";', reset)
+        self.assertIn("Smoke · Entire atmosphere", self.index)
+        self.assertIn("mg/m²", self.index)
+
     def test_wfigs_uses_hourly_cache_and_one_canonical_snapshot(self) -> None:
         self.assertIn("./cache/wildfires/manifest.json", self.index)
         self.assertIn("function validWildfireCacheManifest(manifest)", self.index)

@@ -1736,7 +1736,7 @@
                 Vertical extent
                 <select class="pm-select" id="pm-extent">
                   <option value="surface">Surface</option>
-                  <option value="column">Entire atmosphere</option>
+                  <option value="column" selected>Entire atmosphere</option>
                 </select>
               </label>
             </section>
@@ -1863,8 +1863,8 @@
           <div class="pm-timeline-top">
             <div class="pm-legend" role="img" aria-label="Map color scale">
               <div class="pm-legend-head">
-                <strong id="pm-legend-title">Smoke · Surface</strong>
-                <span id="pm-legend-unit">µg/m³</span>
+                <strong id="pm-legend-title">Smoke · Entire atmosphere</strong>
+                <span id="pm-legend-unit">mg/m²</span>
               </div>
               <div class="pm-gradient" aria-hidden="true"></div>
               <div class="pm-legend-ticks" id="pm-legend-ticks" aria-hidden="true"></div>
@@ -2210,7 +2210,7 @@
       const DEFAULT_ZOOM = window.innerWidth < 720 ? 3 : 4;
 
       let particle = "smoke";
-      let extent = "surface";
+      let extent = "column";
       let smokeVisible = true;
       let wildfiresVisible = true;
       let ignitionsVisible = true;
@@ -9229,7 +9229,7 @@
         clearFireSelection(true);
         map.closePopup();
         particle = "smoke";
-        extent = "surface";
+        extent = "column";
         particleSelect.value = particle;
         extentSelect.value = extent;
         setSmokeVisibility(true);

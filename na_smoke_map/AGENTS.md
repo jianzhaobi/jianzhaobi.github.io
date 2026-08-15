@@ -49,6 +49,8 @@ Current layer configuration:
 
 The column style's source quantities are expressed in kg/m², but the interface presents the equivalent, more readable mg/m² scale.
 
+The opening RAQDPS view and unified-refresh reset use wildfire-smoke **Entire atmosphere** loading at Now. The Surface option remains available for near-ground concentration inspection.
+
 ## NOAA HMS observed-smoke overlay
 
 An independent, optional overlay of NOAA Hazard Mapping System (HMS) smoke plumes, layered above the RAQDPS smoke canvas and below the WFIGS fire geometry. It is fundamentally different from the RAQDPS layers and must never be conflated with them:
@@ -242,7 +244,7 @@ The cache contract is:
 - Once loaded, all filter/search/sort/page changes are local. There are no WFIGS network requests, total-count requests, per-record hydration requests, or selection-time requests. The browser CSP intentionally excludes `services3.arcgis.com`.
 - On each hourly timer, `pageshow`, visibility resume, Retry, or unified manual refresh, the page cache-busts `manifest.json` and the small default asset, then restarts background catalog hydration. An unchanged catalog reuses the exact-version IndexedDB copy first (and its content-addressed HTTP cache if needed); a newer version validates before it atomically replaces the default. A failed replacement retains the last visible snapshot.
 
-The map's manual refresh button is a unified refresh-and-reset action. It must refetch the smoke cache manifest and every field atlas for the initial wildfire-smoke/surface dataset, cache-bust and validate the latest wildfire manifest/default asset, and cache-bust and validate the latest HMS manifest/polygon asset. It restores the complete opening map state: North America center and zoom, Day basemap, wildfire-smoke surface PM2.5 at Now, stopped playback, Smoke/Wildfires/Ignitions/Perimeters on, HMS off, closed menus and database drawer, default All + IMSR database state, and no popup or selected wildfire. Although HMS is returned to its default off state, its latest cache is still refreshed in memory so the validated polygons are ready for the next toggle. A known current-location dot may remain. Its accessible name is `Refresh smoke, wildfire, and HMS data`. Report success only if all three cache systems succeed, partial success if at least one succeeds, and retain the prior visible smoke frame or canonical wildfire snapshot for each failed visible source; if HMS refresh fails, its prior in-memory polygons/timestamp remain available for a later toggle. If the default smoke reload fails, restore its prior particle, extent, and hour labels so they continue to match the retained frame.
+The map's manual refresh button is a unified refresh-and-reset action. It must refetch the smoke cache manifest and every field atlas for the initial wildfire-smoke/entire-atmosphere dataset, cache-bust and validate the latest wildfire manifest/default asset, and cache-bust and validate the latest HMS manifest/polygon asset. It restores the complete opening map state: North America center and zoom, Day basemap, wildfire-smoke entire-atmosphere loading at Now, stopped playback, Smoke/Wildfires/Ignitions/Perimeters on, HMS off, closed menus and database drawer, default All + IMSR database state, and no popup or selected wildfire. Although HMS is returned to its default off state, its latest cache is still refreshed in memory so the validated polygons are ready for the next toggle. A known current-location dot may remain. Its accessible name is `Refresh smoke, wildfire, and HMS data`. Report success only if all three cache systems succeed, partial success if at least one succeeds, and retain the prior visible smoke frame or canonical wildfire snapshot for each failed visible source; if HMS refresh fails, its prior in-memory polygons/timestamp remain available for a later toggle. If the default smoke reload fails, restore its prior particle, extent, and hour labels so they continue to match the retained frame.
 
 The WFIGS and smoke builders share the deployment schedule and cache output root but retain independent schemas and manifests. Do not couple `scripts/build_wildfire_cache.py` to the schema-v5 smoke field format.
 
@@ -505,6 +507,10 @@ The dated entries below remain an implementation history. Where an older entry m
 - The browser validates and session-caches the same-origin asset, checks for a newer version hourly while HMS is visible, retains already-rendered polygons on a failed replacement, and preserves abort/generation protection across rapid off/on actions. Retry forces a cache recheck. The unified manual refresh always rechecks HMS but returns its visibility to the default off state, preloading the refreshed snapshot in memory for the next toggle.
 - Unified-refresh follow-up: the map utility now reports `Refresh smoke, wildfire, and HMS data`, awaits all three cache results, treats complete success as all three succeeding, and reports partial success when only a subset succeeds. HMS cache acquisition is therefore consistent with RAQDPS and WFIGS while the reset remains consistent with the application's default display.
 - Browser CSP is now `connect-src 'self'` only for both HMS and WFIGS. Regression coverage enforces the cache-only HMS loader, workflow publication path, archive KML conversion, live-over-archive preference, fallback metadata, timestamp display contract, and content digest.
+
+### 2026-08-15 entire-atmosphere RAQDPS default
+
+- Changed the opening and unified-refresh RAQDPS selection from surface concentration to wildfire-smoke entire-atmosphere loading. The select default, runtime state, and initial legend now consistently report the column product in `mg/m²`; Surface remains an independent user-selectable option.
 
 ## Rendering architecture
 
@@ -782,7 +788,7 @@ Before handing off a material change:
 
 1. Run `python3 scripts/test_static_contracts.py`, then check Python compilation and `git diff --check`. The regression script includes the embedded-JavaScript syntax check and timeline/workflow contracts.
 2. Load the standalone HTML through a local HTTP server rather than relying only on a `file:` URL.
-3. Confirm all four particle/extent combinations reach the loaded state.
+3. Confirm the opening view is wildfire-smoke Entire atmosphere at Now with an `mg/m²` legend, then confirm all four particle/extent combinations reach the loaded state.
 4. Visually inspect wildfire smoke + entire atmosphere for yellow projection wedges, rectangles, or other model-domain artifacts.
 5. Scrub across every available side of the possibly non-central Now position, use previous/next, Reset, and play several frames.
 6. Confirm the previous frame remains visible while the next frame loads and that there is no vacant flash.
