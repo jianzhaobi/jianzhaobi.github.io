@@ -1989,7 +1989,7 @@
         ytdPerimeters: `${WFIGS_ROOT}/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0`
       };
       const FIRE_ATTRIBUTION = '<a href="https://www.arcgis.com/home/item.html?id=4181a117dc9e43db8598533e29972015">NIFC WFIGS</a>';
-      const CANADA_FIRE_ATTRIBUTION = '<a href="https://catalogue.cwfif.nrcan.gc.ca/geonetwork/srv/api/records/937eb7be-83fd-4b94-a122-9cc0385f3bf7">NRCan CWFIS</a> · <a href="https://ciffc.ca/">CIFFC</a>';
+      const CANADA_FIRE_ATTRIBUTION = '<a href="https://catalogue.cwfif.nrcan.gc.ca/geonetwork/srv/api/records/937eb7be-83fd-4b94-a122-9cc0385f3bf7">NRCan CWFIS</a> · <a href="https://ciffc.ca/">CIFFC</a> · <a href="https://catalogue.data.gov.bc.ca/dataset/2790e3f7-6395-4230-8545-04efb5a18800">BC Wildfire Service</a>';
       const FIRE_REFRESH_MS = 60 * 60 * 1000;
 
       // NOAA HMS (Hazard Mapping System) analyst-drawn smoke plume polygons.
@@ -4377,6 +4377,7 @@
           appendFirePopupRow(grid, "Contained", formatFirePercent(record.percentContained));
           appendFirePopupRow(grid, "Agency · region", formatFireLocation(record));
           appendFirePopupRow(grid, "Fire ID", record.agencyFireId || record.nationalFireId || "Not reported");
+          if (record.nameSource) appendFirePopupRow(grid, "Name source", record.nameSource);
           appendFirePopupRow(grid, "Cause", record.cause || "Not reported");
           appendFirePopupRow(grid, "Response", record.response || "Not reported");
           appendFirePopupRow(grid, "Status updated", formatFireRelativeTime(record.modified));
@@ -4484,7 +4485,8 @@
         record.agencyFireId = properties.agency_fire_id || null;
         record.agencyCode = properties.agency_code || null;
         record.regionCode = properties.region_code || null;
-        record.name = priority?.name || [record.agencyCode, record.agencyFireId].filter(Boolean).join(" ") || record.nationalFireId;
+        record.name = wire.c?.name || [record.agencyCode, record.agencyFireId].filter(Boolean).join(" ") || record.nationalFireId;
+        record.nameSource = wire.c?.nameSource || null;
         record.stageOfControl = properties.stage_of_control_status || null;
         record.active = record.stageOfControl !== "EX";
         record.sizeHa = hectares;

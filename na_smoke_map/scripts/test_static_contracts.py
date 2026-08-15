@@ -262,7 +262,7 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("scripts/build_canada_wildfire_cache.py", workflow)
         self.assertIn("_frame-cache/site-cache/canada-wildfires", workflow)
 
-    def test_canadian_fire_copy_uses_us_units_and_names_ciffc(self) -> None:
+    def test_canadian_fire_copy_uses_us_units_and_ciffc_priority(self) -> None:
         self.assertIn(
             'fireImsrFilter.textContent = canadian ? "CIFFC Priority" : "IMSR";',
             self.index,
@@ -279,6 +279,9 @@ class StaticAppContractTests(unittest.TestCase):
         self.assertIn("function canadianPriorityCoverageText()", self.index)
         self.assertIn("CIFFC Priority ${fireWord} mapped", self.index)
         self.assertIn("could not be mapped", self.index)
+        self.assertIn("record.name = wire.c?.name", self.index)
+        self.assertIn("record.nameSource = wire.c?.nameSource", self.index)
+        self.assertNotIn("priority?.name", self.index)
         self.assertNotIn("formatFireHectares", self.index)
         self.assertNotIn("CANADA_FIRE_LARGE_HECTARES", self.index)
 
@@ -523,6 +526,14 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
                 return_value=(features, "2026-08-05T13:45:00Z"),
             ), mock.patch.object(
                 canada_wildfire_cache,
+                "fetch_bc_name_overrides",
+                return_value=({}, {
+                    "reportedFireCount": 0,
+                    "usableNameCount": 0,
+                    "ambiguousFireIdCount": 0,
+                }),
+            ), mock.patch.object(
+                canada_wildfire_cache,
                 "request_json",
                 return_value=sitrep,
             ):
@@ -542,7 +553,7 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
             default = json.loads(
                 (output / manifest["default"]["path"]).read_text(encoding="utf-8")
             )
-            self.assertEqual(default["records"][0]["c"]["priority"]["name"], "Pear Lake")
+            self.assertNotIn("name", default["records"][0]["c"]["priority"])
             self.assertEqual(default["records"][0]["i"], "2026_BC_2026-C40983")
 
     def test_audits_each_fire_id_inside_a_grouped_priority_row(self) -> None:
@@ -576,7 +587,7 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
             "sourceLabel": "Bradley Creek (K41315) (Quilpituk Creek K51402)",
         }])
 
-    def test_plain_priority_name_uses_coordinate_match_and_survives_cache(self) -> None:
+    def test_plain_priority_name_uses_coordinate_match_without_becoming_display_name(self) -> None:
         features = [
             self.feature("2026_BC_2026-V10755", "2026-V10755"),
         ]
@@ -601,7 +612,28 @@ class CanadianWildfireCacheBuilderTests(unittest.TestCase):
         self.assertEqual(coverage["priorityFireCount"], 1)
         self.assertEqual(coverage["matchedPriorityFireCount"], 1)
         self.assertEqual(coverage["unmatchedPriorityFires"], [])
-        self.assertEqual(records[0]["c"]["priority"]["name"], "Ainslie Creek")
+        self.assertNotIn("name", records[0]["c"]["priority"])
+
+    def test_bc_names_are_exact_id_enrichment_only(self) -> None:
+        overrides, coverage = canada_wildfire_cache.bc_name_overrides([
+            {"attributes": {"FIRE_NUMBER": "C40983", "INCIDENT_NAME": "Pear Lake"}},
+            {"attributes": {"FIRE_NUMBER": "K21635", "INCIDENT_NAME": "K21635"}},
+            {"attributes": {"FIRE_NUMBER": "V10755", "INCIDENT_NAME": "Ainslie Creek"}},
+        ])
+        records = canada_wildfire_cache.wire_records([
+            self.feature("2026_BC_2026-C40983", "2026-C40983"),
+            self.feature("2026_BC_2026-K21635", "2026-K21635"),
+        ], {}, {"BC": overrides})
+
+        by_id = {record["i"]: record for record in records}
+        self.assertEqual(by_id["2026_BC_2026-C40983"]["c"]["name"], "Pear Lake")
+        self.assertEqual(
+            by_id["2026_BC_2026-C40983"]["c"]["nameSource"],
+            "BC Wildfire Service",
+        )
+        self.assertNotIn("name", by_id["2026_BC_2026-K21635"]["c"])
+        self.assertEqual(coverage["reportedFireCount"], 3)
+        self.assertEqual(coverage["usableNameCount"], 2)
 
     def test_unmatched_plain_priority_name_is_not_reported_as_a_fire_id(self) -> None:
         priorities = [{

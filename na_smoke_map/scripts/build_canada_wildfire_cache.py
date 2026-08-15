@@ -23,8 +23,14 @@ UTC = dt.timezone.utc
 CWFIS_WFS = "https://geoserver.cwfif.nrcan.gc.ca/geoserver/public/wfs"
 CWFIS_LAYER = "public:cwfif_national_reportedfires"
 CIFFC_SITREP = "https://api.ciffc.net/v1/sitrep"
+BC_CURRENT_FIRES = (
+    "https://delivery.maps.gov.bc.ca/arcgis/rest/services/"
+    "mpcm/bcgwpub/MapServer/502/query"
+)
 PAGE_SIZE = 5000
 MAXIMUM_PAGES = 100
+BC_PAGE_SIZE = 1000
+BC_MAXIMUM_PAGES = 20
 FIELDS = (
     "id,agency_code,region_code,national_fire_id,agency_fire_id,"
     "national_fire_cause,fire_type_ics,severity_nearest_dsr,"
@@ -147,6 +153,71 @@ def normalize_fire_token(value: Any) -> str:
     return re.sub(r"^20\d{2}", "", token)
 
 
+def useful_official_name(value: Any, fire_number: Any) -> str | None:
+    """Return a real provincial event name, never an ID repeated as a name."""
+    name = " ".join(str(value or "").split())
+    if not name or normalize_fire_token(name) == normalize_fire_token(fire_number):
+        return None
+    return name
+
+
+def bc_name_overrides(
+    features: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, int]]:
+    """Index unambiguous BC official names by normalized provincial fire number."""
+    candidates: dict[str, set[str]] = {}
+    usable_name_count = 0
+    for feature in features:
+        properties = feature.get("attributes") or feature.get("properties") or {}
+        fire_number = properties.get("FIRE_NUMBER")
+        token = normalize_fire_token(fire_number)
+        name = useful_official_name(properties.get("INCIDENT_NAME"), fire_number)
+        if not token or not name:
+            continue
+        usable_name_count += 1
+        candidates.setdefault(token, set()).add(name)
+    overrides = {
+        token: next(iter(names))
+        for token, names in candidates.items()
+        if len(names) == 1
+    }
+    return overrides, {
+        "reportedFireCount": len(features),
+        "usableNameCount": usable_name_count,
+        "ambiguousFireIdCount": sum(1 for names in candidates.values() if len(names) > 1),
+    }
+
+
+def fetch_bc_name_overrides(retries: int) -> tuple[dict[str, str], dict[str, int]]:
+    """Fetch BC's current-season catalogue for exact display-name enrichment."""
+    features: list[dict[str, Any]] = []
+    offset = 0
+    for _page_index in range(BC_MAXIMUM_PAGES):
+        payload = request_json(
+            BC_CURRENT_FIRES,
+            {
+                "where": "1=1",
+                "outFields": "FIRE_NUMBER,INCIDENT_NAME",
+                "returnGeometry": "false",
+                "orderByFields": "FIRE_NUMBER ASC",
+                "resultOffset": offset,
+                "resultRecordCount": BC_PAGE_SIZE,
+                "f": "json",
+            },
+            retries,
+        )
+        page = payload.get("features")
+        if not isinstance(page, list):
+            raise ValueError("BC current fires response has no feature page")
+        features.extend(page)
+        if not payload.get("exceededTransferLimit"):
+            return bc_name_overrides(features)
+        if not page:
+            raise RuntimeError("BC current fires pagination stopped early")
+        offset += len(page)
+    raise RuntimeError("BC current fires pagination limit exceeded")
+
+
 def priority_fire_references(value: Any) -> list[tuple[str, str]]:
     text = str(value or "").strip()
     raw_tokens = re.findall(r"[A-Za-z]+\d{3,8}", text)
@@ -160,17 +231,6 @@ def priority_fire_references(value: Any) -> list[tuple[str, str]]:
 
 def priority_tokens(value: Any) -> list[str]:
     return [token for token, _display in priority_fire_references(value)]
-
-
-def priority_name(value: Any) -> str | None:
-    text = str(value or "").strip()
-    references = priority_fire_references(text)
-    if text and not references:
-        return text
-    name = re.sub(r"\s*\([^()]*\)\s*$", "", text).strip()
-    if not name or normalize_fire_token(name) in {token for token, _ in references}:
-        return None
-    return name
 
 
 def valid_number(value: Any) -> float | None:
@@ -290,14 +350,12 @@ def match_priorities(
         if not candidates:
             unmatched_rows.append(priority)
             continue
-        display_name = priority_name(priority.get("field_fire_id")) if len(tokens) <= 1 else None
         for feature in candidates:
             identifier = str((feature.get("properties") or {}).get("national_fire_id") or "")
             if not identifier:
                 continue
             matched[identifier] = {
                 "reportDate": report_date,
-                "name": display_name,
                 "fireId": priority.get("field_fire_id"),
                 "stage": priority.get("field_stage_of_control"),
                 "sizeHa": valid_number(priority.get("field_size")),
@@ -331,7 +389,9 @@ def fire_sort_key(record: dict[str, Any]) -> tuple[float, str]:
 def wire_records(
     features: list[dict[str, Any]],
     priorities: dict[str, dict[str, Any]],
+    provincial_names: dict[str, dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
+    provincial_names = provincial_names or {}
     records: list[dict[str, Any]] = []
     for feature in features:
         properties = feature.get("properties") or {}
@@ -351,6 +411,16 @@ def wire_records(
             "properties": properties,
         }
         priority = priorities.get(identifier)
+        agency = str(properties.get("agency_code") or "").upper()
+        provincial_name = provincial_names.get(agency, {}).get(
+            normalize_fire_token(properties.get("agency_fire_id"))
+        )
+        context = {"priority": priority} if priority else {}
+        if provincial_name:
+            context.update({
+                "name": provincial_name,
+                "nameSource": f"{agency} Wildfire Service",
+            })
         records.append({
             "i": identifier,
             "s": "canada",
@@ -358,7 +428,7 @@ def wire_records(
             "p": point,
             "g": [],
             "m": [],
-            "c": {"priority": priority} if priority else {},
+            "c": context,
         })
     records.sort(key=fire_sort_key)
     return records
@@ -405,13 +475,14 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
     args.output.mkdir(parents=True, exist_ok=True)
     features, source_timestamp = fetch_reported_fires(args.retries, generated)
     sitrep = request_json(CIFFC_SITREP, None, args.retries)
+    bc_names, bc_name_coverage = fetch_bc_name_overrides(args.retries)
     priorities = priority_rows(sitrep)
     matched, unmatched_rows, priority_coverage = match_priorities(
         features,
         priorities,
         sitrep.get("field_date"),
     )
-    records = wire_records(features, matched)
+    records = wire_records(features, matched, {"BC": bc_names})
     default_records = [record for record in records if record.get("c", {}).get("priority")]
 
     generated_at = iso_time(generated)
@@ -432,6 +503,19 @@ def build_cache(args: argparse.Namespace, now: dt.datetime | None = None) -> Non
         "source": "NRCan CWFIS Agency Reported Wildfires",
         "sourceTimestamp": source_timestamp,
         "prioritySource": "CIFFC Situation Report Priority Fires",
+        "nameSources": {
+            "BC": {
+                "source": "BC Wildfire Service Fire Locations - Current",
+                "reportedFireCount": bc_name_coverage["reportedFireCount"],
+                "usableNameCount": bc_name_coverage["usableNameCount"],
+                "matchedNameCount": sum(
+                    1
+                    for record in records
+                    if record.get("c", {}).get("nameSource") == "BC Wildfire Service"
+                ),
+                "ambiguousFireIdCount": bc_name_coverage["ambiguousFireIdCount"],
+            }
+        },
         "priorityReportDate": sitrep.get("field_date"),
         "defaultCount": len(default_records),
         "catalogCount": len(records),
