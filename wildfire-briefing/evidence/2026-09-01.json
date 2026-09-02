@@ -1,7 +1,7 @@
 {
   "report_date": "2026-09-01",
   "cutoff_et": "2026-09-01T22:00:43-04:00",
-  "generated_at": "2026-09-02T02:06:33.464912Z",
+  "generated_at": "2026-09-02T02:12:58.411007Z",
   "sources": [
     {
       "id": "nifc_imsr_20260831",
@@ -80,7 +80,7 @@
     },
     {
       "id": "inciweb_grasshopper_20260831",
-      "title": "Grasshopper Fire — September 1, 2026 current incident information",
+      "title": "Grasshopper Fire — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/ormhf-grasshopper-fire",
       "publisher": "U.S. Forest Service, Mt. Hood National Forest",
       "published_at": "2026-08-31T13:57:00-04:00",
@@ -129,7 +129,7 @@
     },
     {
       "id": "inciweb_rowe_20260831",
-      "title": "Rowe Creek Complex — September 1, 2026 current incident information",
+      "title": "Rowe Creek Complex — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/orprd-rowe-creek-complex",
       "publisher": "Bureau of Land Management",
       "published_at": "2026-08-31T21:15:00-04:00",
@@ -413,7 +413,7 @@
     },
     {
       "id": "inciweb_little_giant_20260831",
-      "title": "Little Giant Fire — September 1, 2026 current incident information",
+      "title": "Little Giant Fire — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/waowf-little-giant-fire",
       "publisher": "U.S. Forest Service, Okanogan-Wenatchee National Forest",
       "published_at": "2026-08-31T21:55:00-04:00",
@@ -677,7 +677,7 @@
         "Mt. Hood Meadows Resort",
         "Timberline Lodge"
       ],
-      "operational_outlook": "The Sep 1 InciWeb incident page reported 93,961 acres and 83% containment; suppression and evacuation-notice monitoring continued around Mt. Hood facilities.",
+      "operational_outlook": "The Aug 31 InciWeb incident page reported 93,961 acres and 83% containment; suppression and evacuation-notice monitoring continued around Mt. Hood facilities.",
       "operational_escalation": true,
       "attention": {
         "level": "High",
@@ -980,7 +980,7 @@
       "critical_infrastructure": [
         "U.S. Highway 26"
       ],
-      "operational_outlook": "The Sep 1 InciWeb page reported 373,927 acres and 96% containment; suppression and community coordination continued.",
+      "operational_outlook": "The Aug 31 InciWeb page reported 373,927 acres and 96% containment; suppression and community coordination continued.",
       "operational_escalation": false,
       "attention": {
         "level": "Elevated",
@@ -1198,7 +1198,7 @@
       "critical_infrastructure": [
         "critical infrastructure"
       ],
-      "operational_outlook": "The Sep 1 InciWeb update reported 170,784 acres and 49% containment; active fire behavior, structure and critical-infrastructure threats, evacuations, and closures continued.",
+      "operational_outlook": "The Aug 31 InciWeb update reported 170,784 acres and 49% containment; active fire behavior, structure and critical-infrastructure threats, evacuations, and closures continued.",
       "operational_escalation": true,
       "attention": {
         "level": "Low",
