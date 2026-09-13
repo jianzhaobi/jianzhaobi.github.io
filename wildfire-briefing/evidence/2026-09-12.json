@@ -1,15 +1,15 @@
 {
-  "report_date": "2026-08-28",
-  "cutoff_et": "2026-08-28T22:01:28-04:00",
-  "generated_at": "2026-08-29T02:04:29.997099Z",
+  "report_date": "2026-09-12",
+  "cutoff_et": "2026-09-12T22:14:11-04:00",
+  "generated_at": "2026-09-13T02:16:14.107698Z",
   "sources": [
     {
-      "id": "nifc_imsr_20260828",
-      "title": "NIFC Incident Management Situation Report — August 28, 2026",
+      "id": "nifc_imsr_20260831",
+      "title": "NIFC Incident Management Situation Report — September 12, 2026",
       "url": "https://www.nifc.gov/nicc/sitreprt.pdf",
       "publisher": "National Interagency Coordination Center",
-      "published_at": "2026-08-28T09:30:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-09-01T09:30:00-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "national_posture",
         "status",
@@ -22,12 +22,12 @@
       ]
     },
     {
-      "id": "ciffc_20260813",
-      "title": "CIFFC National Fire Situation Report — August 28, 2026",
-      "url": "https://ciffc.net/situation/2026-08-28",
+      "id": "ciffc_20260912",
+      "title": "CIFFC National Fire Situation Report — September 12, 2026",
+      "url": "https://ciffc.net/situation/2026-09-12",
       "publisher": "Canadian Interagency Forest Fire Centre",
-      "published_at": "2026-08-28T16:00:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-09-12T22:14:11-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "national_posture",
         "status",
@@ -36,12 +36,12 @@
       ]
     },
     {
-      "id": "ciffc_summary_20260814",
-      "title": "CIFFC Current Fires Summary — August 28, 2026",
-      "url": "https://ciffc.net/situation/2026-08-28",
+      "id": "ciffc_summary_20260912",
+      "title": "CIFFC Current Fires Summary — September 12, 2026",
+      "url": "https://ciffc.net/situation/2026-09-12",
       "publisher": "Canadian Interagency Forest Fire Centre",
-      "published_at": "2026-08-28T16:00:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-09-12T22:14:11-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "area",
@@ -55,7 +55,7 @@
       "url": "https://cwfis.cfs.nrcan.gc.ca/en/summary",
       "publisher": "Natural Resources Canada",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "national_posture",
         "status",
@@ -63,12 +63,12 @@
       ]
     },
     {
-      "id": "inciweb_spokane_20260828",
+      "id": "inciweb_spokane_20260831",
       "title": "Spokane Area Fires — August 14, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/wanes-spokane-area-fires",
       "publisher": "Washington Department of Natural Resources and California Interagency Incident Management Team 7",
       "published_at": "2026-08-14T13:12:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -79,12 +79,12 @@
       ]
     },
     {
-      "id": "inciweb_grasshopper_20260828",
-      "title": "Grasshopper Fire — August 28, 2026 current incident information",
+      "id": "inciweb_grasshopper_20260831",
+      "title": "Grasshopper Fire — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/ormhf-grasshopper-fire",
       "publisher": "U.S. Forest Service, Mt. Hood National Forest",
-      "published_at": "2026-08-28T18:03:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-08-31T13:57:00-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -96,12 +96,12 @@
       ]
     },
     {
-      "id": "inciweb_widemouth_20260828",
+      "id": "inciweb_widemouth_20260831",
       "title": "Widemouth 2 Fire — August 18, 2026 latest incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/utfif-widemouth-2-fire",
       "publisher": "U.S. Forest Service, Fishlake National Forest",
       "published_at": "2026-08-18T22:56:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -112,12 +112,12 @@
       ]
     },
     {
-      "id": "inciweb_kaiser_20260828",
+      "id": "inciweb_kaiser_20260831",
       "title": "Kaiser Canyon Fire — August 25, 2026 current incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/wacoa-kaiser-canyon",
       "publisher": "Bureau of Indian Affairs",
       "published_at": "2026-08-25T22:58:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -128,12 +128,12 @@
       ]
     },
     {
-      "id": "inciweb_rowe_20260828",
-      "title": "Rowe Creek Complex — August 28, 2026 current incident information",
+      "id": "inciweb_rowe_20260831",
+      "title": "Rowe Creek Complex — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/orprd-rowe-creek-complex",
       "publisher": "Bureau of Land Management",
-      "published_at": "2026-08-28T12:23:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-08-31T21:15:00-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -144,12 +144,12 @@
       ]
     },
     {
-      "id": "inciweb_aspen_20260828",
+      "id": "inciweb_aspen_20260831",
       "title": "Aspen Acres Fire — August 27, 2026 latest incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/copsf-aspen-acres-fire",
       "publisher": "Rocky Mountain Complex Incident Management Team 3",
       "published_at": "2026-08-27T19:46:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -160,12 +160,12 @@
       ]
     },
     {
-      "id": "bcws_bradley_20260828",
-      "title": "Bradley Creek FSR — BC Wildfire Service incident page, August 28, 2026",
+      "id": "bcws_bradley_20260831",
+      "title": "Bradley Creek FSR — BC Wildfire Service incident page, September 7, 2026",
       "url": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=K41351",
       "publisher": "Government of British Columbia",
       "published_at": "2026-08-26T14:58:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -174,12 +174,12 @@
       ]
     },
     {
-      "id": "bcws_pear_20260828",
-      "title": "Pear Lake — BC Wildfire Service incident page, August 28, 2026",
+      "id": "bcws_pear_20260831",
+      "title": "Pear Lake — BC Wildfire Service incident page, September 12, 2026",
       "url": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=C40983&source=list",
       "publisher": "Government of British Columbia",
-      "published_at": "2026-08-28T12:40:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-09-12T12:12:00-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -193,7 +193,7 @@
       "url": "https://apnews.com/article/wildfire-canada-homes-destroyed-british-columbia-fbbb7f027adb04a9c9b47a109de74082",
       "publisher": "Associated Press",
       "published_at": "2026-08-05T00:07:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "structures",
         "evacuation",
@@ -207,7 +207,7 @@
       "url": "https://www.ctvnews.ca/vancouver/article/more-than-100-structures-lost-in-bcs-pear-lake-wildfire-officials-say/",
       "publisher": "CTV News",
       "published_at": "2026-08-04T20:40:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "structures",
         "evacuation",
@@ -220,7 +220,7 @@
       "url": "https://www.nbcnews.com/news/us-news/firefighters-are-working-16-hour-shifts-battle-spokane-complex-fire-rcna591062",
       "publisher": "NBC News",
       "published_at": "2026-08-05T22:47:19-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "structures",
@@ -235,7 +235,7 @@
       "url": "https://katu.com/news/local/grasshopper-fire-timberline-lodge-mt-hood-meadows-wildfire-evacuation-notice-government-camp-oregon-firefighters-ski-resort",
       "publisher": "KATU",
       "published_at": "2026-08-05T01:40:56-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "evacuation",
@@ -249,7 +249,7 @@
       "url": "https://www.fox13now.com/news/utah-wildfires/residents-return-home-but-widemouth-2-fire-danger-is-far-from-over",
       "publisher": "FOX 13 News Utah",
       "published_at": "2026-08-05T18:12:50-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "evacuation",
@@ -262,7 +262,7 @@
       "url": "https://www.krem.com/video/news/local/wildfire/kaiser-canyon-fire-remains-largest-in-washington-at-more-than-136000-acres/293-fe25d0d3-ee63-48e7-89c2-609caa9c7e96",
       "publisher": "KREM 2 News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "area",
@@ -275,7 +275,7 @@
       "url": "https://kval.com/news/local/public-meeting-planned-as-rowe-creek-complex-fire-reaches-329000-acres-62-containment",
       "publisher": "KVAL",
       "published_at": "2026-08-05T12:45:46-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "area",
@@ -288,7 +288,7 @@
       "url": "https://gazette.com/2026/08/05/colorado-wildfire-roundup-aspen-acres-fire-containment-falls-slightly/",
       "publisher": "Colorado Springs Gazette",
       "published_at": "2026-08-05T21:49:04-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "area",
@@ -302,7 +302,7 @@
       "url": "https://www.reuters.com/business/environment/france-spain-greece-battle-wildfires-europe-swelters-2026-07-30/",
       "publisher": "Reuters",
       "published_at": "2026-07-30T05:12:44-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "global",
         "status",
@@ -317,7 +317,7 @@
       "url": "https://news.google.com/search?q=Spokane%20Area%20Fires%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -328,7 +328,7 @@
       "url": "https://news.google.com/search?q=Grasshopper%20Fire%20Oregon%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -339,7 +339,7 @@
       "url": "https://news.google.com/search?q=Widemouth%202%20Fire%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -350,7 +350,7 @@
       "url": "https://news.google.com/search?q=Kaiser%20Canyon%20Fire%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -361,7 +361,7 @@
       "url": "https://news.google.com/search?q=Rowe%20Creek%20Complex%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -372,7 +372,7 @@
       "url": "https://news.google.com/search?q=Aspen%20Acres%20Fire%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -383,7 +383,7 @@
       "url": "https://news.google.com/search?q=Pear%20Lake%20Fire%20BC%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -394,30 +394,30 @@
       "url": "https://news.google.com/search?q=Bradley%20Creek%20Fire%20BC%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
     },
     {
       "id": "gnews_global_scan",
-      "title": "Google News search — current global wildfire headlines outside the United States and Canada (Aug 28 scan)",
+      "title": "Google News search — current global wildfire headlines outside the United States and Canada (Sep 12 evening scan)",
       "url": "https://news.google.com/search?q=wildfires%20Europe%20Belgium%20France%20Greece%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "global",
         "attention"
       ]
     },
     {
-      "id": "inciweb_little_giant_20260828",
-      "title": "Little Giant Fire — August 28, 2026 current incident information",
+      "id": "inciweb_little_giant_20260831",
+      "title": "Little Giant Fire — August 31, 2026 latest available incident information",
       "url": "https://inciweb.wildfire.gov/incident-information/waowf-little-giant-fire",
       "publisher": "U.S. Forest Service, Okanogan-Wenatchee National Forest",
-      "published_at": "2026-08-28T13:23:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "published_at": "2026-08-31T21:55:00-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "start",
         "status",
@@ -435,7 +435,7 @@
       "url": "https://news.google.com/read/CBMiowFBVV95cUxQNG5adVpnaHc2Wk55RWhsZ2J1RDFzYjgzNTQ0SnlGd01wd0o3Sy1JaTVSMkZWUTBEVEc5alhNeWtrQ25HclY1QkRYaU9odmVzWG9VR1pEYVRBc3F4SEFiUGRHNXM3LTVneFZjNmhCWUQ1TXZhWTdmNFZYNGM2ZVM4MndNMHdYUDVqN2lmVTVCSF9xWmFESTB1UUlaMVk4UzRzTWF2?hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Lake Chelan Mirror",
       "published_at": "2026-08-19T16:00:00-04:00",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "status",
         "area",
@@ -448,7 +448,7 @@
       "url": "https://news.google.com/search?q=Little%20Giant%20Fire%20Washington%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen",
       "publisher": "Google News",
       "published_at": null,
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "claim_types": [
         "attention"
       ]
@@ -459,15 +459,15 @@
       "source_id": "nifc_imsr",
       "title": "NIFC Incident Management Situation Report",
       "url": "https://www.nifc.gov/nicc/incident-information/imsr",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "ok",
-      "detail": "Browser-verified current Aug 28 IMSR landing page and reviewed the current report context before the cutoff."
+      "detail": "Browser-verified current Sep 12 IMSR landing page and reviewed the current report context before the cutoff."
     },
     {
       "source_id": "gacc",
       "title": "Geographic Area Coordination Centers",
       "url": "https://gacc.nifc.gov/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "ok",
       "detail": "Collector DNS failed, but browser review covered the current portal and exact controlling incident pages for promoted U.S. incidents."
     },
@@ -475,15 +475,15 @@
       "source_id": "inciweb",
       "title": "InciWeb",
       "url": "https://inciweb.wildfire.gov/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "ok",
-      "detail": "Collector DNS failed, but browser review covered exact promoted incident pages and current Aug 28 updates."
+      "detail": "Collector DNS failed, but browser review covered exact promoted incident pages and latest available updates through Sep 12."
     },
     {
       "source_id": "alaska_aicc",
       "title": "Alaska Interagency Coordination Center",
       "url": "https://fire.ak.blm.gov/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
       "detail": "Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff."
     },
@@ -491,7 +491,7 @@
       "source_id": "alaska_fire_info",
       "title": "Alaska Wildland Fire Information",
       "url": "https://akfireinfo.com/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
       "detail": "Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff."
     },
@@ -499,7 +499,7 @@
       "source_id": "hiema",
       "title": "Hawaii Emergency Management Agency",
       "url": "https://dod.hawaii.gov/hiema/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
       "detail": "Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff."
     },
@@ -507,7 +507,7 @@
       "source_id": "hawaii_dofaw",
       "title": "Hawaii DLNR Division of Forestry and Wildlife",
       "url": "https://dlnr.hawaii.gov/dofaw/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
       "detail": "Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff."
     },
@@ -515,7 +515,7 @@
       "source_id": "nws_honolulu",
       "title": "NWS Honolulu",
       "url": "https://www.weather.gov/hfo/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
       "detail": "Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff."
     },
@@ -523,38 +523,38 @@
       "source_id": "ciffc",
       "title": "CIFFC National Fire Situation Report",
       "url": "https://ciffc.net/situation/",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "ok",
-      "detail": "Collector DNS failed at the root endpoint; browser-verified the direct Aug 28 report, last updated 4:00 PM EDT, which controls this run."
+      "detail": "Collector DNS failed at the root endpoint; browser opened the Sep 12 report at the 10:14 PM EDT cutoff. The page displayed National Preparedness Level 3 and a last-updated timestamp, but numeric tables were not populated; Sep 9 remains the latest complete total."
     },
     {
       "source_id": "cwfis",
       "title": "CWFIS National Wildland Fire Summary",
       "url": "https://cwfis.cfs.nrcan.gc.ca/en/summary",
-      "accessed_at": "2026-08-28T22:01:28-04:00",
+      "accessed_at": "2026-09-12T22:14:11-04:00",
       "status": "failed",
-      "detail": "Collector failed with DNS resolution error; the direct CIFFC Aug 28 report is retained as the latest complete Canadian national total."
+      "detail": "Collector failed with DNS resolution error; browser verification of the Sep 12 CIFFC report found no populated numeric tables, so Sep 9 is retained as the latest complete Canadian national total."
     }
   ],
   "national_posture": [
     {
       "country": "US",
-      "statement": "The August 28 IMSR kept the United States at National Preparedness Level 5; the current incident table and national resource posture were reviewed before the cutoff.",
+      "statement": "The September 12 GACC portal showed the United States at National Preparedness Level 3; the current NIFC IMSR landing page and national resource posture were reviewed before the cutoff.",
       "source_ids": [
-        "nifc_imsr_20260828"
+        "nifc_imsr_20260831"
       ],
-      "preparedness_level": 5,
-      "level_meaning": "national resources are fully committed, active geographic areas may need emergency measures, and potential for additional significant fires is high"
+      "preparedness_level": 3,
+      "level_meaning": "national resources are heavily committed, active geographic areas must take emergency measures, and potential for additional significant fires is high"
     },
     {
       "country": "CA",
-      "statement": "The Aug 28 CIFFC situation report reduced Canada to National Preparedness Level 4. It showed 115 full-response fires covering 608,302.9 hectares, 3,580 out-of-control fires covering 164,210.7 hectares, and 5,187 fires covering 4,491,059.4 hectares year to date.",
+      "statement": "The Sep 12 CIFFC report displayed National Preparedness Level 3 at the 10:14 PM EDT cutoff, but its numeric tables were not populated; the latest complete Sep 9 totals remain 95 full-response fires covering 1,037,371.9 hectares, 3,677 out-of-control fires covering 165,183.3 hectares, and 5,312 fires covering 4,483,399.6 hectares year to date.",
       "source_ids": [
-        "ciffc_20260813",
-        "ciffc_summary_20260814"
+        "ciffc_20260912",
+        "ciffc_summary_20260912"
       ],
-      "preparedness_level": 5,
-      "level_meaning": "national demand is extreme, resources are fully committed, and international resources are being mobilized to sustain operations"
+      "preparedness_level": 3,
+      "level_meaning": "increased mobilization is required, demand is moderate to high, and emerging significant fires are possible"
     }
   ],
   "incidents": [
@@ -568,10 +568,10 @@
       "jurisdiction": "Washington",
       "location": "West of Spokane near Airway Heights",
       "controlling_agency": "California Interagency Incident Management Team 7 and Washington Department of Natural Resources",
-      "official_source_id": "inciweb_spokane_20260828",
+      "official_source_id": "inciweb_spokane_20260831",
       "start_date": "2026-08-01",
       "start_source_ids": [
-        "inciweb_spokane_20260828"
+        "inciweb_spokane_20260831"
       ],
       "source_updated_at": "2026-08-14T13:12:00-04:00",
       "area_acres": 3176.0,
@@ -623,7 +623,7 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_spokane_20260828",
+        "inciweb_spokane_20260831",
         "nbc_spokane"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 655 lost structures are an unspecified-occupancy total and must not be converted into dwellings. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -640,15 +640,15 @@
       "jurisdiction": "Oregon",
       "location": "Mt. Hood National Forest near Highway 35",
       "controlling_agency": "U.S. Forest Service, Mt. Hood National Forest",
-      "official_source_id": "inciweb_grasshopper_20260828",
+      "official_source_id": "inciweb_grasshopper_20260831",
       "start_date": "2026-07-23",
       "start_source_ids": [
-        "inciweb_grasshopper_20260828"
+        "inciweb_grasshopper_20260831"
       ],
-      "source_updated_at": "2026-08-28T18:03:00-04:00",
-      "area_acres": 93886.0,
+      "source_updated_at": "2026-08-31T13:57:00-04:00",
+      "area_acres": 93961.0,
       "area_hectares": null,
-      "containment_percent": 76.0,
+      "containment_percent": 83.0,
       "canadian_control_stage": null,
       "structures": {
         "threatened": null,
@@ -677,7 +677,7 @@
         "Mt. Hood Meadows Resort",
         "Timberline Lodge"
       ],
-      "operational_outlook": "The Aug 28 InciWeb incident page reported 93,886 acres and 76% containment; suppression and evacuation-notice monitoring continued around Mt. Hood facilities.",
+      "operational_outlook": "The Aug 31 InciWeb incident page reported 93,961 acres and 83% containment; suppression and evacuation-notice monitoring continued around Mt. Hood facilities.",
       "operational_escalation": true,
       "attention": {
         "level": "High",
@@ -698,8 +698,8 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_grasshopper_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_grasshopper_20260831",
+        "nifc_imsr_20260831",
         "katu_grasshopper"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 35 lost structures are cumulative and unspecified by occupancy. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -718,10 +718,10 @@
       "jurisdiction": "Utah",
       "location": "Fishlake National Forest between Kanosh, Meadow, and Fillmore",
       "controlling_agency": "Great Basin Complex Incident Management Team 2 and Fishlake National Forest",
-      "official_source_id": "inciweb_widemouth_20260828",
+      "official_source_id": "inciweb_widemouth_20260831",
       "start_date": "2026-07-27",
       "start_source_ids": [
-        "inciweb_widemouth_20260828"
+        "inciweb_widemouth_20260831"
       ],
       "source_updated_at": "2026-08-18T22:56:00-04:00",
       "area_acres": 129741.0,
@@ -774,11 +774,11 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_widemouth_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_widemouth_20260831",
+        "nifc_imsr_20260831",
         "fox13_widemouth"
       ],
-      "analyst_note": "**Source reconciliation:** The Aug 28 NIFC and latest available InciWeb records differ slightly on the latest acreage and control rate; this record uses the controlling NIFC incident-table value of 129,741 acres and 93% containment. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
+      "analyst_note": "**Source reconciliation:** The Sep 12 NIFC and latest available InciWeb records differ slightly on the latest acreage and control rate; this record uses the controlling NIFC incident-table value of 129,741 acres and 93% containment. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
       "priority_score": 1090.0,
       "critical_alert_reasons": [
         "named community under evacuation with structure involvement or imminent threat"
@@ -795,10 +795,10 @@
       "jurisdiction": "British Columbia",
       "location": "Okanagan Indian Band reserve near Vernon",
       "controlling_agency": "BC Wildfire Service",
-      "official_source_id": "bcws_bradley_20260828",
+      "official_source_id": "bcws_bradley_20260831",
       "start_date": "2026-08-01",
       "start_source_ids": [
-        "bcws_bradley_20260828"
+        "bcws_bradley_20260831"
       ],
       "source_updated_at": "2026-08-26T14:58:00-04:00",
       "area_acres": null,
@@ -850,8 +850,8 @@
       "confidence": "official_preliminary",
       "conflicting_values": [],
       "source_ids": [
-        "bcws_bradley_20260828",
-        "ciffc_20260813",
+        "bcws_bradley_20260831",
+        "ciffc_20260912",
         "ap_bradley"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The roughly 230-home estimate is preliminary and is not a completed parcel-level assessment. ([Associated Press](https://apnews.com/article/wildfire-canada-homes-destroyed-british-columbia-fbbb7f027adb04a9c9b47a109de74082))",
@@ -872,16 +872,16 @@
       "jurisdiction": "British Columbia",
       "location": "Thompson-Nicola Regional District and Village of Clinton",
       "controlling_agency": "BC Wildfire Service",
-      "official_source_id": "bcws_pear_20260828",
+      "official_source_id": "bcws_pear_20260831",
       "start_date": "2026-07-17",
       "start_source_ids": [
-        "bcws_pear_20260828"
+        "bcws_pear_20260831"
       ],
-      "source_updated_at": "2026-08-28T12:40:00-04:00",
+      "source_updated_at": "2026-09-12T12:12:00-04:00",
       "area_acres": null,
-      "area_hectares": 165847.34,
+      "area_hectares": 165909.4,
       "containment_percent": null,
-      "canadian_control_stage": "Out of Control",
+      "canadian_control_stage": "Under Control",
       "structures": {
         "threatened": null,
         "damaged": null,
@@ -894,7 +894,7 @@
       },
       "evacuation": {
         "level": "order",
-        "description": "Six evacuation orders and five alerts remained mapped across regional districts, First Nations, and the Village of Clinton.",
+        "description": "Two evacuation orders and one alert remained mapped across regional districts, First Nations, and the Village of Clinton.",
         "named_community": true
       },
       "fatalities": null,
@@ -907,7 +907,7 @@
       "critical_infrastructure": [
         "Highway 97"
       ],
-      "operational_outlook": "The Aug 28 BC Wildfire Service page showed Pear Lake Out of Control at 165,847.34 hectares, with six evacuation orders and five alerts.",
+      "operational_outlook": "The Sep 12 BC Wildfire Service page showed Pear Lake Under Control at 165,909.4 hectares, with two evacuation orders and one alert.",
       "operational_escalation": true,
       "attention": {
         "level": "Elevated",
@@ -928,8 +928,8 @@
       "confidence": "official_preliminary",
       "conflicting_values": [],
       "source_ids": [
-        "bcws_pear_20260828",
-        "ciffc_20260813",
+        "bcws_pear_20260831",
+        "ciffc_20260912",
         "ctv_pear"
       ],
       "analyst_note": "**Cat-modeling interpretation:** Do not equate about 120 affected properties with destroyed dwellings; reported impacts include non-residential structures and assessment remained incomplete. ([CTV News](https://www.ctvnews.ca/vancouver/article/more-than-100-structures-lost-in-bcs-pear-lake-wildfire-officials-say/))",
@@ -946,15 +946,15 @@
       "jurisdiction": "Oregon",
       "location": "South of Fossil across central Oregon counties",
       "controlling_agency": "Southwest Complex Incident Management Team 2 and Bureau of Land Management",
-      "official_source_id": "inciweb_rowe_20260828",
+      "official_source_id": "inciweb_rowe_20260831",
       "start_date": "2026-07-15",
       "start_source_ids": [
-        "inciweb_rowe_20260828"
+        "inciweb_rowe_20260831"
       ],
-      "source_updated_at": "2026-08-28T12:23:00-04:00",
+      "source_updated_at": "2026-08-31T21:15:00-04:00",
       "area_acres": 373927.0,
       "area_hectares": null,
-      "containment_percent": 93.0,
+      "containment_percent": 96.0,
       "canadian_control_stage": null,
       "structures": {
         "threatened": null,
@@ -980,7 +980,7 @@
       "critical_infrastructure": [
         "U.S. Highway 26"
       ],
-      "operational_outlook": "The Aug 28 InciWeb page reported 373,927 acres and 93% containment; suppression and community coordination continued.",
+      "operational_outlook": "The Aug 31 InciWeb page reported 373,927 acres and 96% containment; suppression and community coordination continued.",
       "operational_escalation": false,
       "attention": {
         "level": "Elevated",
@@ -1001,8 +1001,8 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_rowe_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_rowe_20260831",
+        "nifc_imsr_20260831",
         "kval_rowe"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 25-loss total is not classified by occupancy. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -1019,10 +1019,10 @@
       "jurisdiction": "Colorado",
       "location": "Pueblo and Custer counties",
       "controlling_agency": "Rocky Mountain Complex Incident Management Team 3",
-      "official_source_id": "inciweb_aspen_20260828",
+      "official_source_id": "inciweb_aspen_20260831",
       "start_date": "2026-06-29",
       "start_source_ids": [
-        "inciweb_aspen_20260828"
+        "inciweb_aspen_20260831"
       ],
       "source_updated_at": "2026-08-27T19:46:00-04:00",
       "area_acres": 102004.0,
@@ -1073,8 +1073,8 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_aspen_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_aspen_20260831",
+        "nifc_imsr_20260831",
         "gazette_aspen"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 915 lost structures are cumulative and unspecified by occupancy. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -1089,10 +1089,10 @@
       "jurisdiction": "Washington",
       "location": "South of Nespelem",
       "controlling_agency": "Bureau of Indian Affairs and Alaska Incident Management Team 2",
-      "official_source_id": "inciweb_kaiser_20260828",
+      "official_source_id": "inciweb_kaiser_20260831",
       "start_date": "2026-07-16",
       "start_source_ids": [
-        "inciweb_kaiser_20260828"
+        "inciweb_kaiser_20260831"
       ],
       "source_updated_at": "2026-08-25T22:58:00-04:00",
       "area_acres": 138293.0,
@@ -1146,8 +1146,8 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_kaiser_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_kaiser_20260831",
+        "nifc_imsr_20260831",
         "krem_kaiser"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 47 losses are cumulative and unspecified by occupancy. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -1164,15 +1164,15 @@
       "jurisdiction": "Washington",
       "location": "Okanogan-Wenatchee National Forest near Leavenworth",
       "controlling_agency": "Northwest Complex Incident Management Team 12 and Okanogan-Wenatchee National Forest",
-      "official_source_id": "inciweb_little_giant_20260828",
+      "official_source_id": "inciweb_little_giant_20260831",
       "start_date": "2026-07-15",
       "start_source_ids": [
-        "inciweb_little_giant_20260828"
+        "inciweb_little_giant_20260831"
       ],
-      "source_updated_at": "2026-08-28T13:23:00-04:00",
-      "area_acres": 161236.0,
+      "source_updated_at": "2026-08-31T21:55:00-04:00",
+      "area_acres": 170784.0,
       "area_hectares": null,
-      "containment_percent": 25.0,
+      "containment_percent": 49.0,
       "canadian_control_stage": null,
       "structures": {
         "threatened": null,
@@ -1198,7 +1198,7 @@
       "critical_infrastructure": [
         "critical infrastructure"
       ],
-      "operational_outlook": "The Aug 28 InciWeb update reported 161,236 acres and 25% containment; active fire behavior, structure and critical-infrastructure threats, evacuations, and closures continued.",
+      "operational_outlook": "The Aug 31 InciWeb update reported 170,784 acres and 49% containment; active fire behavior, structure and critical-infrastructure threats, evacuations, and closures continued.",
       "operational_escalation": true,
       "attention": {
         "level": "Low",
@@ -1219,8 +1219,8 @@
       "confidence": "official_confirmed",
       "conflicting_values": [],
       "source_ids": [
-        "inciweb_little_giant_20260828",
-        "nifc_imsr_20260828",
+        "inciweb_little_giant_20260831",
+        "nifc_imsr_20260831",
         "lakechelan_littlegiant"
       ],
       "analyst_note": "**Cat-modeling interpretation:** The 26 lost structures are an unspecified-occupancy total and must not be converted into residences. ([NIFC IMSR](https://www.nifc.gov/nicc/sitreprt.pdf))",
@@ -1231,7 +1231,7 @@
     }
   ],
   "global_overview": {
-    "statement": "The Aug 28 browser headline scan found current international coverage concentrated on Europe, including nearly €500 million in French fire damage, EU heatwave and firefighter-capacity concerns, and continuing Greek wildfire risk. The direct 24-hour query returned a limited current sample; this is a headline scan, not comprehensive worldwide operational intelligence.",
+    "statement": "The Sep 12 browser headline scan found current international coverage concentrated on European fires and preparedness, including Greece, Bosnia and Herzegovina, Morocco, and Portugal, alongside reports of Indonesia's wildfire haze and Japan assistance. The direct 24-hour query returned a limited current sample; this is a headline scan, not comprehensive worldwide operational intelligence.",
     "source_ids": [
       "gnews_global_scan",
       "reuters_europe"
@@ -1296,14 +1296,14 @@
       "name": "Superior National Forest July Lightning Incidents",
       "reason": "Exact official information showed large remote fires and qualitative structure/infrastructure threats, but no confirmed loss or qualifying headline momentum comparable with promoted events.",
       "source_ids": [
-        "nifc_imsr_20260828"
+        "nifc_imsr_20260831"
       ]
     },
     {
       "name": "Sinlahekin Fire",
       "reason": "The IMSR described active behavior and qualitative residential/infrastructure threat, but no new qualifying loss or attention signal was verified.",
       "source_ids": [
-        "nifc_imsr_20260828"
+        "nifc_imsr_20260831"
       ]
     }
   ],
@@ -1316,7 +1316,7 @@
       "source failed: Hawaii Emergency Management Agency: Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff.",
       "source failed: Hawaii DLNR Division of Forestry and Wildlife: Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff.",
       "source failed: NWS Honolulu: Collector failed with DNS resolution error; no reviewed candidate from this source cleared promotion before the cutoff.",
-      "source failed: CWFIS National Wildland Fire Summary: Collector failed with DNS resolution error; the direct CIFFC Aug 28 report is retained as the latest complete Canadian national total."
+      "source failed: CWFIS National Wildland Fire Summary: Collector failed with DNS resolution error; browser verification of the Sep 12 CIFFC report found no populated numeric tables, so Sep 9 is retained as the latest complete Canadian national total."
     ]
   }
 }
