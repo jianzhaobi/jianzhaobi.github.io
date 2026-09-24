@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Real-Time MBTA Tracker By J. Bi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#12385A">
+    <link rel="icon" type="image/png" href="assets/mbta-transport-icon.png">
+    <link rel="apple-touch-icon" href="assets/mbta-transport-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.css">
+    <!-- Single source of truth for cache-busting both style.css and app.js.
+         Bump this once when shipping changes; the inline scripts below
+         inject the version into both <link> and <script> tags so they can
+         never drift apart. -->
+    <script>window.__APP_VERSION__ = "20260924-01";</script>
+    <script>document.write('<link rel="stylesheet" href="style.css?v=' + window.__APP_VERSION__ + '">');</script>
+</head>
+<body>
+<div id="map"></div>
+<button id="locateUser" class="locate-user" type="button" aria-label="My location" title="My location" hidden>
+    <span class="locate-dot" aria-hidden="true"></span>
+</button>
+<button id="resetRouteView" class="reset-route-view" type="button" aria-label="Show full route" title="Show full route" hidden>
+    <svg class="reset-route-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M8 4H4v4"></path>
+        <path d="M16 4h4v4"></path>
+        <path d="M8 20H4v-4"></path>
+        <path d="M16 20h4v-4"></path>
+    </svg>
+</button>
+<div id="basemapPicker" class="basemap-picker">
+    <div id="basemapOptions" class="basemap-options" hidden>
+        <button class="basemap-option" type="button" data-basemap="light" aria-label="Light map"></button>
+        <button class="basemap-option" type="button" data-basemap="dark" aria-label="Dark map"></button>
+        <button class="basemap-option" type="button" data-basemap="detail" aria-label="Detailed map"></button>
+        <button class="basemap-option" type="button" data-basemap="satellite" aria-label="Satellite map"></button>
+    </div>
+    <button id="basemapToggle" class="basemap-preview" type="button" data-basemap="light" aria-label="Choose map style" aria-expanded="false" aria-controls="basemapOptions"></button>
+</div>
+<div class="route-panel">
+    <label class="route-label sr-only" id="routePickerLabel" for="routeFilter">Route</label>
+    <select id="routeFilter" class="route-filter-native" disabled tabindex="-1" aria-hidden="true">
+        <option>Loading routes...</option>
+    </select>
+    <div id="routePicker" class="route-picker">
+        <button id="routePickerButton" class="route-picker-button" type="button" disabled aria-haspopup="listbox" aria-expanded="false" aria-controls="routePickerMenu" aria-labelledby="routePickerLabel routePickerSelected">
+            <span id="routePickerSelected" class="route-picker-selected">
+                <span class="route-badge route-badge-placeholder" aria-hidden="true"></span>
+                <span class="route-picker-text">Loading routes...</span>
+            </span>
+            <span class="route-picker-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="routePickerMenu" class="route-picker-menu" hidden>
+            <div class="route-search-wrap">
+                <input id="routeSearch" class="route-search" type="search" placeholder="Search routes" autocomplete="off" spellcheck="false" aria-label="Search routes">
+            </div>
+            <div id="routeOptions" class="route-options" role="listbox" aria-labelledby="routePickerLabel"></div>
+            <div id="routeEmpty" class="route-empty" hidden>No matching routes</div>
+        </div>
+    </div>
+    <div class="panel-summary">
+        <div id="fetchTime" class="fetch-time" data-state="loading">
+            <span class="fetch-status-dot" aria-hidden="true"></span>
+            <span class="fetch-status-text">Loading routes...</span>
+        </div>
+        <span id="alertIndicator" class="alert-indicator" hidden aria-label="Active service alerts on this route" title="Active service alerts"></span>
+        <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
+    </div>
+    <div id="panelDetails" class="panel-details" hidden>
+        <div id="directionLegend" class="direction-legend" hidden></div>
+        <button id="toggleAlert" class="alert-toggle" hidden>Show alerts</button>
+        <div id="routeAlert" class="route-alert"></div>
+        <p class="tracker-credit">
+            <span class="tracker-credit-product">MBTA Tracker</span>
+            <span class="tracker-credit-author">by Jianzhao Bi</span>
+            <a class="tracker-privacy" href="privacy.html">Privacy</a>
+        </p>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.16.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
+<script>document.write('<script src="app.js?v=' + window.__APP_VERSION__ + '"><\/script>');</script>
+</body>
+</html>

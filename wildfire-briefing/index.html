@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#fbfaf7">
+  <meta name="description" content="A citation-complete rolling 15-day wildfire structural-impact briefing for the United States and Canada.">
+  <title>Wildfire Structural-Impact Briefing</title>
+  <link rel="icon" type="image/png" sizes="512x512" href="wildfire-briefing-icon.png?v=20260805-large">
+  <link rel="apple-touch-icon" href="wildfire-briefing-icon.png?v=20260805-large">
+  <link rel="stylesheet" href="styles.css?v=20260805-icon">
+  <script src="url-state.js?v=20260808-incident-casualties" defer></script>
+  <script src="app.js?v=20260808-incident-casualties" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#report-root">Skip to report</a>
+
+  <header class="app-header">
+    <div class="app-header__inner">
+      <a class="brand" href="./" aria-label="Wildfire briefing home">
+        <span class="brand__mark" aria-hidden="true">
+          <img src="wildfire-briefing-icon.png?v=20260805-large" alt="" width="36" height="36">
+        </span>
+        <span><strong>Wildfire Briefing</strong><small>Structural impact intelligence</small></span>
+      </a>
+
+      <div class="header-controls" aria-label="Report controls">
+        <label class="date-control" for="date-select">
+          <span class="sr-only">Report date</span>
+          <select id="date-select" aria-describedby="date-help"></select>
+        </label>
+        <p id="date-help" class="sr-only">Choose from available reports in the rolling 15-day window.</p>
+        <div class="report-meta" id="report-meta" aria-live="polite"></div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="section-nav" aria-label="Report sections">
+    <div class="section-nav__inner" id="section-nav"></div>
+  </nav>
+
+  <main id="report-root" class="report-root" tabindex="-1" aria-live="polite">
+    <div class="loading-state">
+      <span class="loading-state__mark" aria-hidden="true"></span>
+      <p>Loading verified briefing…</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Official operational sources control fire facts. News coverage is shown separately for context.</p>
+    <p id="footer-window"></p>
+  </footer>
+
+  <noscript>
+    <div class="noscript">JavaScript is required to select and render reports. Canonical Markdown files remain available in the <code>reports/</code> directory.</div>
+  </noscript>
+</body>
+</html>

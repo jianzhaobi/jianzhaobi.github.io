@@ -1,0 +1,203 @@
+name: Deploy Pages with smoke-map cache
+
+on:
+  push:
+    branches: ["master"]
+  schedule:
+    - cron: "25 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install cache build dependencies
+        run: python -m pip install --disable-pip-version-check boto3 numpy pillow
+
+      - name: Run smoke-map regression checks
+        run: python na_smoke_map/scripts/test_static_contracts.py
+
+      - name: Select model-cycle cache key
+        id: model-cycle
+        run: |
+          cycle="$(
+            python -c 'import datetime as d; t=d.datetime.now(d.timezone.utc)-d.timedelta(hours=7); print(t.strftime("%Y%m%d") + ("12" if t.hour >= 12 else "00"))'
+          )"
+          echo "cycle=$cycle" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          rsync -a \
+            --exclude .git \
+            --exclude .github \
+            --exclude mbta/worker \
+            --exclude _site \
+            ./ _site/
+
+      - name: Restore rolling frame cache
+        uses: actions/cache/restore@v4
+        with:
+          path: _frame-cache
+          # A per-run key keeps the rolling source cache appendable. The exact
+          # model-cycle key was immutable after its first save, so later hourly
+          # runs restored it but could never persist newly downloaded history.
+          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-${{ github.run_id }}
+          restore-keys: |
+            raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-
+            raqdps-v5-
+
+      - name: Build hourly WFIGS wildfire cache
+        run: |
+          python na_smoke_map/scripts/build_wildfire_cache.py \
+            --output _frame-cache/site-cache/wildfires \
+            --jobs 2 \
+            --retries 3
+
+      - name: Build hourly CWFIS and CIFFC Canadian wildfire cache
+        run: |
+          python na_smoke_map/scripts/build_canada_wildfire_cache.py \
+            --output _frame-cache/site-cache/canada-wildfires \
+            --retries 3
+
+      - name: Build hourly NOAA HMS smoke cache
+        run: |
+          python na_smoke_map/scripts/build_hms_cache.py \
+            --output _frame-cache/site-cache/hms \
+            --archive-lookback-days 14 \
+            --retries 3
+
+      - name: Build same-origin PM2.5 frame cache
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          build_args=(
+            --output _frame-cache/site-cache
+            --raw-output _frame-cache/source-cache
+            --history-hours 64
+            --forecast-hours 64
+            --jobs 8
+            --minimum-success-ratio 0.8
+          )
+          if [ -n "$R2_PUBLIC_BASE_URL" ] && [ -n "$R2_BUCKET" ] && [ -n "$R2_ENDPOINT_URL" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+            build_args+=(--asset-base-url "$R2_PUBLIC_BASE_URL")
+          fi
+
+          python na_smoke_map/scripts/build_static_cache.py "${build_args[@]}"
+
+      - name: Publish immutable field atlases to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_PREFIX: ${{ secrets.R2_PREFIX }}
+        run: |
+          if [ -z "$R2_BUCKET" ] || [ -z "$R2_ENDPOINT_URL" ] || [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "R2 is not configured; field atlases will remain in the Pages artifact."
+            exit 0
+          fi
+          python na_smoke_map/scripts/publish_r2_cache.py \
+            --root _frame-cache/site-cache \
+            --manifest _frame-cache/site-cache/manifest.json \
+            --bucket "$R2_BUCKET" \
+            --endpoint-url "$R2_ENDPOINT_URL" \
+            --prefix "$R2_PREFIX"
+
+      - name: Copy PM2.5 cache into the Pages artifact
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          if [ -n "$R2_PUBLIC_BASE_URL" ] && [ -n "$R2_BUCKET" ] && [ -n "$R2_ENDPOINT_URL" ] && [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
+            mkdir -p _site/na_smoke_map/cache
+            cp _frame-cache/site-cache/manifest.json _site/na_smoke_map/cache/manifest.json
+            mkdir -p _site/na_smoke_map/cache/wildfires
+            rsync -a --delete \
+              _frame-cache/site-cache/wildfires/ \
+              _site/na_smoke_map/cache/wildfires/
+            mkdir -p _site/na_smoke_map/cache/canada-wildfires
+            rsync -a --delete \
+              _frame-cache/site-cache/canada-wildfires/ \
+              _site/na_smoke_map/cache/canada-wildfires/
+            mkdir -p _site/na_smoke_map/cache/hms
+            rsync -a --delete \
+              _frame-cache/site-cache/hms/ \
+              _site/na_smoke_map/cache/hms/
+            rm -rf _site/na_smoke_map/cache/fields _site/na_smoke_map/cache/frames
+          else
+            rsync -a --delete \
+              _frame-cache/site-cache/ \
+              _site/na_smoke_map/cache/
+          fi
+
+      - name: Save rolling frame cache
+        uses: actions/cache/save@v4
+        with:
+          path: _frame-cache
+          key: raqdps-v5-${{ steps.model-cycle.outputs.cycle }}-${{ github.run_id }}
+
+      - name: Remove superseded rolling caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          legacy_ids="$(
+            gh api "repos/${{ github.repository }}/actions/caches?per_page=100" \
+              --jq '.actions_caches[] | select(.key | startswith("raqdps-frames-")) | .id'
+          )"
+          for cache_id in $legacy_ids; do
+            gh cache delete "$cache_id"
+          done
+
+          old_ids="$(
+            gh api "repos/${{ github.repository }}/actions/caches?per_page=100" \
+              --jq '[.actions_caches[] | select(.key | startswith("raqdps-v5-"))] | sort_by(.created_at) | reverse | .[2:][] | .id'
+          )"
+          for cache_id in $old_ids; do
+            gh cache delete "$cache_id"
+          done
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

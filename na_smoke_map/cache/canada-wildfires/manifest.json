@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "",
+  "source": "NRCan CWFIS Agency Reported Wildfires",
+  "prioritySource": "CIFFC Situation Report Priority Fires",
+  "defaultCount": 0,
+  "catalogCount": 0,
+  "priorityCount": 0,
+  "matchedPriorityCount": 0,
+  "unmatchedPriorityCount": 0,
+  "activeCount": 0,
+  "default": null,
+  "catalog": null
+}
