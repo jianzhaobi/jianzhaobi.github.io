@@ -48,13 +48,13 @@ jobs:
 
       - name: Assemble site
         run: |
-          mkdir -p _site
-          rsync -a \
-            --exclude .git \
-            --exclude .github \
-            --exclude mbta/worker \
-            --exclude _site \
-            ./ _site/
+          mkdir -p _site/mbta/assets _site/na_smoke_map/icons _site/na_smoke_map/cache
+          cp .nojekyll favicon.ico _site/
+          cp mbta/index.html mbta/app.js mbta/style.css mbta/privacy.html mbta/site.webmanifest _site/mbta/
+          cp mbta/assets/mbta-transport-icon.png _site/mbta/assets/
+          cp na_smoke_map/index.html na_smoke_map/site.webmanifest _site/na_smoke_map/
+          rsync -a na_smoke_map/icons/ _site/na_smoke_map/icons/
+          rsync -a na_smoke_map/cache/ _site/na_smoke_map/cache/
 
       - name: Restore rolling frame cache
         uses: actions/cache/restore@v4
