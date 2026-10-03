@@ -1,10 +1,12 @@
 # North America Smoke and PM2.5 Map
 
+> **Current ownership (2026-10-03):** The editable browser JavaScript now lives in the private `jianzhaobi-site-source/na_smoke_map/app.js`. This public repository owns `index.html`, `style.css`, generated `app.js`, cache builders, and the hourly Pages workflow. Earlier single-file descriptions below are historical; see `AGENTS.md` for current maintenance instructions.
+
 > **Documentation contract:** Every completed project update must update this `AGENTS.md` in the same change so that data sources, filters, behavior, implementation decisions, verification requirements, and dated history remain accurate. Do not commit or push a project update while knowingly leaving this file stale.
 
 ## Project purpose
 
-This project provides a browser-based, mobile-friendly map for exploring current and forecast particulate pollution across North America. The sole primary deliverable is `index.html`.
+This project provides a browser-based, mobile-friendly map for exploring current and forecast particulate pollution across North America. The published page consists of `index.html`, `style.css`, generated `app.js`, and its cache assets.
 
 The map must let users independently choose:
 

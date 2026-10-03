@@ -2,20 +2,20 @@
 
 ## Purpose and ownership
 
-This directory is the editable and published source of the North America Smoke & PM2.5 Map. It belongs in the public Pages repository. Keep one active source here; do not maintain a second copy in the private repository. The long historical project record is `PROJECT_HISTORY.md`; consult it for the reasons behind past choices, and verify details against current code and sources before reusing them.
+This directory owns the public North America Smoke & PM2.5 Map shell, CSS, generated browser script, cache builders, and published assets. Editable browser JavaScript is in the private source repository's `na_smoke_map/app.js`; never edit this public generated `app.js` by hand. The long historical project record is `PROJECT_HISTORY.md`; consult it for the reasons behind past choices, and verify details against current code and sources before reusing them.
 
 The map lets readers explore modeled wildfire-smoke and total PM2.5 at the surface or across the full atmospheric column. It overlays U.S. WFIGS incidents, Canadian CWFIS agency-reported fires with CIFFC Priority matching, and optional NOAA HMS observed-smoke polygons. Model analysis, forecast, observed plume extent, incident locations, and structure/impact context are different kinds of evidence; label each accurately.
 
 ## Structure and data flow
 
-- `index.html` contains the standalone application markup, styles, and browser logic. `site.webmanifest` and `icons/` supply browser metadata.
-- `scripts/` contains the cache builders, timeline helper, R2 publisher, and static contract tests. These scripts run in GitHub Actions, not in the visitor's browser.
+- `index.html` contains application markup, CSP, pinned external dependencies, and shared CSS/JS cache version. `style.css` is editable here. `app.js` is the minified release artifact generated from private source. `site.webmanifest` and `icons/` supply browser metadata.
+- `scripts/` contains the cache builders, timeline helper, R2 publisher, and public cache/shell contract tests. Browser-source contract tests run from the private repository.
 - `cache/` contains checked-in fallback manifests. The Pages workflow refreshes smoke/PM2.5 frames, WFIGS and Canadian fire data, and HMS polygons. It publishes validated cache assets and may place immutable field atlases in R2 when the service is configured. Check the workflow and current manifest before assuming which storage path is active.
 - The public Pages workflow is the only production scheduler and deployer for this page. Its artifact allowlist includes runtime HTML, icons, manifest, and cache data; documentation and Python source are kept in Git but are not served as Pages assets.
 
 ## Updating and recovery
 
-Run `python3 na_smoke_map/scripts/test_static_contracts.py` from the public repository root for page and cache-contract checks. The workflow is the source of truth for builder order, dependencies, and publishing flags; inspect each script's current interface before running it manually. A push or scheduled run builds fresh caches, then uploads and deploys one Pages artifact. Do not hand-edit generated assets inside an Actions artifact or commit a live cache snapshot as a substitute for fixing a failed builder.
+Run `python3 na_smoke_map/scripts/test_static_contracts.py` from the public repository root for shell and cache-contract checks. For browser behavior, run the private `na_smoke_map/test_browser_contracts.py` and build its release script. The workflow is the source of truth for builder order, dependencies, and publishing flags; inspect each script's current interface before running it manually. A push or scheduled run builds fresh caches, then uploads and deploys one Pages artifact. Do not hand-edit generated assets inside an Actions artifact or commit a live cache snapshot as a substitute for fixing a failed builder.
 
 The checked-in cache manifests are intentionally empty fallbacks. For data freshness, inspect the deployed manifest timestamps, source-status labels in the page, and the latest successful workflow run. GitHub's scheduled runs can be delayed or skipped even with an hourly cron; use the workflow's manual dispatch when the published cache is stale, and consider a separate scheduler if a strict freshness guarantee becomes necessary. If a build or upstream source fails, investigate the workflow log and keep the prior successful deployment available while repairing the source or builder. If R2 is configured, verify the manifest's asset URLs, browser image/CORS access, and R2 publication step as well as the Pages artifact; do not assume the fallback storage mode is active.
 
@@ -25,6 +25,7 @@ The checked-in cache manifests are intentionally empty fallbacks. For data fresh
 - Use the controlling official source and retain its incident identity. WFIGS Current and Year-to-Date overlap; Canadian CWFIS locations and CIFFC Priority rows require careful matching. Disclose unmatched or stale data rather than inventing incidents or presenting old observations as current.
 - Keep successful caches content-addressed and validated before replacing visible data. A failed refresh should retain a complete previous snapshot with its actual source/observation time visible. Preserve request cancellation and generation guards so slower results cannot overwrite newer user choices.
 - Keep source access and cache generation out of the browser where the current design expects same-origin cache files. Preserve attribution, external-resource integrity metadata, accessible controls, and responsive desktop/mobile behavior.
+- Day/Dark use CARTO MapLibre vector styles, Satellite uses Esri raster, and Fuel/Land cover retain their thematic raster layers with keyed CARTO background and labels. The browser-visible CARTO key is restricted by site origin; the page sends only that origin as Referer. Other service secrets do not belong in the browser.
 - Treat the historical notes in `PROJECT_HISTORY.md` and `wildfire_data_sources.md` as context. Update this guide when ownership, scientific meaning, core behavior, or deployment changes; retain implementation-specific details near the code and tests.
 
 ## Verification before publication

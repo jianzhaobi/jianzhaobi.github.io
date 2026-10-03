@@ -52,7 +52,7 @@ jobs:
           cp .nojekyll favicon.ico _site/
           cp mbta/index.html mbta/app.js mbta/style.css mbta/privacy.html mbta/site.webmanifest _site/mbta/
           cp mbta/assets/mbta-transport-icon.png _site/mbta/assets/
-          cp na_smoke_map/index.html na_smoke_map/site.webmanifest _site/na_smoke_map/
+          cp na_smoke_map/index.html na_smoke_map/style.css na_smoke_map/app.js na_smoke_map/site.webmanifest _site/na_smoke_map/
           rsync -a na_smoke_map/icons/ _site/na_smoke_map/icons/
           rsync -a na_smoke_map/cache/ _site/na_smoke_map/cache/
 

@@ -1,0 +1,1644 @@
+    :root {
+      color-scheme: light;
+      --pm-accent: #e66a47;
+      --pm-accent-strong: #c94f30;
+      --pm-accent-soft: #fff0ea;
+      --pm-ui: rgb(255 255 255 / 90%);
+      --pm-ui-solid: #ffffff;
+      --pm-ui-hover: #f6f4f2;
+      --pm-text: #252729;
+      --pm-muted: #666b70;
+      --pm-track-rest: #dfe2e5;
+      --pm-line: rgb(30 33 36 / 11%);
+      --pm-shadow: 0 10px 30px rgb(31 35 39 / 14%), 0 2px 7px rgb(31 35 39 / 8%);
+      --pm-radius: 14px;
+      --pm-fire-active-dark: #8f241d;
+      --pm-fire-complex: #5b57c9;
+      --pm-safe-top: env(safe-area-inset-top, 0px);
+      --pm-safe-right: env(safe-area-inset-right, 0px);
+      --pm-safe-bottom: env(safe-area-inset-bottom, 0px);
+      --pm-safe-left: env(safe-area-inset-left, 0px);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #e9edf0;
+    }
+
+    button,
+    select,
+    input {
+      font: inherit;
+    }
+
+    button,
+    summary,
+    label,
+    input,
+    select {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible,
+    summary:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgb(230 106 71 / 38%);
+      outline-offset: 2px;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    #north-america-pm25 {
+      --pm-ramp-1: #fff8dd;
+      --pm-ramp-2: #ffe7b4;
+      --pm-ramp-3: #fac17c;
+      --pm-ramp-4: #ef8f57;
+      --pm-ramp-5: #d35e39;
+      --pm-ramp-6: #a43e2b;
+      --pm-ramp-7: #6f2921;
+      --pm-ramp-8: #3d1917;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 100svh;
+      overflow: hidden;
+      color: var(--pm-text);
+      background: #e9edf0;
+      font-size: 14px;
+    }
+
+    /* iOS Safari: suppress double-tap page zoom on controls; pan/pinch still reach the map. */
+    #north-america-pm25 button,
+    #north-america-pm25 summary,
+    #north-america-pm25 label,
+    #north-america-pm25 input,
+    #north-america-pm25 select,
+    #north-america-pm25 a {
+      touch-action: manipulation;
+    }
+
+    #north-america-pm25[data-particle="total"] {
+      --pm-ramp-1: #fffade;
+      --pm-ramp-2: #faebb5;
+      --pm-ramp-3: #efd07d;
+      --pm-ramp-4: #d8ac4e;
+      --pm-ramp-5: #b5812f;
+      --pm-ramp-6: #895b22;
+      --pm-ramp-7: #5b3819;
+      --pm-ramp-8: #321f13;
+    }
+
+    #north-america-pm25[data-basemap="dark"] {
+      --pm-ui: rgb(30 32 36 / 91%);
+      --pm-ui-solid: #24262a;
+      --pm-ui-hover: #31343a;
+      --pm-text: #f5f5f3;
+      --pm-muted: #b6b9bd;
+      --pm-track-rest: #5b6067;
+      --pm-line: rgb(255 255 255 / 12%);
+      --pm-accent-soft: #4b2d25;
+      --pm-shadow: 0 12px 34px rgb(0 0 0 / 36%), 0 2px 8px rgb(0 0 0 / 24%);
+      --pm-fire-complex: #8b86f0;
+    }
+
+    #north-america-pm25 .pm-map-wrap,
+    #north-america-pm25 #pm-map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #north-america-pm25 .pm-map-wrap {
+      position: relative;
+      overflow: hidden;
+      background: #dfe5e8;
+    }
+
+    #north-america-pm25 .leaflet-container {
+      background: #dfe5e8;
+      cursor: crosshair;
+      font-family: inherit;
+    }
+
+    #north-america-pm25 .leaflet-container.pm-fire-hover {
+      cursor: pointer;
+    }
+
+    #north-america-pm25 .pm-continuous-layer {
+      will-change: transform;
+    }
+
+    #north-america-pm25 .leaflet-zoom-anim .pm-continuous-layer.leaflet-zoom-animated {
+      transition: transform 250ms cubic-bezier(0, 0, 0.25, 1);
+    }
+
+    #north-america-pm25 .leaflet-tile-container img.leaflet-tile {
+      outline: 1px solid transparent;
+    }
+
+    #north-america-pm25 .pm-glass,
+    #north-america-pm25 .pm-button,
+    #north-america-pm25 .pm-popover {
+      border: 1px solid var(--pm-line);
+      color: var(--pm-text);
+      background: var(--pm-ui);
+      box-shadow: var(--pm-shadow);
+      backdrop-filter: blur(18px) saturate(135%);
+      -webkit-backdrop-filter: blur(18px) saturate(135%);
+    }
+
+    #north-america-pm25 .pm-toolbar {
+      position: absolute;
+      /* Above Leaflet's 1000 control layer so the fuel-legend popover is not
+         overlapped by the zoom stack; the fire drawer (1100) stays above. */
+      z-index: 1010;
+      top: calc(10px + var(--pm-safe-top));
+      right: calc(10px + var(--pm-safe-right));
+      left: calc(10px + var(--pm-safe-left));
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      pointer-events: none;
+    }
+
+    #north-america-pm25 .pm-toolbar > * {
+      pointer-events: auto;
+    }
+
+    #north-america-pm25 .pm-button {
+      appearance: none;
+      display: inline-flex;
+      min-width: 40px;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin: 0;
+      padding: 0 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+    }
+
+    #north-america-pm25 .pm-button:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-button:active {
+      transform: translateY(1px);
+    }
+
+    #north-america-pm25 .pm-button:disabled {
+      cursor: not-allowed;
+      opacity: .4;
+      transform: none;
+    }
+
+    #north-america-pm25 .pm-button[aria-pressed="true"],
+    #north-america-pm25 .pm-button.pm-primary {
+      border-color: transparent;
+      color: #fff;
+      background: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-button[aria-pressed="true"]:hover,
+    #north-america-pm25 .pm-button.pm-primary:hover {
+      background: var(--pm-accent-strong);
+    }
+
+    #north-america-pm25 .pm-icon-button {
+      padding-inline: 9px;
+    }
+
+    #north-america-pm25 .pm-button svg,
+    #north-america-pm25 .pm-popover svg {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      stroke-width: 1.8;
+    }
+
+    #north-america-pm25 details {
+      position: relative;
+    }
+
+    #north-america-pm25 summary {
+      list-style: none;
+    }
+
+    #north-america-pm25 summary::-webkit-details-marker {
+      display: none;
+    }
+
+    #north-america-pm25 details[open] > summary {
+      border-color: rgb(230 106 71 / 35%);
+      color: var(--pm-accent-strong);
+      background: var(--pm-accent-soft);
+    }
+
+    #north-america-pm25 .pm-map-menu {
+      margin-left: auto;
+    }
+
+    #north-america-pm25 .pm-fires-button[aria-expanded="true"] {
+      border-color: rgb(230 106 71 / 35%);
+      color: var(--pm-accent-strong);
+      background: var(--pm-accent-soft);
+    }
+
+    #north-america-pm25 .pm-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      width: min(264px, calc(100vw - 20px));
+      padding: 13px;
+      border-radius: var(--pm-radius);
+    }
+
+    #north-america-pm25 .pm-map-menu .pm-popover {
+      right: 0;
+      left: auto;
+      width: 172px;
+    }
+
+    #north-america-pm25 fieldset.pm-popover {
+      margin: 0;
+    }
+
+    #north-america-pm25 .pm-fuel-legend-menu .pm-popover {
+      right: 0;
+      left: auto;
+      width: min(320px, calc(100vw - 20px));
+      max-height: min(62vh, 520px);
+      overflow-y: auto;
+      padding: 11px;
+    }
+
+    #north-america-pm25 .pm-fuel-region + .pm-fuel-region {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-fuel-region-title {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--pm-muted);
+    }
+
+    #north-america-pm25 .pm-fuel-group summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fuel-group summary:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fuel-group summary::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-left: auto;
+      border-right: 1.6px solid var(--pm-muted);
+      border-bottom: 1.6px solid var(--pm-muted);
+      transform: rotate(-45deg);
+      transition: transform 150ms ease;
+      flex: 0 0 auto;
+    }
+
+    #north-america-pm25 .pm-fuel-group[open] > summary::after {
+      transform: rotate(45deg);
+    }
+
+    #north-america-pm25 .pm-fuel-strip {
+      display: flex;
+      width: 64px;
+      height: 14px;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--pm-line);
+      border-radius: 4px;
+    }
+
+    #north-america-pm25 .pm-fuel-strip span {
+      flex: 1 1 auto;
+    }
+
+    #north-america-pm25 .pm-fuel-classes {
+      list-style: none;
+      margin: 2px 0 6px;
+      padding: 0 6px 0 10px;
+    }
+
+    #north-america-pm25 .pm-fuel-classes li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 0;
+      font-size: 12px;
+    }
+
+    #north-america-pm25 .pm-fuel-swatch {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      border: 1px solid var(--pm-line);
+      border-radius: 4px;
+    }
+
+    #north-america-pm25 .pm-fuel-code {
+      flex: 0 0 auto;
+      min-width: 32px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-fuel-desc {
+      color: var(--pm-muted);
+    }
+
+    #north-america-pm25 .pm-field {
+      display: block;
+      color: var(--pm-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-field + .pm-field {
+      margin-top: 11px;
+    }
+
+    #north-america-pm25 .pm-select {
+      appearance: none;
+      width: 100%;
+      min-height: 42px;
+      margin-top: 5px;
+      padding: 0 34px 0 11px;
+      border: 1px solid var(--pm-line);
+      border-radius: 10px;
+      color: var(--pm-text);
+      background:
+        linear-gradient(45deg, transparent 50%, var(--pm-muted) 50%) calc(100% - 15px) 50% / 5px 5px no-repeat,
+        linear-gradient(135deg, var(--pm-muted) 50%, transparent 50%) calc(100% - 11px) 50% / 5px 5px no-repeat,
+        var(--pm-ui-solid);
+      cursor: pointer;
+      /* ≥16px keeps iOS Safari from auto-zooming the page when the select gains focus. */
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    #north-america-pm25 .pm-radio {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 9px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    #north-america-pm25 .pm-radio:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-radio input {
+      width: 16px;
+      height: 16px;
+      margin: 0 0 0 7px;
+      accent-color: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-radio span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-layer-toggles {
+      display: grid;
+      gap: 3px;
+      padding-bottom: 11px;
+      border-bottom: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-check {
+      display: flex;
+      min-height: 40px;
+      align-items: center;
+      gap: 10px;
+      padding: 0 7px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-check:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-check input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-layer-section {
+      margin-top: 12px;
+    }
+
+    #north-america-pm25 .pm-hms-note {
+      margin: 0 0 8px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    #north-america-pm25 .pm-hms-legend {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 4px;
+    }
+
+    #north-america-pm25 .pm-hms-legend .pm-hms-legend-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--pm-text);
+    }
+
+    #north-america-pm25 .pm-hms-legend .pm-hms-swatch {
+      width: 22px;
+      height: 12px;
+      border-radius: 2px;
+      flex: 0 0 auto;
+    }
+
+    #north-america-pm25 .pm-layer-section-title {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    #north-america-pm25 .pm-fire-layer-toggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 9px;
+    }
+
+    #north-america-pm25 .pm-fire-layer-toggles .pm-check {
+      min-height: 38px;
+      gap: 7px;
+      padding: 0 5px;
+      font-size: 11px;
+    }
+
+    #north-america-pm25 .pm-fire-layer-toggles .pm-check input {
+      width: 16px;
+      height: 16px;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status {
+      display: flex;
+      min-height: 28px;
+      align-items: center;
+      gap: 7px;
+      margin-top: 9px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status::before {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #45a66b;
+      content: "";
+    }
+
+    #north-america-pm25 .pm-fire-layer-status[data-state="loading"]::before {
+      background: var(--pm-accent);
+      animation: pm-pulse 900ms ease-in-out infinite alternate;
+    }
+
+    #north-america-pm25 .pm-fire-layer-status[data-state="error"]::before {
+      background: #c84c42;
+    }
+
+    #north-america-pm25 .pm-fire-retry {
+      appearance: none;
+      min-height: 38px;
+      margin-left: auto;
+      padding: 0 8px;
+      border: 1px solid var(--pm-line);
+      border-radius: 8px;
+      color: var(--pm-text);
+      background: var(--pm-ui-solid);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    #north-america-pm25 .pm-fire-drawer {
+      position: absolute;
+      z-index: 1100;
+      top: calc(60px + var(--pm-safe-top));
+      right: calc(62px + var(--pm-safe-right));
+      bottom: calc(105px + var(--pm-safe-bottom));
+      display: grid;
+      width: min(370px, calc(100% - 86px - var(--pm-safe-left) - var(--pm-safe-right)));
+      min-height: 0;
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      border-radius: 17px;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 12px 8px 14px;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-title {
+      min-width: 0;
+      margin: 0;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-fire-drawer-close {
+      width: 38px;
+      min-width: 38px;
+      min-height: 38px;
+      padding: 0;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-country-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      margin: 0 13px 10px;
+      padding: 3px;
+      border: 1px solid var(--pm-line);
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--pm-ui-solid) 76%, transparent);
+    }
+
+    #north-america-pm25 .pm-fire-country-tab {
+      appearance: none;
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--pm-muted);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-fire-country-tab[aria-selected="true"] {
+      color: var(--pm-accent-strong);
+      background: var(--pm-ui-solid);
+      box-shadow: 0 1px 4px rgb(37 31 27 / 10%);
+    }
+
+    #north-america-pm25 .pm-fire-search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 13px 9px;
+    }
+
+    #north-america-pm25 .pm-fire-search {
+      width: auto;
+      min-width: 0;
+      flex: 1 1 auto;
+      min-height: 42px;
+      padding: 0 11px;
+      border: 1px solid var(--pm-line);
+      border-radius: 10px;
+      color: var(--pm-text);
+      background: var(--pm-ui-solid);
+      /* ≥16px keeps iOS Safari from auto-zooming the page when the field gains focus. */
+      font-size: 16px;
+    }
+
+    #north-america-pm25 .pm-fire-sort {
+      width: 42px;
+      min-width: 42px;
+      min-height: 42px;
+      padding: 0;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-sort[data-sort="size"] {
+      border-color: color-mix(in srgb, var(--pm-accent) 50%, transparent);
+      color: var(--pm-accent-strong);
+      background: var(--pm-ui-solid);
+    }
+
+    #north-america-pm25 .pm-fire-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 0 13px 10px;
+    }
+
+    #north-america-pm25 .pm-fire-filter-break {
+      flex-basis: 100%;
+      height: 0;
+      margin: 0;
+      padding: 0;
+    }
+
+    #north-america-pm25 .pm-fire-filter {
+      appearance: none;
+      min-height: 38px;
+      padding: 0 9px;
+      border: 1px solid var(--pm-line);
+      border-radius: 999px;
+      color: var(--pm-muted);
+      background: var(--pm-ui-solid);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    #north-america-pm25 .pm-fire-filter[aria-pressed="true"] {
+      border-color: transparent;
+      color: #fff;
+      background: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-fire-database-status {
+      min-height: 24px;
+      padding: 0 14px 7px;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    #north-america-pm25 .pm-fire-list {
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      border-top: 1px solid var(--pm-line);
+      overscroll-behavior: contain;
+    }
+
+    #north-america-pm25 .pm-fire-row {
+      appearance: none;
+      display: grid;
+      width: 100%;
+      min-height: 76px;
+      gap: 4px;
+      padding: 10px 14px;
+      border: 0;
+      border-bottom: 1px solid var(--pm-line);
+      color: var(--pm-text);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    #north-america-pm25 .pm-fire-row:hover,
+    #north-america-pm25 .pm-fire-row:focus-visible {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fire-row-head {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-fire-row-name {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-fire-badge {
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border-radius: 999px;
+      color: var(--pm-fire-active-dark);
+      background: rgb(217 75 56 / 13%);
+      font-size: 9px;
+      font-weight: 750;
+      letter-spacing: .04em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    #north-america-pm25 .pm-fire-badge[data-status="contained"],
+    #north-america-pm25 .pm-fire-badge[data-status="controlled"],
+    #north-america-pm25 .pm-fire-badge[data-status="out"],
+    #north-america-pm25 .pm-fire-badge[data-status="not-current"] {
+      color: var(--pm-muted);
+      background: rgb(119 113 107 / 12%);
+    }
+
+    #north-america-pm25 .pm-fire-badge[data-status="extinguished"] {
+      color: var(--pm-muted);
+      background: rgb(119 113 107 / 12%);
+    }
+
+    #north-america-pm25 .pm-fire-badge[data-status="complex"] {
+      color: var(--pm-fire-complex);
+      background: transparent;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pm-fire-complex) 55%, transparent);
+    }
+
+    #north-america-pm25 .pm-fire-group {
+      border-bottom: 1px solid var(--pm-line);
+    }
+
+    #north-america-pm25 .pm-fire-group-head {
+      display: flex;
+      align-items: stretch;
+    }
+
+    #north-america-pm25 .pm-fire-group-head .pm-fire-row {
+      flex: 1 1 auto;
+      min-width: 0;
+      border-bottom: 0;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle {
+      flex: 0 0 auto;
+      width: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-left: 1px solid var(--pm-line);
+      background: transparent;
+      color: var(--pm-muted);
+      cursor: pointer;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle:hover,
+    #north-america-pm25 .pm-fire-group-toggle:focus-visible {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-fire-group-chevron {
+      width: 8px;
+      height: 8px;
+      border-right: 1.6px solid currentColor;
+      border-bottom: 1.6px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform .15s ease;
+    }
+
+    #north-america-pm25 .pm-fire-group-toggle[aria-expanded="true"] .pm-fire-group-chevron {
+      transform: rotate(45deg);
+    }
+
+    #north-america-pm25 .pm-fire-group-children:not([hidden]) {
+      display: block;
+      border-top: 1px solid var(--pm-line);
+      background: color-mix(in srgb, var(--pm-fire-complex) 6%, transparent);
+    }
+
+    #north-america-pm25 .pm-fire-group-children .pm-fire-row {
+      padding-left: 30px;
+      min-height: 66px;
+    }
+
+    #north-america-pm25 .pm-fire-group-children .pm-fire-row:last-child {
+      border-bottom: 0;
+    }
+
+    #north-america-pm25 .pm-fire-group-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px 11px 30px;
+      color: var(--pm-muted);
+      font-size: 12px;
+    }
+
+    #north-america-pm25 .pm-fire-group-retry {
+      min-height: 28px;
+      padding: 4px 10px;
+      font-size: 12px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-complex-icon {
+      background: none;
+      border: 0;
+    }
+
+    #north-america-pm25 .pm-fire-complex-diamond {
+      display: block;
+      width: 16px;
+      height: 16px;
+      margin: 5px;
+      background: var(--pm-fire-complex);
+      border: 2px solid #fff;
+      border-radius: 2px;
+      transform: rotate(45deg);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 45%);
+    }
+
+    /* Mirrors the ignition circles' hover, which snap instantly via setStyle
+       (no transition): the diamond grows (~circle radius +1.5) and its shadow
+       deepens, so a complex reacts to hover just like a point fire or
+       perimeter does. */
+    #north-america-pm25 .pm-fire-complex-diamond.pm-hovered {
+      transform: rotate(45deg) scale(1.18);
+      box-shadow: 0 2px 5px rgb(0 0 0 / 55%);
+    }
+
+    #north-america-pm25 .pm-fire-mirror-banner {
+      position: absolute;
+      z-index: 1002;
+      top: 58px;
+      left: 50%;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px 4px 12px;
+      border-radius: 999px;
+      transform: translateX(-50%);
+    }
+
+    #north-america-pm25 .pm-fire-mirror-text {
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 560px) {
+      #north-america-pm25 .pm-fire-mirror-banner {
+        top: 96px;
+      }
+    }
+
+    #north-america-pm25 .pm-fire-row-meta {
+      overflow: hidden;
+      color: var(--pm-muted);
+      font-size: 11px;
+      line-height: 1.25;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-fire-load-wrap {
+      padding: 9px 12px 11px;
+    }
+
+    #north-america-pm25 .pm-fire-load-more {
+      width: 100%;
+      min-height: 38px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-fire-popup {
+      display: grid;
+      min-width: 238px;
+      gap: 8px;
+    }
+
+    #north-america-pm25 .pm-fire-popup-head {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 9px;
+    }
+
+    #north-america-pm25 .pm-fire-popup-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.2;
+    }
+
+    #north-america-pm25 .pm-fire-popup-grid {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 5px 11px;
+      padding-top: 8px;
+      border-top: 1px solid var(--pm-line);
+      font-size: 11px;
+      line-height: 1.28;
+    }
+
+    #north-america-pm25 .pm-fire-popup-label {
+      color: var(--pm-muted);
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fire-popup-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 600;
+    }
+
+    #north-america-pm25 .pm-fire-selected-path {
+      filter: drop-shadow(0 0 2px rgb(255 255 255 / 96%));
+    }
+
+    #north-america-pm25 .pm-bottom-dock {
+      position: absolute;
+      z-index: 650;
+      bottom: calc(21px + var(--pm-safe-bottom));
+      left: 50%;
+      width: min(824px, calc(100% - 24px - var(--pm-safe-left) - var(--pm-safe-right)));
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    #north-america-pm25 .pm-bottom-dock > * {
+      pointer-events: auto;
+    }
+
+    #north-america-pm25 .pm-legend {
+      position: relative;
+      width: 204px;
+      min-width: 0;
+      opacity: .82;
+      transition: opacity 150ms ease;
+    }
+
+    #north-america-pm25 .pm-legend:hover {
+      opacity: 1;
+    }
+
+    #north-america-pm25 .pm-legend-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 3px;
+      color: var(--pm-muted);
+      font-size: 10px;
+      line-height: 1.2;
+    }
+
+    #north-america-pm25 .pm-legend-head strong {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--pm-text);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-gradient {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--pm-ramp-1) 22%, transparent) 5%,
+        color-mix(in srgb, var(--pm-ramp-2) 34%, transparent) 12%,
+        color-mix(in srgb, var(--pm-ramp-3) 48%, transparent) 26%,
+        color-mix(in srgb, var(--pm-ramp-4) 62%, transparent) 42%,
+        color-mix(in srgb, var(--pm-ramp-5) 74%, transparent) 58%,
+        color-mix(in srgb, var(--pm-ramp-6) 84%, transparent) 74%,
+        color-mix(in srgb, var(--pm-ramp-7) 92%, transparent) 88%,
+        var(--pm-ramp-8) 100%
+      );
+    }
+
+    #north-america-pm25 .pm-legend-ticks {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 2px;
+      color: var(--pm-muted);
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    #north-america-pm25 .pm-status-dot,
+    #north-america-pm25 .pm-frame-status {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+    }
+
+    #north-america-pm25 .pm-status-dot {
+      background: #45a66b;
+    }
+
+    #north-america-pm25 .pm-frame-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #north-america-pm25 .pm-frame-status[data-state="loading"] .pm-status-dot {
+      background: var(--pm-accent);
+      animation: pm-pulse 900ms ease-in-out infinite alternate;
+    }
+
+    #north-america-pm25 .pm-frame-status[data-state="error"] .pm-status-dot {
+      background: #c84c42;
+      animation: none;
+    }
+
+    @keyframes pm-pulse {
+      from { opacity: .35; transform: scale(.8); }
+      to { opacity: 1; transform: scale(1.15); }
+    }
+
+    #north-america-pm25 .pm-timeline {
+      position: relative;
+      width: 100%;
+      padding: 11px 12px 8px;
+      border-radius: 16px;
+    }
+
+    #north-america-pm25 .pm-timeline-top {
+      display: grid;
+      grid-template-columns: 204px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+
+    #north-america-pm25 .pm-valid-time {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      overflow: hidden;
+    }
+
+    #north-america-pm25 .pm-time-copy {
+      display: flex;
+      min-width: 0;
+      align-items: baseline;
+      gap: 7px;
+    }
+
+    #north-america-pm25 #pm-time-value {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 #pm-hour-value {
+      flex: 0 0 auto;
+      color: var(--pm-accent-strong);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="loading"] {
+      color: var(--pm-accent-strong);
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="loading"] svg {
+      animation: pm-spin 900ms linear infinite;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="success"] {
+      color: #318258;
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="partial"] {
+      color: var(--pm-accent-strong);
+    }
+
+    #north-america-pm25 .pm-cache-refresh[data-state="error"] {
+      color: #b6463d;
+    }
+
+    #north-america-pm25 .pm-transport {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 5px;
+    }
+
+    #north-america-pm25 .pm-transport .pm-button {
+      min-width: 34px;
+      min-height: 34px;
+      padding: 0 8px;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    #north-america-pm25 .pm-transport .pm-primary {
+      padding-inline: 10px;
+    }
+
+    #north-america-pm25 .pm-range {
+      --pm-range-progress: 50%;
+      display: block;
+      width: 100%;
+      height: 28px;
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      accent-color: var(--pm-accent);
+      background: transparent;
+      cursor: pointer;
+      touch-action: pan-y;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #north-america-pm25 .pm-range::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 5px;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        var(--pm-accent) 0%,
+        var(--pm-accent) var(--pm-range-progress),
+        var(--pm-track-rest) var(--pm-range-progress),
+        var(--pm-track-rest) 100%
+      );
+    }
+
+    #north-america-pm25 .pm-range::-webkit-slider-thumb {
+      width: 20px;
+      height: 20px;
+      margin-top: -7.5px;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid var(--pm-line);
+      border-radius: 50%;
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-track {
+      width: 100%;
+      height: 5px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--pm-track-rest);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-progress {
+      height: 5px;
+      border-radius: 999px;
+      background: var(--pm-accent);
+    }
+
+    #north-america-pm25 .pm-range::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border: 1px solid var(--pm-line);
+      border-radius: 50%;
+      background: var(--pm-ui-solid);
+      box-shadow: 0 2px 7px rgb(31 35 39 / 20%);
+    }
+
+    #north-america-pm25 .pm-range:focus-visible::-webkit-slider-thumb {
+      box-shadow:
+        0 2px 7px rgb(31 35 39 / 20%),
+        0 0 0 3px color-mix(in srgb, var(--pm-accent) 24%, transparent);
+    }
+
+    #north-america-pm25 .pm-range:focus-visible::-moz-range-thumb {
+      box-shadow:
+        0 2px 7px rgb(31 35 39 / 20%),
+        0 0 0 3px color-mix(in srgb, var(--pm-accent) 24%, transparent);
+    }
+
+    #north-america-pm25 .pm-range-labels {
+      position: relative;
+      height: 9px;
+      margin-top: -1px;
+      color: var(--pm-muted);
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #north-america-pm25 .pm-range-labels span {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    #north-america-pm25 .pm-range-labels span:first-child {
+      transform: none;
+    }
+
+    #north-america-pm25 .pm-range-labels span:last-child {
+      transform: translateX(-100%);
+    }
+
+    #north-america-pm25 .pm-range-labels span:only-child {
+      transform: none;
+    }
+
+    #north-america-pm25 .leaflet-top.leaflet-left {
+      top: calc(50% - 14px);
+      right: calc(10px + var(--pm-safe-right));
+      left: auto;
+      transform: translateY(-50%);
+    }
+
+    #north-america-pm25 .leaflet-left .leaflet-control {
+      float: none;
+    }
+
+    #north-america-pm25 .leaflet-control-zoom {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid var(--pm-line);
+      border-radius: 12px;
+      box-shadow: var(--pm-shadow);
+    }
+
+    #north-america-pm25 .leaflet-control-zoom a {
+      width: 40px;
+      height: 40px;
+      border-bottom-color: var(--pm-line);
+      color: var(--pm-text);
+      background: var(--pm-ui);
+      font-size: 20px;
+      line-height: 40px;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    #north-america-pm25 .leaflet-control-zoom a:hover {
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-map-utility-control {
+      display: grid;
+      gap: 8px;
+      margin: 8px 0 0 !important;
+    }
+
+    #north-america-pm25 .pm-locate-button,
+    #north-america-pm25 .pm-cache-refresh {
+      width: 42px;
+      min-width: 42px;
+      height: 42px;
+      min-height: 42px;
+      padding: 0;
+      border-radius: 12px;
+    }
+
+    #north-america-pm25 .pm-cache-refresh {
+      color: var(--pm-muted);
+    }
+
+    #north-america-pm25 .pm-cache-refresh:hover {
+      color: var(--pm-text);
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="active"] {
+      color: #2878df;
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="loading"] svg {
+      animation: pm-spin 900ms linear infinite;
+    }
+
+    #north-america-pm25 .pm-locate-button[data-state="error"] {
+      color: #c84c42;
+    }
+
+    #north-america-pm25 .pm-location-icon {
+      border: 0;
+      background: transparent;
+    }
+
+    #north-america-pm25 .pm-location-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 17px;
+      height: 17px;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: #2f80ed;
+      box-shadow:
+        0 2px 8px rgb(20 70 135 / 32%),
+        0 0 0 6px rgb(47 128 237 / 18%);
+    }
+
+    #north-america-pm25 .pm-location-dot::after {
+      position: absolute;
+      inset: -8px;
+      border: 2px solid rgb(47 128 237 / 30%);
+      border-radius: 50%;
+      content: "";
+      animation: pm-location-pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes pm-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pm-location-pulse {
+      0% { opacity: .8; transform: scale(.55); }
+      75%, 100% { opacity: 0; transform: scale(1.25); }
+    }
+
+    #north-america-pm25 .leaflet-control-attribution {
+      max-width: calc(100vw - 12px);
+      padding: 1px 4px;
+      color: #6b7075;
+      background: rgb(255 255 255 / 68%);
+      font-size: 9px;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .leaflet-control-attribution a {
+      color: #4e555b;
+    }
+
+    #north-america-pm25 .leaflet-popup-content-wrapper,
+    #north-america-pm25 .leaflet-popup-tip {
+      color: var(--pm-text);
+      background: var(--pm-ui-solid);
+    }
+
+    #north-america-pm25 .leaflet-popup-content-wrapper {
+      border: 1px solid var(--pm-line);
+      border-radius: 13px;
+      box-shadow: var(--pm-shadow);
+    }
+
+    #north-america-pm25 .leaflet-popup-content {
+      min-width: 200px;
+      margin: 11px 38px 11px 14px;
+    }
+
+    #north-america-pm25 .leaflet-popup-close-button {
+      top: 5px !important;
+      right: 5px !important;
+      display: flex !important;
+      width: 28px !important;
+      height: 28px !important;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      color: var(--pm-muted) !important;
+      font-size: 20px !important;
+      font-weight: 400 !important;
+      line-height: 1 !important;
+    }
+
+    #north-america-pm25 .leaflet-popup-close-button:hover,
+    #north-america-pm25 .leaflet-popup-close-button:focus-visible {
+      color: var(--pm-text) !important;
+      background: var(--pm-ui-hover);
+    }
+
+    #north-america-pm25 .pm-probe-popup {
+      display: grid;
+      gap: 2px;
+    }
+
+    #north-america-pm25 .pm-probe-particle {
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-probe-extent {
+      color: var(--pm-muted);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.25;
+    }
+
+    #north-america-pm25 .pm-probe-value {
+      margin-top: 2px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    @media (max-width: 760px) {
+      #north-america-pm25 .pm-bottom-dock {
+        width: calc(100% - 16px - var(--pm-safe-left) - var(--pm-safe-right));
+      }
+
+      #north-america-pm25 .pm-timeline-top {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 7px 10px;
+      }
+
+      #north-america-pm25 .pm-legend {
+        width: 100%;
+        grid-column: 1 / -1;
+      }
+
+      #north-america-pm25 .pm-fire-drawer {
+        right: calc(54px + var(--pm-safe-right));
+        width: min(350px, calc(100% - 70px - var(--pm-safe-left) - var(--pm-safe-right)));
+      }
+
+      /* Touch targets stay at or above ~38px across the full touch-likely
+         width range, not only on the narrowest phones. */
+      #north-america-pm25 .pm-transport .pm-button {
+        min-width: 38px;
+        min-height: 38px;
+      }
+
+      #north-america-pm25 .pm-range {
+        height: 40px;
+        margin-block: -5px 0;
+      }
+
+      #north-america-pm25 .pm-range::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+        margin-top: -9.5px;
+      }
+
+      #north-america-pm25 .pm-range::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      #north-america-pm25 {
+        font-size: 13px;
+      }
+
+      #north-america-pm25 .pm-toolbar {
+        top: calc(8px + var(--pm-safe-top));
+        right: calc(8px + var(--pm-safe-right));
+        left: calc(8px + var(--pm-safe-left));
+        gap: 5px;
+      }
+
+      #north-america-pm25 .pm-toolbar .pm-menu-label {
+        display: none;
+      }
+
+      /* If the icon library failed to load, keep the text labels visible so
+         the toolbar does not collapse into blank buttons. */
+      #north-america-pm25.pm-no-icons .pm-toolbar .pm-menu-label,
+      #north-america-pm25.pm-no-icons .pm-play-label {
+        display: inline;
+      }
+
+      #north-america-pm25 .pm-toolbar > button.pm-button {
+        padding-inline: 9px;
+      }
+
+      #north-america-pm25 .pm-toolbar summary.pm-button {
+        padding-inline: 9px;
+      }
+
+      #north-america-pm25 .pm-popover {
+        width: min(248px, calc(100vw - 16px));
+      }
+
+      #north-america-pm25 .pm-map-menu .pm-popover {
+        width: 158px;
+      }
+
+      #north-america-pm25 .pm-fire-drawer {
+        top: auto;
+        right: calc(8px + var(--pm-safe-right));
+        bottom: calc(8px + var(--pm-safe-bottom));
+        left: calc(8px + var(--pm-safe-left));
+        width: auto;
+        max-height: min(72%, 570px);
+      }
+
+      #north-america-pm25 .pm-bottom-dock {
+        bottom: calc(20px + var(--pm-safe-bottom));
+      }
+
+      #north-america-pm25 .pm-timeline {
+        padding: 10px 10px 7px;
+      }
+
+      #north-america-pm25 .pm-timeline-top {
+        margin-bottom: 6px;
+      }
+
+      #north-america-pm25 .pm-time-copy {
+        display: block;
+      }
+
+      #north-america-pm25 #pm-hour-value {
+        display: block;
+        margin-top: 1px;
+      }
+
+      #north-america-pm25 .pm-transport {
+        gap: 4px;
+      }
+
+      #north-america-pm25 .pm-transport .pm-button {
+        min-width: 38px;
+        min-height: 38px;
+        padding-inline: 8px;
+      }
+
+      #north-america-pm25 .pm-play-label {
+        display: none;
+      }
+
+      #north-america-pm25 .pm-range-labels {
+        margin-top: 0;
+      }
+    }
+
+    @media (max-width: 350px) {
+      #north-america-pm25 #pm-time-value {
+        max-width: 96px;
+        font-size: 12px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      /* The 250 ms zoom-transform transition on the pollution canvas is
+         geographic synchronization with the basemap tiles, not decorative
+         motion, so it must survive reduced-motion preferences. */
+      #north-america-pm25 .pm-legend,
+      #north-america-pm25 .pm-button {
+        transition: none;
+      }
+
+      #north-america-pm25 .pm-frame-status[data-state="loading"] .pm-status-dot {
+        animation: none;
+      }
+
+      #north-america-pm25 .pm-fire-layer-status[data-state="loading"]::before {
+        animation: none;
+      }
+
+      #north-america-pm25 .pm-locate-button[data-state="loading"] svg,
+      #north-america-pm25 .pm-cache-refresh[data-state="loading"] svg,
+      #north-america-pm25 .pm-location-dot::after {
+        animation: none;
+      }
+    }

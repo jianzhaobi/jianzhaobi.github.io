@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -75,268 +75,48 @@ class TimelineHoursTests(unittest.TestCase):
         )
 
 
-class StaticAppContractTests(unittest.TestCase):
+class PublicSmokeMapContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.index = INDEX_PATH.read_text(encoding="utf-8")
+        cls.workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    def test_embedded_javascript_parses(self) -> None:
-        inline_script = self.index.rsplit("<script>", 1)[1].split("</script>", 1)[0]
-        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8") as handle:
-            handle.write(inline_script)
-            handle.flush()
-            result = subprocess.run(
-                ["node", "--check", handle.name],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        self.assertEqual(result.returncode, 0, result.stderr)
+    def test_shell_loads_versioned_release_assets(self) -> None:
+        self.assertIn('<link rel="stylesheet" href="./style.css?v=', self.index)
+        self.assertIn('<script src="./app.js?v=', self.index)
+        self.assertIn('maplibre-gl@5.16.0/dist/maplibre-gl.js', self.index)
+        self.assertIn('maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js', self.index)
+        self.assertIn('<option value="column" selected>Entire atmosphere</option>', self.index)
+        self.assertNotIn('function initializeWildfireCache', self.index)
+        versions = re.findall(r'(?:style\.css|app\.js)\?v=([^"\s]+)', self.index)
+        self.assertEqual(len(versions), 2)
+        self.assertEqual(versions[0], versions[1])
+        for dependency in ('maplibre-gl@5.16.0/dist/maplibre-gl.css',
+                           'maplibre-gl@5.16.0/dist/maplibre-gl.js',
+                           'maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js'):
+            tag = next(tag for tag in re.findall(r'<(?:script|link)\b[^>]+>', self.index, re.S)
+                       if dependency in tag)
+            self.assertIn('integrity="sha384-', tag)
+            self.assertIn('crossorigin="anonymous"', tag)
+        self.assertTrue((PROJECT_ROOT / 'app.js').is_file())
+        self.assertTrue((PROJECT_ROOT / 'style.css').is_file())
+        self.assertFalse((PROJECT_ROOT / 'app.js.map').exists())
+        self.assertNotIn('sourceMappingURL', (PROJECT_ROOT / 'app.js').read_text(encoding='utf-8'))
 
-    def test_reliability_guards_remain_public_and_compatible(self) -> None:
-        self.assertNotIn("map._popup", self.index)
-        self.assertNotIn("AbortSignal.timeout", self.index)
-        self.assertNotIn("quiet: true", self.index)
-        self.assertIn(
-            "Math.floor(clientNow.getTime() / HOUR) * HOUR",
-            self.index,
-        )
-
-    def test_raqdps_defaults_to_entire_atmosphere(self) -> None:
-        self.assertIn(
-            '<option value="column" selected>Entire atmosphere</option>',
-            self.index,
-        )
-        self.assertIn('let particle = "smoke";\n      let extent = "column";', self.index)
-        reset = self.index.split(
-            "function resetMapToInitialState()",
-            1,
-        )[1].split("async function refreshAllData()", 1)[0]
-        self.assertIn('particle = "smoke";\n        extent = "column";', reset)
-        self.assertIn("Smoke · Entire atmosphere", self.index)
-        self.assertIn("mg/m²", self.index)
-
-    def test_wfigs_uses_hourly_cache_and_one_canonical_snapshot(self) -> None:
-        self.assertIn("./cache/wildfires/manifest.json", self.index)
-        self.assertIn("function validWildfireCacheManifest(manifest)", self.index)
-        self.assertIn("async function initializeWildfireCache(options = {})", self.index)
-        self.assertIn("function startWildfireCatalogDownload()", self.index)
-        self.assertIn("function wildfireCatalogWorkerSource()", self.index)
-        self.assertIn('priority: "low"', self.index)
-        self.assertIn('const DB_NAME = "na-smoke-map-wildfire-cache";', self.index)
-        worker = self.index.split(
-            "function wildfireCatalogWorkerSource()",
-            1,
-        )[1].split("function downloadWildfireCatalogInWorker", 1)[0]
-        self.assertLess(worker.index("await readStored(version)"), worker.index("await fetch(url"))
-        initializer = self.index.split(
-            "async function initializeWildfireCache(options = {})",
-            1,
-        )[1].split("function sqlString", 1)[0]
-        self.assertNotIn("wildfireDefaultRecords = null", initializer)
-        self.assertIn("manifest.generatedAt !== previousVersion", initializer)
-        csp = self.index.split(
-            'http-equiv="Content-Security-Policy"',
-            1,
-        )[1].split(">", 1)[0]
-        self.assertNotIn("https://services2.arcgis.com", csp)
-        self.assertNotIn(
-            "https://services3.arcgis.com",
-            csp,
-        )
-        self.assertIn("const canonicalFireRecords = new Map();", self.index)
-        self.assertIn("return canonicalFireRecords.get(id);", self.index)
-        cached_loader = self.index.split(
-            "async function loadFireDatabase(reset = false)",
-            1,
-        )[1].split("function openFireDrawer()", 1)[0]
-        self.assertIn("wildfireDefaultRecords", cached_loader)
-        self.assertIn("wildfireCatalogRecords", cached_loader)
-        self.assertIn(".filter(fireMatchesDatabaseFilters)", cached_loader)
-        self.assertNotIn("fetchArcgis", cached_loader)
-        self.assertNotIn("FIRE_SERVICES", cached_loader)
-        cache_inflater = self.index.split(
-            "function fireRecordFromCache(wire)",
-            1,
-        )[1].split("async function inflateWildfireCacheRecords", 1)[0]
-        self.assertIn("blankFireRecord", cache_inflater)
-        self.assertIn("record.perimeterFeatures = wire.g", cache_inflater)
-        self.assertNotIn("const live = fireEvents.get(record.id);", self.index)
-
-    def test_wfigs_selection_reuses_canonical_geometry(self) -> None:
-        selection = self.index.split(
-            "function selectDatabaseFire(record)",
-            1,
-        )[1].split("function zoomToComplex(record)", 1)[0]
-        complex_zoom = self.index.split(
-            "function zoomToComplex(record)",
-            1,
-        )[1].split("function setSmokeVisibility", 1)[0]
-        self.assertIn(
-            "canonicalFireRecords.get(record.id) !== record",
-            selection,
-        )
-        self.assertIn("renderFireSelection(record)", selection)
-        self.assertNotIn("fetchArcgis", selection)
-        self.assertNotIn("fetchGeojsonFeaturePages", selection)
-        self.assertNotIn("fetchArcgis", complex_zoom)
-        self.assertNotIn("fetchGeojsonFeaturePages", complex_zoom)
-        self.assertIn(
-            "wildfiresVisible && perimetersVisible && record.perimeterFeatures.length",
-            self.index,
-        )
-        self.assertIn(
-            "wildfiresVisible && ignitionsVisible && record.pointFeature",
-            self.index,
-        )
-
-    def test_wfigs_filters_and_pagination_are_local(self) -> None:
-        filters = self.index.split(
-            "function fireMatchesDatabaseFilters(record)",
-            1,
-        )[1].split("function rebuildFireEvents()", 1)[0]
-        self.assertIn("record.name", filters)
-        self.assertIn("fireDatabaseLargeOnly", filters)
-        self.assertIn("fireMatchesDatabaseStatus(record)", filters)
-        self.assertIn("isImsrGradeFire(record)", filters)
-        loader = self.index.split(
-            "async function loadFireDatabase(reset = false)",
-            1,
-        )[1].split("function openFireDrawer()", 1)[0]
-        self.assertIn("matching.slice(offset, offset + pageSize)", loader)
-        self.assertIn("fireDatabaseTotal = matching.length;", loader)
-        self.assertIn("wildfirePendingFilterReload = true;", loader)
-        self.assertIn("Preparing full wildfire database", loader)
-
-    def test_wfigs_imsr_excludes_official_end_dates(self) -> None:
-        imsr_function = self.index.split(
-            "function isImsrGradeFire(record)",
-            1,
-        )[1].split(
-            "function fireMatchesDatabaseStatus",
-            1,
-        )[0]
-        self.assertIn(
-            "!(record.containment || record.control || record.out)",
-            imsr_function,
-        )
-        self.assertIn(
-            '" AND ContainmentDateTime IS NULL"',
-            self.index,
-        )
-        self.assertIn(
-            '" AND ControlDateTime IS NULL"',
-            self.index,
-        )
-        self.assertIn(
-            '" AND FireOutDateTime IS NULL"',
-            self.index,
-        )
-
-    def test_wfigs_startup_and_refresh_never_call_live_arcgis(self) -> None:
-        initialize = self.index.split(
-            "async function initialize()",
-            1,
-        )[1].split("initialize();", 1)[0]
-        self.assertIn("initializeWildfireCache();", initialize)
-        self.assertNotIn("fetchArcgis", initialize)
-        refresh = self.index.split(
-            "async function refreshWildfires(options = {})",
-            1,
-        )[1].split("const fireDateFormatter", 1)[0]
-        self.assertIn("initializeWildfireCache({ force: true })", refresh)
-        self.assertNotIn("FIRE_SERVICES", refresh)
-        automatic_refresh = self.index.split(
-            "function checkWildfiresAfterResume()",
-            1,
-        )[1].split("document.addEventListener", 1)[0]
-        self.assertIn("initializeWildfireCache({ force: true });", automatic_refresh)
-        self.assertNotIn("fetchArcgis", automatic_refresh)
-        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn("Build hourly WFIGS wildfire cache", workflow)
-        self.assertIn("scripts/build_wildfire_cache.py", workflow)
-        self.assertIn("_frame-cache/site-cache/wildfires/", workflow)
-
-    def test_canadian_fires_are_lazy_cache_only_and_us_stays_default(self) -> None:
-        self.assertIn("./cache/canada-wildfires/manifest.json", self.index)
-        self.assertIn('let fireCountry = "us";', self.index)
-        self.assertIn("function switchFireCountry(country)", self.index)
-        self.assertIn("async function initializeCanadianWildfireCache(options = {})", self.index)
-        self.assertIn("async function loadCanadianFireDatabase(reset = false)", self.index)
-        initializer = self.index.split(
-            "async function initialize()",
-            1,
-        )[1].split("initialize();", 1)[0]
-        self.assertIn("initializeWildfireCache();", initializer)
-        self.assertNotIn("initializeCanadianWildfireCache", initializer)
-        self.assertNotIn("geoserver.cwfif.nrcan.gc.ca", self.index)
-        self.assertNotIn("api.ciffc.net", self.index)
-        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn("Build hourly CWFIS and CIFFC Canadian wildfire cache", workflow)
-        self.assertIn("scripts/build_canada_wildfire_cache.py", workflow)
-        self.assertIn("_frame-cache/site-cache/canada-wildfires", workflow)
-
-    def test_canadian_fire_copy_uses_us_units_and_ciffc_priority(self) -> None:
-        self.assertIn(
-            'fireImsrFilter.textContent = canadian ? "CIFFC Priority" : "IMSR";',
-            self.index,
-        )
-        self.assertIn(
-            'fireLargeFilter.textContent = "Large · 300+ acres";',
-            self.index,
-        )
-        self.assertIn(
-            'appendFirePopupRow(grid, "Size", formatFireAcres(record.size));',
-            self.index,
-        )
-        self.assertIn('priorityBadge.textContent = "CIFFC Priority";', self.index)
-        self.assertIn("function canadianPriorityCoverageText()", self.index)
-        self.assertIn("CIFFC Priority ${fireWord} mapped", self.index)
-        self.assertIn("could not be mapped", self.index)
-        self.assertIn("record.name = wire.c?.name", self.index)
-        self.assertIn("record.nameSource = wire.c?.nameSource", self.index)
-        self.assertNotIn("priority?.name", self.index)
-        self.assertNotIn("formatFireHectares", self.index)
-        self.assertNotIn("CANADA_FIRE_LARGE_HECTARES", self.index)
-
-    def test_hms_uses_hourly_same_origin_cache_with_timeliness(self) -> None:
-        self.assertIn("./cache/hms/manifest.json", self.index)
-        self.assertIn("function validHmsCacheManifest(manifest)", self.index)
-        self.assertIn("async function fetchHmsCacheAsset(", self.index)
-        self.assertIn("function hmsReadyStatus()", self.index)
-        self.assertIn("observed through", self.index)
-        self.assertIn("cache checked", self.index)
-        loader = self.index.split(
-            "async function loadHmsSmoke(options = {})",
-            1,
-        )[1].split("function syncHmsAttribution", 1)[0]
-        self.assertIn("fetchHmsCacheManifest", loader)
-        self.assertIn("fetchHmsCacheAsset", loader)
-        self.assertNotIn("fetchGeojsonFeaturePages", loader)
-        self.assertNotIn("services2.arcgis.com", self.index)
-        csp = self.index.split(
-            'http-equiv="Content-Security-Policy"',
-            1,
-        )[1].split(">", 1)[0]
-        self.assertIn("connect-src 'self'", csp)
+    def test_referrer_and_csp_allow_only_needed_basemap_connections(self) -> None:
+        self.assertIn('<meta name="referrer" content="origin">', self.index)
+        csp = self.index.split('http-equiv="Content-Security-Policy"', 1)[1].split('>', 1)[0]
+        self.assertIn("script-src 'self' https://unpkg.com", csp)
+        self.assertIn("connect-src 'self' https://basemaps.cartocdn.com", csp)
         self.assertNotIn("services2.arcgis.com", csp)
-        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn("Build hourly NOAA HMS smoke cache", workflow)
-        self.assertIn("scripts/build_hms_cache.py", workflow)
-        self.assertIn("_frame-cache/site-cache/hms", workflow)
-        refresh = self.index.split(
-            "async function refreshAllData()",
-            1,
-        )[1].split("async function changeDataset()", 1)[0]
-        self.assertIn("resetMapToInitialState();", refresh)
-        self.assertIn("refreshHmsCache({ allowHidden: true })", refresh)
-        self.assertIn("smokeReady && wildfiresReady && hmsReady", refresh)
-        reset = self.index.split(
-            "function resetMapToInitialState()",
-            1,
-        )[1].split("async function refreshAllData()", 1)[0]
-        self.assertIn("setHmsVisibility(false);", reset)
-        self.assertIn("Refresh smoke, wildfire, and HMS data", self.index)
+        self.assertNotIn("services3.arcgis.com", csp)
+
+    def test_cache_builders_and_runtime_allowlist_remain_public(self) -> None:
+        for name in ("build_wildfire_cache.py", "build_canada_wildfire_cache.py", "build_hms_cache.py", "build_static_cache.py"):
+            self.assertIn(f"scripts/{name}", self.workflow)
+        self.assertIn('cp na_smoke_map/index.html na_smoke_map/style.css na_smoke_map/app.js na_smoke_map/site.webmanifest', self.workflow)
+        self.assertIn('rsync -a na_smoke_map/cache/', self.workflow)
+        self.assertNotIn('cp na_smoke_map/scripts/', self.workflow)
 
 
 class WildfireCacheBuilderTests(unittest.TestCase):

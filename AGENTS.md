@@ -4,9 +4,9 @@ This public repository owns the GitHub Pages publication for the active MBTA Tra
 
 ## Ownership
 
-- `na_smoke_map/` contains the editable page, icons, cache builders, tests, and empty fallback manifests. Its workflow is scheduled hourly and also runs on pushes; actual GitHub schedule times may vary. `na_smoke_map/AGENTS.md` explains source meaning, data flow, and checks; `PROJECT_HISTORY.md` is historical context.
+- `na_smoke_map/` contains editable HTML/CSS, generated browser JavaScript, icons, cache builders, tests, and empty fallback manifests. Editable browser logic and its release workflow live in the private source repository. The public workflow is scheduled hourly and also runs on pushes; actual GitHub schedule times may vary. `na_smoke_map/AGENTS.md` explains source meaning, data flow, and checks; `PROJECT_HISTORY.md` is historical context.
 - `mbta/` owns public HTML, CSS, privacy text, manifest, and icon. Its `app.js` is generated from editable source in the separate private `jianzhaobi/jianzhaobi-site-source` repository. Never edit the generated script by hand or bring its private Worker, source JavaScript, secrets, or archives into this repository. `mbta/AGENTS.md` explains the public assets and cache version.
-- Repository documentation and Smoke Map Python builders remain in Git for maintenance but are excluded from the Pages artifact. Preserve `.nojekyll` and review the workflow allowlist before changing publication rules or adding a route.
+- Repository documentation and Smoke Map Python builders remain in Git for maintenance but are excluded from the Pages artifact. Generated `na_smoke_map/app.js` is a runtime file; never edit it by hand. Preserve `.nojekyll` and review the workflow allowlist before changing publication rules or adding a route.
 
 ## Change and release checks
 
