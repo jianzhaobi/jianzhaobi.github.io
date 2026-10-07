@@ -1,7 +1,7 @@
 {
-  "name": "MBTA Tracker",
-  "short_name": "MBTA",
-  "description": "Real-time MBTA route and vehicle tracker.",
+  "name": "Transit Tracker",
+  "short_name": "Transit",
+  "description": "Real-time MBTA and EZRide route and vehicle tracker.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
