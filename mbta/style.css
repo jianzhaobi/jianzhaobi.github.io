@@ -317,8 +317,8 @@ html, body {
 
 .service-summary {
     display: flex;
-    align-items: baseline;
-    gap: 7px;
+    flex-direction: column;
+    gap: 5px;
     padding: 8px;
     background: #f5f7f9;
     border: 1px solid #d9e0e7;
@@ -333,15 +333,27 @@ html, body {
     display: none;
 }
 
-.service-summary::before {
+.service-summary-row {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+}
+
+.service-summary-row::before {
     content: "";
-    flex: 0 0 17px;
+    flex: 0 0 24px;
     border-top: 3px solid var(--route-color);
     transform: translateY(-2px);
 }
 
-.service-summary[data-active="false"]::before {
-    border-top: 2px dashed #aeb8c2;
+.service-summary-other::before,
+.service-summary[data-active="false"] .service-summary-current::before {
+    border-top: 3px dashed #aeb8c2;
+    opacity: 0.62;
+}
+
+.service-summary[data-active="false"] .service-summary-other {
+    display: none;
 }
 
 .fetch-time {
