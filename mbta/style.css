@@ -315,6 +315,32 @@ html, body {
     text-align: center;
 }
 
+.service-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    margin: 7px 3px 1px;
+    color: #576674;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.35;
+}
+
+.service-summary[hidden] {
+    display: none;
+}
+
+.service-summary::before {
+    content: "";
+    flex: 0 0 17px;
+    border-top: 3px solid var(--route-color);
+    transform: translateY(-2px);
+}
+
+.service-summary[data-active="false"]::before {
+    border-top: 2px dashed #aeb8c2;
+}
+
 .fetch-time {
     flex: 1 1 0;
     min-width: 0;
@@ -1174,12 +1200,18 @@ html, body {
     width: 10px;
     height: 10px;
     background: #ffffff;
-    border: 2px solid var(--route-color);
+    border: 2px solid var(--stop-color, var(--route-color));
     border-radius: 50%;
     box-shadow: 0 1px 6px rgba(20, 31, 43, 0.25);
     cursor: pointer;
     transform: scale(var(--stop-marker-scale, 1));
     transition: transform 0.15s ease;
+}
+
+.stop-marker.is-inactive {
+    background: #eef1f4;
+    border-color: #aeb8c2;
+    opacity: 0.72;
 }
 
 .stop-marker:hover {

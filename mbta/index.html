@@ -14,7 +14,7 @@
          Bump this once when shipping changes; the inline scripts below
          inject the version into both <link> and <script> tags so they can
          never drift apart. -->
-    <script>window.__APP_VERSION__ = "20260924-01";</script>
+    <script>window.__APP_VERSION__ = "ezride-service-1";</script>
     <script>document.write('<link rel="stylesheet" href="style.css?v=' + window.__APP_VERSION__ + '">');</script>
 </head>
 <body>
@@ -60,6 +60,7 @@
             <div id="routeEmpty" class="route-empty" hidden>No matching routes</div>
         </div>
     </div>
+    <div id="serviceSummary" class="service-summary" aria-live="polite" hidden></div>
     <div class="panel-summary">
         <div id="fetchTime" class="fetch-time" data-state="loading">
             <span class="fetch-status-dot" aria-hidden="true"></span>
