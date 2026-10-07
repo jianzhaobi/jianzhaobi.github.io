@@ -57,13 +57,17 @@ html, body {
 .network-status[hidden] { display: none; }
 .is-network-view .panel-summary, .is-network-view .panel-details { display: none; }
 .network-popup-action {
-    width: 100%; min-height: 40px; margin-top: 10px;
-    border: 1px solid #c8d2dc; border-radius: 7px;
-    background: #f3f7fb; color: #12385a;
-    font: 650 12px system-ui, sans-serif; cursor: pointer;
+    display: inline-flex; align-items: center; min-height: 28px;
+    margin: 5px 0 -3px; padding: 3px 0;
+    border: 0; border-radius: 3px; background: transparent; color: #65717d;
+    font: 500 11px system-ui, sans-serif; cursor: pointer;
+    text-decoration: underline; text-decoration-color: #bcc5cd; text-underline-offset: 3px;
     touch-action: manipulation;
 }
-.network-popup-action:hover { background: #e8f0f7; }
+.network-popup-action:hover { color: #12385a; text-decoration-color: currentColor; }
+@media (pointer: coarse) {
+    .network-popup-action { min-height: 36px; }
+}
 .network-popup-action:focus-visible, .network-overlap-list button:focus-visible {
     outline: 2px solid #72a7d0; outline-offset: 2px;
 }
@@ -1067,11 +1071,11 @@ html, body {
     place-items: center;
     box-sizing: border-box;
     color: var(--vehicle-color);
-    background: var(--vehicle-color);
+    background: var(--vehicle-view-color, var(--vehicle-color));
     border: 3px solid #ffffff;
     border-radius: 50%;
     box-shadow: 0 1.5px 4px rgba(20, 31, 43, 0.24), 0 0 0 1px rgba(20, 31, 43, 0.14);
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(var(--vehicle-marker-scale, 1));
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * var(--vehicle-view-scale, 1)));
     pointer-events: auto;
     cursor: pointer;
     transition: transform 0.15s ease;
@@ -1082,7 +1086,7 @@ html, body {
 }
 
 .vehicle-marker:hover {
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * 1.15));
+    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * var(--vehicle-view-scale, 1) * 1.15));
 }
 
 .vehicle-marker::after {
@@ -1308,4 +1312,14 @@ body * {
     transition: opacity var(--basemap-wheel-ghost-fade-ms, 90ms) linear;
     will-change: transform, opacity;
     backface-visibility: hidden;
+}
+
+/* One circle morphs between GPS overview and the detailed route offset. */
+.vehicle-offset-marker.is-view-transition .vehicle-marker { transition: none; }
+.vehicle-offset-marker .vehicle-symbol,
+.vehicle-offset-marker .vehicle-heading-arrow,
+.vehicle-offset-marker .vehicle-leader { opacity: var(--vehicle-view-detail, 1); }
+.vehicle-offset-marker.is-view-transition .vehicle-marker::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+    .vehicle-marker { transition: none; }
 }
