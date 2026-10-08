@@ -1085,8 +1085,10 @@ html, body {
     transition: none;
 }
 
-.vehicle-marker:hover {
-    transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * var(--vehicle-view-scale, 1) * 1.15));
+@media (hover: hover) and (pointer: fine) {
+    .vehicle-marker:hover {
+        transform: translate(calc(-50% + var(--vehicle-x)), calc(-50% + var(--vehicle-y))) scale(calc(var(--vehicle-marker-scale, 1) * var(--vehicle-view-scale, 1) * 1.15));
+    }
 }
 
 .vehicle-marker::after {
@@ -1315,6 +1317,8 @@ body * {
 }
 
 /* One circle morphs between GPS overview and the detailed route offset. */
+.is-vehicle-map-interacting .vehicle-marker,
+.is-vehicle-map-interacting .stop-marker { transition: none; }
 .vehicle-offset-marker.is-view-transition .vehicle-marker { transition: none; }
 .vehicle-offset-marker .vehicle-symbol,
 .vehicle-offset-marker .vehicle-heading-arrow,
