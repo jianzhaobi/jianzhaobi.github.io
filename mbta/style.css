@@ -52,8 +52,8 @@ html, body {
     overflow-y: auto;
 }
 
-.network-status { padding: 8px 2px 0; color: #56616d; font-size: 11px; line-height: 1.5; }
-.network-status[data-state="error"] { color: #946024; }
+.network-status { padding: 8px 3px 0; line-height: 1.5; }
+.network-status::before { content: ""; display: inline-block; margin-right: 7px; vertical-align: 1px; }
 .network-status[hidden] { display: none; }
 .is-network-view .panel-summary, .is-network-view .panel-details { display: none; }
 .network-popup-action {
@@ -386,6 +386,12 @@ html, body {
     display: none;
 }
 
+.fetch-time, .network-status {
+    font-size: 13px;
+    color: #4f5b67;
+    font-weight: 650;
+}
+
 .fetch-time {
     flex: 1 1 0;
     min-width: 0;
@@ -393,13 +399,10 @@ html, body {
     align-items: center;
     gap: 7px;
     padding-left: 3px;
-    font-size: 13px;
-    color: #4f5b67;
-    font-weight: 650;
     white-space: nowrap;
 }
 
-.fetch-status-dot {
+.fetch-status-dot, .network-status::before {
     flex: 0 0 auto;
     width: 7px;
     height: 7px;
@@ -408,12 +411,12 @@ html, body {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--route-color) 14%, transparent);
 }
 
-.fetch-time[data-state="loading"] .fetch-status-dot {
+.fetch-time[data-state="loading"] .fetch-status-dot, .network-status[data-state="loading"]::before {
     background: #d18a00;
     box-shadow: 0 0 0 3px rgba(209, 138, 0, 0.16);
 }
 
-.fetch-time[data-state="error"] .fetch-status-dot {
+.fetch-time[data-state="error"] .fetch-status-dot, .network-status[data-state="error"]::before {
     background: #c2410c;
     box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.15);
 }
@@ -936,7 +939,7 @@ html, body {
     border-bottom: 0;
 }
 
-.popup-card-stop > .popup-info-row:last-child {
+.popup-card-stop > .popup-arrivals + .popup-info-row {
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid #e7ecf1;
