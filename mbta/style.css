@@ -52,10 +52,12 @@ html, body {
     overflow-y: auto;
 }
 
-.network-status { padding: 8px 3px 0; line-height: 1.5; }
-.network-status::before { content: ""; display: inline-block; margin-right: 7px; vertical-align: 1px; }
+.network-status::before { content: ""; }
 .network-status[hidden] { display: none; }
-.is-network-view .panel-summary, .is-network-view .panel-details { display: none; }
+.is-network-view #fetchTime, .is-network-view #alertIndicator,
+.is-network-view #serviceSummary, .is-network-view #directionLegend,
+.is-network-view #toggleAlert, .is-network-view #routeAlert { display: none; }
+.direction-row.network-detail-row { grid-template-columns: minmax(0, 1fr) auto; }
 .network-popup-action {
     display: inline-flex; align-items: center; min-height: 28px;
     margin: 5px 0 -3px; padding: 3px 0;
@@ -386,7 +388,7 @@ html, body {
     display: none;
 }
 
-.fetch-time, .network-status {
+.fetch-time {
     font-size: 13px;
     color: #4f5b67;
     font-weight: 650;

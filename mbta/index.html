@@ -14,7 +14,7 @@
          Bump this once when shipping changes; the inline scripts below
          inject the version into both <link> and <script> tags so they can
          never drift apart. -->
-    <script>window.__APP_VERSION__ = "js-e82b5a392f86";</script>
+    <script>window.__APP_VERSION__ = "js-16d3b0eb5cfa";</script>
     <script>document.write('<link rel="stylesheet" href="style.css?v=' + window.__APP_VERSION__ + '">');</script>
 </head>
 <body>
@@ -60,16 +60,17 @@
             <div id="routeEmpty" class="route-empty" hidden>No matching routes</div>
         </div>
     </div>
-    <div id="networkStatus" class="network-status" role="status" aria-live="polite" hidden></div>
     <div class="panel-summary">
         <div id="fetchTime" class="fetch-time" data-state="loading">
             <span class="fetch-status-dot" aria-hidden="true"></span>
             <span class="fetch-status-text">Loading routes...</span>
         </div>
+        <div id="networkStatus" class="fetch-time network-status" role="status" aria-live="polite" hidden></div>
         <span id="alertIndicator" class="alert-indicator" hidden aria-label="Active service alerts on this route" title="Active service alerts"></span>
         <button id="panelToggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="panelDetails">Details</button>
     </div>
     <div id="panelDetails" class="panel-details" hidden>
+        <div id="networkDetails" class="direction-legend" hidden></div>
         <div id="serviceSummary" class="service-summary" aria-live="polite" hidden>
             <div class="service-summary-row service-summary-current"><span id="serviceSummaryText"></span></div>
             <div class="service-summary-row service-summary-other">Service at other times</div>
