@@ -11,3 +11,9 @@ The Smoke Map's editable HTML/CSS, cache builders, and cache tests live here. It
 - The Pages workflow uses an explicit runtime-file allowlist. When adding a page or asset, update that allowlist and inspect the deployed artifact. Repository docs and builder scripts remain in Git for maintenance but are not served by Pages. The site root is not a separate active homepage.
 
 After changes, check the relevant GitHub Actions run, the live route at desktop and mobile widths, referenced assets, and any Worker or cache endpoint the page needs. Check GitHub Pages settings when changing the publication source or domain.
+
+## Actions storage
+
+After a successful Pages deployment, the workflow keeps that run's `github-pages` artifact and deletes older artifacts from completed runs of the same workflow and branch. It preserves unfinished/newer runs and unrelated artifacts. Cleanup results and failures appear in the run summary; a cleanup failure does not undo the deployment. Pages artifacts also expire after one day as a fallback. Deleting an old upload package does not remove the deployed site, but the old package can no longer be downloaded or reused.
+
+The separate Smoke Map rolling frame cache retains its latest two entries for source history and faster builds. Do not clear those caches to free artifact storage: Actions caches have a separate storage allowance. The private source release workflow and the Cloudflare MBTA Worker are independent of Pages artifact cleanup.

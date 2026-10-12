@@ -20,6 +20,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -187,9 +189,11 @@ jobs:
           done
 
       - name: Upload Pages artifact
+        id: pages-artifact
         uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+          retention-days: 1
 
   deploy:
     environment:
@@ -201,3 +205,82 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # Pages serves its deployed copy; older upload packages are no longer
+      # needed. Only clean up after deployment succeeds, keeping this run's
+      # artifact and all unfinished, newer, or unrelated workflow runs.
+      - name: Remove superseded Pages artifacts
+        id: cleanup
+        if: ${{ success() && steps.deployment.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          PAGES_ARTIFACT_ID: ${{ needs.build.outputs.pages-artifact-id }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = context.repo;
+            const artifactId = Number(process.env.PAGES_ARTIFACT_ID);
+            if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+              throw new Error('Missing current Pages artifact ID; refusing cleanup.');
+            }
+            const { data: currentRun } = await github.rest.actions.getWorkflowRun({
+              ...repo, run_id: context.runId
+            });
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+              ...repo, name: 'github-pages', per_page: 100
+            });
+            const current = artifacts.find(artifact => artifact.id === artifactId);
+            if (!current || current.expired || current.name !== 'github-pages' ||
+                current.workflow_run?.id !== context.runId) {
+              throw new Error('Current Pages artifact not verified; refusing cleanup.');
+            }
+
+            const candidates = [];
+            for (const artifact of artifacts) {
+              if (artifact.id === artifactId || artifact.expired ||
+                  artifact.name !== 'github-pages' || !artifact.workflow_run?.id ||
+                  artifact.workflow_run.id === context.runId ||
+                  !(Date.parse(artifact.created_at) < Date.parse(current.created_at))) continue;
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                ...repo, run_id: artifact.workflow_run.id
+              });
+              if (run.status === 'completed' && run.workflow_id === currentRun.workflow_id &&
+                  run.head_branch === currentRun.head_branch &&
+                  Date.parse(run.created_at) < Date.parse(currentRun.created_at)) {
+                candidates.push(artifact);
+              }
+            }
+
+            const mib = bytes => (bytes / 1024 / 1024).toFixed(1);
+            let deleted = 0, freedBytes = 0, failures = 0;
+            for (const artifact of candidates) {
+              core.info(`Deleting old Pages artifact ${artifact.id} from run ${artifact.workflow_run.id} (${mib(artifact.size_in_bytes)} MiB)`);
+              try {
+                await github.rest.actions.deleteArtifact({ ...repo, artifact_id: artifact.id });
+                deleted++;
+                freedBytes += artifact.size_in_bytes;
+              } catch (error) {
+                failures++;
+                core.warning(`Could not delete artifact ${artifact.id}: ${error.message}`);
+              }
+            }
+            core.info(`Kept current Pages artifact ${artifactId}; deleted ${deleted} older artifacts (${mib(freedBytes)} MiB).`);
+            await core.summary
+              .addHeading('Pages artifact cleanup')
+              .addTable([
+                [{data: 'Result', header: true}, {data: 'Value', header: true}],
+                ['Kept current artifact', `${artifactId} (${mib(current.size_in_bytes)} MiB)`],
+                ['Deleted older artifacts', String(deleted)],
+                ['Freed storage', `${mib(freedBytes)} MiB`],
+                ['Deletion failures', String(failures)]
+              ])
+              .addRaw('\nRolling frame caches and deployed website files are unchanged. Artifacts still expire after one day.\n')
+              .write();
+            if (failures) core.setFailed(`${failures} artifact deletion(s) failed.`);
+
+      - name: Report incomplete artifact cleanup
+        if: ${{ success() && steps.cleanup.outcome == 'failure' }}
+        run: |
+          echo "::warning::Pages deployed successfully, but artifact cleanup was incomplete. Inspect the cleanup log; one-day artifact expiration remains enabled."
+          echo "### Artifact cleanup needs attention" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pages deployed successfully. Cleanup was incomplete; inspect the cleanup log. One-day artifact expiration remains enabled." >> "$GITHUB_STEP_SUMMARY"
